@@ -7,6 +7,7 @@ import (
 	"math"
 	"rand"
 	"time"
+	"rog-go.googlecode.com/hg/canvas"
 )
 
 // to add:
@@ -21,7 +22,7 @@ type RectFlusherContext interface {
 }
 
 type line struct {
-	obj *LineObject
+	obj *canvas.LineObject
 	p0, p1 draw.Point
 }
 
@@ -53,7 +54,7 @@ func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
 
 var currtime int64
 const updateTime = 0.01e9
-var canvas *Canvas
+var window *canvas.Canvas
 var lines *lineList
 var lineVersion int
 
@@ -67,10 +68,10 @@ func main() {
 		return
 	}
 	screen := ctxt.Screen()
-	canvas = NewCanvas(screen, draw.White, flushFunc(ctxt))
+	window = canvas.NewCanvas(screen, draw.White, flushFunc(ctxt))
 	nballs := 1
 
-	csz := draw.Pt(canvas.Width(), canvas.Height())
+	csz := draw.Pt(window.Width(), window.Height())
 
 	// add edges of window
 	addLine(draw.Pt(-1, -1), draw.Pt(csz.X, -1))
@@ -115,7 +116,7 @@ func main() {
 }
 
 func randBall() ball {
-	csz := draw.Point{canvas.Width(), canvas.Height()}
+	csz := draw.Point{window.Width(), window.Height()}
 	return ball{randPoint(csz), makeUnit(randPoint(csz)), randColour()}
 }
 
@@ -127,11 +128,11 @@ func randPoint(size draw.Point) realPoint {
 }
 
 func randColour() (c draw.Color) {
-	return draw.Color(uint32(rand.Int()) << 8 | 0xff)
+	return draw.Color(uint32(rand.Int63() << 8) | 0x808080ff)
 }
 
 func addLine(p0, p1 draw.Point) *line {
-	obj := canvas.Line(image.Black, p0, p1, 3)
+	obj := window.Line(image.Black, p0, p1, 3)
 	ln := line{obj, p0, p1}
 	lines = &lineList{ln, lines}
 	lineVersion++
@@ -155,7 +156,7 @@ func lineMaker(mc <-chan draw.Mouse){
 			ln.obj.Move(p0, m.Point)
 			ln.p1 = m.Point
 			lineVersion++
-			canvas.Flush()
+			window.Flush()
 		}
 	}
 }
@@ -191,13 +192,13 @@ func monitor(mkball <-chan ball, delball chan bool) {
 }
 
 type BallObject struct {
-	*ImageObject
+	*canvas.ImageObject
 }
 
 func makeBall(b ball) BallObject {
-	img := Box(ballSize, ballSize, b.col, 2, image.Black)
+	img := canvas.Box(ballSize, ballSize, b.col, 1, image.Black)
 	p := b.p.point().Sub(draw.Pt(ballSize/2, ballSize/2))
-	return BallObject{canvas.Image(img, p)}
+	return BallObject{window.Image(img, p)}
 }
 
 func (obj *BallObject) Move(p realPoint) {
@@ -227,7 +228,7 @@ loop:
 		}
 		if dist == large {
 			fmt.Printf("no intersection!\n")
-			canvas.Delete(obj)
+			window.Delete(obj)
 			for <-c {
 				c <- true
 			}
@@ -245,15 +246,15 @@ loop:
 			s := float64(t) * speed
 			currp := realPoint{b.p.x + s * b.v.x, b.p.y + s * b.v.y}
 			obj.Move(currp)
-			canvas.Flush()
+			window.Flush()
 			if lineVersion > version {
 				b.p, hitline, version = currp, oldline, lineVersion
 				continue loop
 			}
 			// pass the token back to the monitor
 			if !<-c {
-				canvas.Delete(obj)
-				canvas.Flush()
+				window.Delete(obj)
+				window.Flush()
 				return
 			}
 			c <- true
