@@ -2,8 +2,8 @@
 // a draw.Image. Objects in the canvas may be created,
 // moved and deleted; the Canvas manages any necessary
 // re-drawing.
-
 package canvas
+
 import (
 	"exp/draw"
 	"image"
@@ -59,7 +59,7 @@ type CanvasObject interface {
 	Bbox() draw.Rectangle
 }
 
-// NewCancas return a new Canvas object that uses dst for its
+// NewCanvas return a new Canvas object that uses dst for its
 // underlying image. The background image will used to
 // draw the background, and the flush function, if non-nil
 // will be called when dst has been modified, with
