@@ -1,3 +1,8 @@
+// Package canvas layers a set of movable objects onto
+// a draw.Image. Objects in the canvas may be created,
+// moved and deleted; the Canvas manages any necessary
+// re-drawing.
+
 package canvas
 import (
 	"exp/draw"
@@ -12,14 +17,17 @@ func eqrect(r0, r1 draw.Rectangle) bool {
 	return r0.Min.Eq(r1.Min) && r0.Max.Eq(r1.Max)
 }
 
-func Box(width, height int, col image.Image, border int, bordercol image.Image) image.Image {
+// Box creates a rectangular image of the given size, filled with the given colour,
+// with a border-size border of colour borderCol.
+// 
+func Box(width, height int, col image.Image, border int, borderCol image.Image) image.Image {
 	img := image.NewRGBA(width, height)
 	if border < 0 {
 		border = 0
 	}
 	r := draw.Rect(0, 0, width, height)
 	draw.Draw(img, r.Inset(border), col, draw.ZP)
-	draw.Border(img, r, border, bordercol, draw.ZP)
+	draw.Border(img, r, border, borderCol, draw.ZP)
 	return img
 }
 
@@ -36,18 +44,30 @@ type Canvas struct {
 }
 
 type canvasObjects struct {
-	obj canvasObject
+	obj CanvasObject
 	next *canvasObjects
 }
 
-type canvasObject interface {
-	Draw(clip draw.Rectangle)
+// Objects that implement the CanvasObject interface may be added
+// to the canvas. The objects should adhere to the following rules:
+// - No calls to the canvas should be made while in the Draw or Bbox methods.
+// - All changes to the appearance of the object should be made using
+// the Atomic function.
+//
+type CanvasObject interface {
+	Draw(img *image.RGBA, clip draw.Rectangle)
 	Bbox() draw.Rectangle
 }
 
-func NewCanvas(dst draw.Image, background image.Image, flush func(r draw.Rectangle)) *Canvas {
+// NewCancas return a new Canvas object that uses dst for its
+// underlying image. The background image will used to
+// draw the background, and the flush function, if non-nil
+// will be called when dst has been modified, with
+// a bounding rectangle of the changed area.
+//
+func NewCanvas(dst *image.RGBA, background image.Image, flush func(r draw.Rectangle)) *Canvas {
 	c := new(Canvas)
-	c.dst = dst.(*image.RGBA)
+	c.dst = dst
 
 	c.r = draw.Rect(0, 0, dst.Width(), dst.Height())
 	c.flushrect = c.r
@@ -97,10 +117,16 @@ func (c *Canvas) addFlush(r draw.Rectangle) {
 	c.flushrect = r
 }
 
+// Width returns the width of the canvas, which is
+// the width of its underlying image.
+//
 func (c *Canvas) Width() int {
 	return c.dst.Width()
 }
 
+// Width returns the height of the canvas, which is
+// the height of its underlying image.
+//
 func (c *Canvas) Height() int {
 	return c.dst.Height()
 }
@@ -112,6 +138,8 @@ func (c *Canvas) scratchImage(width, height int) *image.RGBA {
 	return c.scratch
 }
 
+// Flush flushes any pending changes to the underlying image.
+//
 func (c *Canvas) Flush() {
 	c.lock.Lock()
 	c.flush()
@@ -132,7 +160,7 @@ func (c *Canvas) flush() {
 		r := obj.Bbox()
 		if r.Overlaps(c.flushrect) {
 //fmt.Printf("drawing %T\n", obj)
-			obj.Draw(c.flushrect)
+			obj.Draw(c.dst, c.flushrect)
 //fmt.Printf("done draw of %T\n", obj)
 		}
 	}
@@ -143,7 +171,9 @@ func (c *Canvas) flush() {
 	c.flushrect = draw.ZR
 }
 
-func (c *Canvas) Delete(obj canvasObject) {
+// Delete deletes the object obj from the canvas.
+//
+func (c *Canvas) Delete(obj CanvasObject) {
 	c.lock.Lock()
 	prev := &c.objects
 	for o := c.objects; o != nil; o = o.next {
@@ -158,82 +188,119 @@ func (c *Canvas) Delete(obj canvasObject) {
 	c.lock.Unlock()
 }
 
+// Atomic calls f while the canvas's lock is held,
+// allowing objects to adjust their appearance without
+// risk of drawing anomalies. The addflush function
+// provided as an argument allows the code to specify
+// that certain areas will need to be redrawn.
+//
+// N.B. addflush may actually cause an area to be
+// redrawn immediately, so any changes in appearance
+// should have been made before calling it.
+//
+func (c *Canvas) Atomic(f func(addFlush func(r draw.Rectangle))) {
+	c.lock.Lock()
+	defer c.lock.Unlock()
+
+	// could pre-allocate inside c if we cared.
+	addFlush := func(r draw.Rectangle) {
+		c.addFlush(r)
+	}
+	c.lock.Lock()
+	defer c.lock.Unlock()
+	f(addFlush)
+}
+
+// BackgroundChanged informs the canvas that the background
+// image has changed. R should give the bounding rectangle
+// of the change.
+//
 func (c *Canvas) BackgroundChanged(r draw.Rectangle) {
 	c.lock.Lock()
 	c.addFlush(r)
 	c.lock.Unlock()
 }
 
-func (c *Canvas) addObject(obj canvasObject) {
+func (c *Canvas) AddObject(obj CanvasObject) {
+	c.lock.Lock()
 	c.objects = &canvasObjects{obj, c.objects}
 	r := obj.Bbox()
 	if c.flushrect.Empty() {
-		obj.Draw(r)
+		obj.Draw(c.dst, r)
 	}else{
 		c.addFlush(r)
 	}
+	c.lock.Unlock()
 }
 
+// An ImageObject represents an rectangular (but possibly
+// transparent) image.
+//
 type ImageObject struct {
 	canvas *Canvas
 	r draw.Rectangle
 	img image.Image
 }
 
+// Image returns a new ImageObject which will be drawn using img,
+// with p giving the coordinate of the image's top left corner.
+//
 func (c *Canvas) Image(img image.Image, p draw.Point) *ImageObject {
-	c.lock.Lock()
 	obj := new(ImageObject)
 	obj.r = draw.Rectangle{p, p.Add(draw.Pt(img.Width(), img.Height()))}
 	obj.canvas = c
 	obj.img = img
-	c.addObject(obj)
-	c.lock.Unlock()
+	c.AddObject(obj)
 	return obj
 }
 
+// Move moves the image's lower left corner to p.
+//
 func (obj *ImageObject) Move(p draw.Point) {
 	c := obj.canvas
 	c.lock.Lock()
-	c.addFlush(obj.r)
+	r := obj.r
 	obj.r = obj.r.Add(p.Sub(obj.r.Min))
+	c.addFlush(r)
 	c.addFlush(obj.r)
 	c.lock.Unlock()
 }
 
-func (obj *ImageObject) Draw(clip draw.Rectangle) {
-	c := obj.canvas
-	dr := obj.r.Clip(c.flushrect)
+func (obj *ImageObject) Draw(dst *image.RGBA, clip draw.Rectangle) {
+	dr := obj.r.Clip(clip)
 	sp := dr.Min.Sub(obj.r.Min)
-	draw.Draw(c.dst, dr, obj.img, sp)
+	draw.Draw(dst, dr, obj.img, sp)
 }
 
 func (obj *ImageObject) Bbox() draw.Rectangle {
 	return obj.r
 }
 
-
+// A PolyObject represents a filled polygon.
+//
 type PolyObject struct {
 	canvas *Canvas
 	col image.Color
 	points []raster.Point
 	bbox draw.Rectangle
 	painter raster.RGBAPainter
-	clipper ClippedPainter
+	clipper clippedPainter
 	rasterizer *raster.Rasterizer
 }
 
 const lineSafety = 2
 
+// Polygon returns a new PolyObject, using col for its fill colour, and
+// using points for its vertices.
+//
 func (c *Canvas) Polygon(col image.Color, points []draw.Point) *PolyObject {
-	c.lock.Lock()
 	obj := new(PolyObject)
 	rpoints := make([]raster.Point, len(points))
 	for i, p := range points {
 		rpoints[i] = pixel2fixPoint(p)
 	}
 	obj.init(c, col, rpoints)
-	c.addObject(obj)
-	c.lock.Unlock()
+	c.AddObject(obj)
 	return obj
 }
 
@@ -277,29 +344,30 @@ func (obj *PolyObject) Bbox() draw.Rectangle {
 	return obj.bbox
 }
 
-func (obj *PolyObject) Draw(clipr draw.Rectangle) {
-	c := obj.canvas
+func (obj *PolyObject) Draw(dst *image.RGBA, clipr draw.Rectangle) {
 	obj.clipper.Clipr = clipr
-	obj.painter.Image = c.dst
+	obj.painter.Image = dst
 	obj.rasterizer.Rasterize(&obj.clipper)
 }
 
+// A line object represents a single straight line.
 type LineObject struct {
 	PolyObject
 	p0, p1 raster.Point
 	width raster.Fixed
 }
 
+// Line returns a new LineObject, coloured with col, from p0 to p1,
+// of the given width.
+//
 func (c *Canvas) Line(col image.Color, p0, p1 draw.Point, width float) *LineObject {
 	obj := new(LineObject)
 	obj.p0 = pixel2fixPoint(p0)
 	obj.p1 = pixel2fixPoint(p1)
 	obj.width = float2fix(width)
-
-	c.lock.Lock()
 	obj.init(c, col, linePoly(obj.p0, obj.p1, obj.width))
-	c.addObject(obj)
-	c.lock.Unlock()
+
+	c.AddObject(obj)
 	return obj
 }
 
@@ -331,8 +399,9 @@ func linePoly(p0, p1 raster.Point, width raster.Fixed) []raster.Point {
 
 	return pts[0:n]
 }
-	
 
+// Move changes the end coordinates of the LineObject.
+//
 func (obj *LineObject) Move(p0, p1 draw.Point) {
 	c := obj.canvas
 	c.lock.Lock()
@@ -347,12 +416,12 @@ func (obj *LineObject) Move(p0, p1 draw.Point) {
 }
 
 
-type ClippedPainter struct {
+type clippedPainter struct {
 	Painter raster.Painter
 	Clipr draw.Rectangle
 }
 
-func (p *ClippedPainter) Paint(ss []raster.Span) {
+func (p *clippedPainter) Paint(ss []raster.Span) {
 	r := p.Clipr
 
 	// quick check that we've at least got some rows that might be painted
@@ -490,10 +559,10 @@ func isincos2(x, y raster.Fixed) (sin, cos raster.Fixed) {
 	return
 }
 
-type Sizer interface {
+type sizer interface {
 	Width() int
 	Height() int
 }
-func size(x Sizer) draw.Point {
+func size(x sizer) draw.Point {
 	return draw.Point{x.Width(), x.Height()}
 }

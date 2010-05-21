@@ -68,7 +68,7 @@ func main() {
 		return
 	}
 	screen := ctxt.Screen()
-	window = canvas.NewCanvas(screen, draw.White, flushFunc(ctxt))
+	window = canvas.NewCanvas(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
 	nballs := 1
 
 	csz := draw.Pt(window.Width(), window.Height())
