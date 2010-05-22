@@ -190,22 +190,17 @@ func (c *Canvas) Delete(obj CanvasObject) {
 
 // Atomic calls f while the canvas's lock is held,
 // allowing objects to adjust their appearance without
-// risk of drawing anomalies. The addflush function
-// provided as an argument allows the code to specify
-// that certain areas will need to be redrawn.
+// risk of drawing anomalies. Flush can be called
+// to flush dirty areas of the canvas.
 //
-// N.B. addflush may actually cause an area to be
-// redrawn immediately, so any changes in appearance
-// should have been made before calling it.
-//
-func (c *Canvas) Atomic(f func(addFlush func(r draw.Rectangle))) {
+func (c *Canvas) Atomic(f func(flush func(r draw.Rectangle))) {
 	// could pre-allocate inside c if we cared.
-	addFlush := func(r draw.Rectangle) {
+	flush := func(r draw.Rectangle) {
 		c.addFlush(r)
 	}
 	c.lock.Lock()
 	defer c.lock.Unlock()
-	f(addFlush)
+	f(flush)
 }
 
 // BackgroundChanged informs the canvas that the background
