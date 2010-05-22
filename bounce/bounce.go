@@ -17,6 +17,8 @@ import (
 // should it crash if Draw is passed a non-canonical rectangle?
 // it's a pity that image.RGBAColor isn't a draw.Color
 
+// os.Error("heelo") gives internal compiler error
+
 type RectFlusherContext interface {
 	draw.Context
 	FlushImageRect(r draw.Rectangle)
@@ -71,7 +73,7 @@ func main() {
 		return
 	}
 	screen := ctxt.Screen()
-	window = canvas.NewCanvas(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
+	window = canvas.NewCanvas(screen.(*image.RGBA), draw.PaleBlueGreen, flushFunc(ctxt))
 	nballs := 1
 	ctxt.FlushImage()
 
@@ -85,8 +87,9 @@ func main() {
 
 	mkball := make(chan ball)
 	delball := make(chan bool)
+	pause := make(chan bool)
 
-	go monitor(mkball, delball)
+	go monitor(mkball, delball, pause)
 
 	for i := 0; i < nballs; i++ {
 		mkball <- randBall()
@@ -94,12 +97,14 @@ func main() {
 	mc := ctxt.MouseChan()
 	mcc := make(chan (<-chan draw.Mouse))
 	qc := ctxt.QuitChan()
+	kc := ctxt.KeyboardChan()
 	for {
 		select {
 		case <-qc:
 			fmt.Printf("quitting\n")
 			return
 		case m := <-mc:
+//fmt.Printf("mouse %v\n", m)
 			switch {
 			case m.Buttons&4 != 0:
 				return
@@ -111,6 +116,11 @@ func main() {
 					ballMaker(m, mc, mkball)
 				})
 				mc = nil
+			}
+		case k := <-kc:
+			switch k {
+			case ' ':
+				pause <- true
 			}
 		case mc = <-mcc:
 			break
@@ -162,7 +172,7 @@ func randColour() (c draw.Color) {
 }
 
 func addLine(p0, p1 draw.Point) *line {
-	obj := window.Line(image.Black, p0, p1, 3)
+	obj := canvas.NewLine(window, image.Black, p0, p1, 10)
 	ln := line{obj, p0, p1}
 	lines = &lineList{ln, lines}
 	lineVersion++
@@ -252,7 +262,7 @@ func nullproc(c chan bool) {
 	}
 }
 
-func monitor(mkball <-chan ball, delball chan bool) {
+func monitor(mkball <-chan ball, delball chan bool, pause chan bool) {
 	type procList struct {
 		c    chan bool
 		next *procList
@@ -272,6 +282,8 @@ func monitor(mkball <-chan ball, delball chan bool) {
 				proc = procl
 			}
 			proc.c <- true
+		case <-pause:
+			<-pause
 		}
 	}
 }
@@ -283,7 +295,7 @@ type Ball struct {
 func makeBall(b ball) Ball {
 	img := canvas.Box(ballSize, ballSize, b.col, 1, image.Black)
 	p := b.p.point().Sub(draw.Pt(ballSize/2, ballSize/2))
-	return Ball{window.Image(img, p)}
+	return Ball{canvas.NewImage(window, img, p)}
 }
 
 func (obj *Ball) Move(p realPoint) {
