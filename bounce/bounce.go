@@ -1,4 +1,5 @@
 package main
+
 import (
 	"exp/draw/x11"
 	"exp/draw"
@@ -22,7 +23,7 @@ type RectFlusherContext interface {
 }
 
 type line struct {
-	obj *canvas.LineObject
+	obj    *canvas.Line
 	p0, p1 draw.Point
 }
 
@@ -31,8 +32,8 @@ type realPoint struct {
 }
 
 type ball struct {
-	p realPoint
-	v realPoint
+	p   realPoint
+	v   realPoint
 	col draw.Color
 }
 
@@ -53,7 +54,9 @@ func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
 }
 
 var currtime int64
+
 const updateTime = 0.01e9
+
 var window *canvas.Canvas
 var lines *lineList
 var lineVersion int
@@ -70,6 +73,7 @@ func main() {
 	screen := ctxt.Screen()
 	window = canvas.NewCanvas(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
 	nballs := 1
+	ctxt.FlushImage()
 
 	csz := draw.Pt(window.Width(), window.Height())
 
@@ -78,7 +82,6 @@ func main() {
 	addLine(draw.Pt(csz.X, -1), draw.Pt(csz.X, csz.Y))
 	addLine(draw.Pt(csz.X, csz.Y), draw.Pt(-1, csz.Y))
 	addLine(draw.Pt(-1, csz.Y), draw.Pt(-1, -1))
-
 	lineMouse := make(chan draw.Mouse)
 	go lineMaker(lineMouse)
 
@@ -99,8 +102,8 @@ func main() {
 			fmt.Printf("quitting\n")
 			return
 		case m := <-mc:
-			switch{
-			case m.Buttons & 4 != 0:
+			switch {
+			case m.Buttons&4 != 0:
 				return
 			case m.Buttons&2 == 0 && prevButtons&2 != 0:
 				// button 2 release - make a new ball
@@ -122,13 +125,13 @@ func randBall() ball {
 
 func randPoint(size draw.Point) realPoint {
 	return realPoint{
-		rand.Float64() * float64(size.X - 1),
-		rand.Float64() * float64(size.Y - 1),
+		rand.Float64() * float64(size.X-1),
+		rand.Float64() * float64(size.Y-1),
 	}
 }
 
 func randColour() (c draw.Color) {
-	return draw.Color(uint32(rand.Int63() << 8) | 0x808080ff)
+	return draw.Color(uint32(rand.Int63()<<8) | 0x808080ff)
 }
 
 func addLine(p0, p1 draw.Point) *line {
@@ -143,10 +146,10 @@ func (p realPoint) point() draw.Point {
 	return draw.Point{round(p.x), round(p.y)}
 }
 
-func lineMaker(mc <-chan draw.Mouse){
+func lineMaker(mc <-chan draw.Mouse) {
 	for {
 		m := <-mc
-		if m.Buttons & 1 == 0 {
+		if m.Buttons&1 == 0 {
 			continue
 		}
 		p0 := m.Point
@@ -169,13 +172,13 @@ func nullproc(c chan bool) {
 
 func monitor(mkball <-chan ball, delball chan bool) {
 	type procList struct {
-		c chan bool
+		c    chan bool
 		next *procList
 	}
 	procl := &procList{make(chan bool), nil}
 	proc := procl
-	go nullproc(procl.c)	// always there to avoid deadlock when no balls.
-	procl.c <- true		// hand token to dummy proc		
+	go nullproc(procl.c) // always there to avoid deadlock when no balls.
+	procl.c <- true      // hand token to dummy proc
 	for {
 		select {
 		case b := <-mkball:
@@ -191,25 +194,25 @@ func monitor(mkball <-chan ball, delball chan bool) {
 	}
 }
 
-type BallObject struct {
-	*canvas.ImageObject
+type Ball struct {
+	*canvas.Image
 }
 
-func makeBall(b ball) BallObject {
+func makeBall(b ball) Ball {
 	img := canvas.Box(ballSize, ballSize, b.col, 1, image.Black)
 	p := b.p.point().Sub(draw.Pt(ballSize/2, ballSize/2))
-	return BallObject{window.Image(img, p)}
+	return Ball{window.Image(img, p)}
 }
 
-func (obj *BallObject) Move(p realPoint) {
+func (obj *Ball) Move(p realPoint) {
 	bp := draw.Point{round(p.x), round(p.y)}.Sub(draw.Pt(ballSize/2, ballSize/2))
-	obj.ImageObject.Move(bp)
+	obj.Image.Move(bp)
 }
 
 const large = 1000000
 
 func animateBall(c chan bool, b ball) {
-	speed := 0.1e-6 + rand.Float64() * 0.4e-6
+	speed := 0.1e-6 + rand.Float64()*0.4e-6
 	obj := makeBall(b)
 	var hitline line
 	smallcount := 0
@@ -228,23 +231,23 @@ loop:
 		}
 		if dist == large {
 			fmt.Printf("no intersection!\n")
-			window.Delete(obj)
+			obj.Delete()
 			for <-c {
 				c <- true
 			}
 		}
 		if dist < 1e-4 {
 			smallcount++
-		}else{
+		} else {
 			smallcount = 0
 		}
 		bouncev := boing(b.v, hitline)
 		t0 := time.Nanoseconds()
-		dt := int64 (dist / speed)
+		dt := int64(dist / speed)
 		t := int64(0)
 		for {
 			s := float64(t) * speed
-			currp := realPoint{b.p.x + s * b.v.x, b.p.y + s * b.v.y}
+			currp := realPoint{b.p.x + s*b.v.x, b.p.y + s*b.v.y}
 			obj.Move(currp)
 			window.Flush()
 			if lineVersion > version {
@@ -253,7 +256,7 @@ loop:
 			}
 			// pass the token back to the monitor
 			if !<-c {
-				window.Delete(obj)
+				obj.Delete()
 				window.Flush()
 				return
 			}
@@ -267,10 +270,10 @@ loop:
 		b.v = bouncev
 	}
 }
-		
+
 // makeUnit makes a vector of unit-length parallel to v.
 func makeUnit(v realPoint) realPoint {
-	mag := math.Sqrt(v.x * v.x + v.y * v.y)
+	mag := math.Sqrt(v.x*v.x + v.y*v.y)
 	return realPoint{v.x / mag, v.y / mag}
 }
 
@@ -278,7 +281,7 @@ func makeUnit(v realPoint) realPoint {
 // return the new unit vector.
 func boing(av realPoint, ln line) realPoint {
 	f := ln.p1.Sub(ln.p0)
-	d := math.Atan2(float64(f.Y), float64(f.X)) * 2 - math.Atan2(av.y, av.x)
+	d := math.Atan2(float64(f.Y), float64(f.X))*2 - math.Atan2(av.y, av.x)
 	p := realPoint{math.Cos(d), math.Sin(d)}
 
 	return p
@@ -292,37 +295,37 @@ func intersect(p, v realPoint, b line) (ok bool, pt realPoint, dist float64) {
 	const zero = 1e-6
 
 	w := realPoint{float64(b.p1.X - b.p0.X), float64(b.p1.Y - b.p0.Y)}
-	det := w.x * v.y - v.x * w.y
+	det := w.x*v.y - v.x*w.y
 	if det > -zero && det < zero {
 		return
 	}
 
-	y21 := float64(b.p0.Y) - p.y;
-	x21 := float64(b.p0.X) - p.x;
-	dist = (w.x * y21 - w.y * x21) / det;
+	y21 := float64(b.p0.Y) - p.y
+	x21 := float64(b.p0.X) - p.x
+	dist = (w.x*y21 - w.y*x21) / det
 	if dist < 0.0 {
 		return
 	}
 
-	pt = realPoint{p.x+v.x*dist, p.y+v.y*dist}
+	pt = realPoint{p.x + v.x*dist, p.y + v.y*dist}
 	if b.p0.X > b.p1.X {
 		b.p0.X, b.p1.X = b.p1.X, b.p0.X
 	}
-	if b.p0.Y > b.p1.Y{
+	if b.p0.Y > b.p1.Y {
 		b.p0.Y, b.p1.Y = b.p1.Y, b.p0.Y
 	}
 
 	ok = round(pt.x) >= b.p0.X &&
-			round(pt.x) <= b.p1.X &&
-			round(pt.y) >= b.p0.Y &&
-			round(pt.y) <= b.p1.Y
+		round(pt.x) <= b.p1.X &&
+		round(pt.y) >= b.p0.Y &&
+		round(pt.y) <= b.p1.Y
 	return
 }
 
 func round(x float64) int {
 	if x < 0 {
 		x -= 0.5
-	}else{
+	} else {
 		x += 0.5
 	}
 	return int(x)
