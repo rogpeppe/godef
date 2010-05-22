@@ -82,8 +82,6 @@ func main() {
 	addLine(draw.Pt(csz.X, -1), draw.Pt(csz.X, csz.Y))
 	addLine(draw.Pt(csz.X, csz.Y), draw.Pt(-1, csz.Y))
 	addLine(draw.Pt(-1, csz.Y), draw.Pt(-1, -1))
-	lineMouse := make(chan draw.Mouse)
-	go lineMaker(lineMouse)
 
 	mkball := make(chan ball)
 	delball := make(chan bool)
@@ -93,8 +91,8 @@ func main() {
 	for i := 0; i < nballs; i++ {
 		mkball <- randBall()
 	}
-	prevButtons := 0
 	mc := ctxt.MouseChan()
+	mcc := make(chan (<-chan draw.Mouse))
 	qc := ctxt.QuitChan()
 	for {
 		select {
@@ -105,22 +103,51 @@ func main() {
 			switch {
 			case m.Buttons&4 != 0:
 				return
-			case m.Buttons&2 == 0 && prevButtons&2 != 0:
-				// button 2 release - make a new ball
-				mkball <- randBall()
-				fallthrough
-
-			default:
-				lineMouse <- m
+			case m.Buttons&1 != 0:
+				go handleMouse(m, mc, mcc, lineMaker)
+				mc = nil
+			case m.Buttons&2 != 0:
+				go handleMouse(m, mc, mcc, func(m draw.Mouse, mc <-chan draw.Mouse){
+					ballMaker(m, mc, mkball)
+				})
+				mc = nil
 			}
-			prevButtons = m.Buttons
+		case mc = <-mcc:
+			break
 		}
 	}
 }
 
+// Start a modal loop to handle mouse events, running f.
+// f is passed the mouse event that caused the modal loop
+// to be started, and the mouse channel.
+// When f finishes, the mouse channel is handed back
+// on mcc.
+func handleMouse(m draw.Mouse,
+		mc <-chan draw.Mouse,
+		mcc chan (<-chan draw.Mouse),
+		f func(first draw.Mouse, mc <-chan draw.Mouse)) {
+	defer func() {
+		mcc <- mc
+	}()
+	f(m, mc)
+}
+
 func randBall() ball {
 	csz := draw.Point{window.Width(), window.Height()}
-	return ball{randPoint(csz), makeUnit(randPoint(csz)), randColour()}
+	var b ball
+	b.p = randPoint(csz)
+	b.v.x = rand.Float64() - 1
+	b.v.y = rand.Float64() - 1
+	if b.v.x == 0 && b.v.y == 0 {
+		panic("did that really happen?!")
+	}
+	b.v, _ = makeUnit(b.v)
+	speed := 0.1e-6 + rand.Float64()*0.4e-6
+	b.v.x *= speed
+	b.v.y *= speed
+	b.col = randColour()
+	return b
 }
 
 func randPoint(size draw.Point) realPoint {
@@ -146,22 +173,77 @@ func (p realPoint) point() draw.Point {
 	return draw.Point{round(p.x), round(p.y)}
 }
 
-func lineMaker(mc <-chan draw.Mouse) {
+func lineMaker(m draw.Mouse, mc <-chan draw.Mouse) {
+	p0 := m.Point
+	ln := addLine(p0, p0)
+	for m.Buttons&1 != 0 {
+		m = <-mc
+		ln.obj.Move(p0, m.Point)
+		ln.p1 = m.Point
+		lineVersion++
+		window.Flush()
+	}
+}
+
+func abs(x float64) float64 {
+	if x < 0 {
+		return -x
+	}
+	return x
+}
+
+func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<-ball){
+	const sampleTime = 0.25e9
+	var vecs [8]realPoint		// approx sampleTime's worth of velocities
+	i := 0
+	n := 0
+	m0 := m
+	m1 := m
 	for {
-		m := <-mc
-		if m.Buttons&1 == 0 {
-			continue
+		m1 = <-mc
+		dt := m1.Nsec - m.Nsec
+		if dt >= sampleTime/int64(len(vecs)) || m.Buttons&2 == 0{
+			delta := draw2realPoint(m1.Sub(m.Point))
+			vecs[i].x = delta.x / float64(dt)
+			vecs[i].y = delta.y / float64(dt)
+			i = (i + 1) % len(vecs)
+			if n < len(vecs) {
+				n++
+			}
+			m = m1
 		}
-		p0 := m.Point
-		ln := addLine(p0, p0)
-		for m.Buttons&1 != 0 {
-			m = <-mc
-			ln.obj.Move(p0, m.Point)
-			ln.p1 = m.Point
-			lineVersion++
-			window.Flush()
+		if m.Buttons&2 == 0 {
+			break
 		}
 	}
+	var avg realPoint
+	for _, v := range vecs {
+		avg.x += v.x
+		avg.y += v.y
+	}
+	avg.x /= float64(n)
+	avg.y /= float64(n)
+	var b ball
+	speed := math.Sqrt(avg.x*avg.x + avg.y*avg.y)		// in pixels/ns
+	if speed < 3e-9 {
+		// a click with no drag starts a ball with random velocity.
+		b = randBall()
+		b.p = draw2realPoint(m0.Point)
+	}else{
+		v, _ := makeUnit(draw2realPoint(m1.Sub(m0.Point)))
+		v.x *= speed
+		v.y *= speed
+		b = ball{
+			realPoint{float64(m0.X), float64(m0.Y)},
+			v,
+			randColour(),
+		}
+	}
+	mkball <- b
+}
+
+func draw2realPoint(p draw.Point) realPoint {
+	return realPoint{float64(p.X), float64(p.Y)}
 }
 
 func nullproc(c chan bool) {
@@ -212,7 +294,8 @@ func (obj *Ball) Move(p realPoint) {
 const large = 1000000
 
 func animateBall(c chan bool, b ball) {
-	speed := 0.1e-6 + rand.Float64()*0.4e-6
+	var speed float64
+	b.v, speed = makeUnit(b.v)
 	obj := makeBall(b)
 	var hitline line
 	smallcount := 0
@@ -272,9 +355,9 @@ loop:
 }
 
 // makeUnit makes a vector of unit-length parallel to v.
-func makeUnit(v realPoint) realPoint {
+func makeUnit(v realPoint) (realPoint, float64) {
 	mag := math.Sqrt(v.x*v.x + v.y*v.y)
-	return realPoint{v.x / mag, v.y / mag}
+	return realPoint{v.x / mag, v.y / mag}, mag
 }
 
 // bounce ball travelling in direction av off line b.
