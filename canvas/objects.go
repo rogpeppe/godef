@@ -22,28 +22,37 @@ func Box(width, height int, col image.Image, border int, borderCol image.Image) 
 	return img
 }
 
-// An ImageDrawer is a CanvasObject that uses an image
+type BoxDrawer struct {
+	r draw.Rectangle
+	col draw.Color
+}
+
+// An ImageItem is a CanvasObject that uses an image
 // to draw itself.
-type ImageDrawer struct {
+type ImageItem struct {
 	r   draw.Rectangle
 	img image.Image
 }
 
-func (obj *ImageDrawer) Draw(dst *image.RGBA, clip draw.Rectangle) {
+func (obj *ImageItem) Draw(dst *image.RGBA, clip draw.Rectangle) {
 	dr := obj.r.Clip(clip)
 	sp := dr.Min.Sub(obj.r.Min)
 	draw.Draw(dst, dr, obj.img, sp)
 }
 
-func (obj *ImageDrawer) Bbox() draw.Rectangle {
+func (obj *ImageItem) Bbox() draw.Rectangle {
 	return obj.r
+}
+
+func (obj *ImageItem) HitTest(p draw.Point) bool {
+	return p.In(obj.r)
 }
 
 // An Image represents an rectangular (but possibly
 // transparent) image.
 //
 type Image struct {
-	drawer ImageDrawer
+	item ImageItem
 	canvas *Canvas
 }
 
@@ -53,65 +62,38 @@ type Image struct {
 func NewImage(c *Canvas, img image.Image, p draw.Point) *Image {
 	obj := new(Image)
 	obj.canvas = c
-	obj.drawer.r = draw.Rectangle{p, p.Add(draw.Pt(img.Width(), img.Height()))}
-	obj.drawer.img = img
-	c.AddObject(&obj.drawer)
+	obj.item.r = draw.Rectangle{p, p.Add(draw.Pt(img.Width(), img.Height()))}
+	obj.item.img = img
+	c.AddItem(&obj.item, obj)
 	return obj
 }
 
-// Move moves the image's lower left corner to p.
+// SetMinPoint moves the image's upper left corner to p.
 //
-func (obj *Image) Move(p draw.Point) {
-	if p.Eq(obj.drawer.r.Min) {
+func (obj *Image) SetMinPoint(p draw.Point) {
+	if p.Eq(obj.item.r.Min) {
 		return
 	}
-	obj.canvas.Atomic(func(flush func(r draw.Rectangle)) {
-		r := obj.drawer.r
-		obj.drawer.r = r.Add(p.Sub(r.Min))
+	obj.canvas.Atomically(func(flush func(r draw.Rectangle)) {
+		r := obj.item.r
+		obj.item.r = r.Add(p.Sub(r.Min))
 		flush(r)
-		flush(obj.drawer.r)
+		flush(obj.item.r)
 	})
 }
 
+func (obj *Image) HandleMouse(_ Item, _ draw.Mouse, _ <-chan draw.Mouse) bool {
+	return false
+}
+
 func (obj *Image) Delete() {
-	obj.canvas.Delete(&obj.drawer)
-}
-
-// A RasterDrawer is a low level canvas object that
-// can be used to build higher level primitives.
-// It implements CanvasObject, and will calculate
-// (and remember) its bounding box on request.
-//
-// Otherwise it can be used as a raster.Rasterizer.
-//
-type RasterDrawer struct {
-	raster.Rasterizer
-	bbox draw.Rectangle
-	raster.RGBAPainter
-	clipper clippedPainter
-}
-
-// CalcBbox calculates the current bounding box of
-// all the pixels in the current path.
-func (obj *RasterDrawer) CalcBbox() {
-	obj.bbox = rasterBbox(&obj.Rasterizer)
-}
-
-func (obj *RasterDrawer) Draw(dst *image.RGBA, clipr draw.Rectangle) {
-	obj.clipper.Clipr = clipr
-	obj.Image = dst
-	obj.clipper.Painter = &obj.RGBAPainter
-	obj.Rasterize(&obj.clipper)
-}
-
-func (obj *RasterDrawer) Bbox() draw.Rectangle {
-	return obj.bbox
+	obj.canvas.Delete(obj)
 }
 
 // A Polygon represents a filled polygon.
 //
 type Polygon struct {
-	raster RasterDrawer
+	raster RasterItem
 	canvas *Canvas
 	points []raster.Point
 }
@@ -128,12 +110,32 @@ func NewPolygon(c *Canvas, col image.Color, points []draw.Point) *Polygon {
 	obj.raster.SetColor(col)
 	obj.raster.SetBounds(c.Width(), c.Height())
 	obj.rasterize()
-	c.AddObject(&obj.raster)
+	obj.points = rpoints
+	c.AddItem(&obj.raster, obj)
 	return obj
 }
 
 func (obj *Polygon) Delete() {
-	obj.canvas.Delete(&obj.raster)
+	obj.canvas.Delete(obj)
+}
+
+func (obj *Polygon) HandleMouse(_ Item, _ draw.Mouse, _ <-chan draw.Mouse) bool {
+	return false
+}
+
+func (obj *Polygon) Move(delta draw.Point) {
+	obj.canvas.Atomically(func(flush func(draw.Rectangle)) {
+		r := obj.raster.Bbox()
+		rdelta := pixel2fixPoint(delta)
+		for i := range obj.points {
+			p := &obj.points[i]
+			p.X += rdelta.X
+			p.Y += rdelta.Y
+		}
+		obj.rasterize()
+		flush(r)
+		flush(obj.raster.Bbox())
+	})
 }
 
 func (obj *Polygon) rasterize() {
@@ -150,7 +152,7 @@ func (obj *Polygon) rasterize() {
 
 // A line object represents a single straight line.
 type Line struct {
-	raster RasterDrawer
+	raster RasterItem
 	canvas *Canvas
 	p0, p1 raster.Point
 	width  raster.Fixed
@@ -168,8 +170,11 @@ func NewLine(c *Canvas, col image.Color, p0, p1 draw.Point, width float) *Line {
 	obj.raster.SetColor(col)
 	obj.raster.SetBounds(c.Width(), c.Height())
 	obj.rasterize()
-	c.AddObject(&obj.raster)
+	c.AddItem(&obj.raster, obj)
 	return obj
+}
+func (obj *Line) HandleMouse(_ Item, _ draw.Mouse, _ <-chan draw.Mouse) bool {
+	return false
 }
 
 func (obj *Line) rasterize() {
@@ -195,13 +200,19 @@ func (obj *Line) rasterize() {
 	obj.raster.CalcBbox()
 }
 
-// Move changes the end coordinates of the Line.
+func (obj *Line) Move(delta draw.Point) {
+	p0 := fix2pixelPoint(obj.p0)
+	p1 := fix2pixelPoint(obj.p1)
+	obj.SetEndPoints(p0.Add(delta), p1.Add(delta))
+}
+
+// SetEndPoints changes the end coordinates of the Line.
 //
-func (obj *Line) Move(p0, p1 draw.Point) {
-	obj.canvas.Atomic(func(flush func(r draw.Rectangle)) {
+func (obj *Line) SetEndPoints(p0, p1 draw.Point) {
+	obj.canvas.Atomically(func(flush func(draw.Rectangle)) {
+		r := obj.raster.Bbox()
 		obj.p0 = pixel2fixPoint(p0)
 		obj.p1 = pixel2fixPoint(p1)
-		r := obj.raster.Bbox()
 		obj.rasterize()
 		flush(r)
 		flush(obj.raster.Bbox())
@@ -209,96 +220,16 @@ func (obj *Line) Move(p0, p1 draw.Point) {
 }
 
 func (obj *Line) Delete() {
-	obj.canvas.Delete(&obj.raster)
+	obj.canvas.Delete(obj)
 }
 
 // SetColor changes the colour of the line
 //
 func (obj *Line) SetColor(col image.Color) {
-	obj.canvas.Atomic(func(flush func(r draw.Rectangle)) {
+	obj.canvas.Atomically(func(flush func(r draw.Rectangle)) {
 		obj.raster.SetColor(col)
 		flush(obj.raster.Bbox())
 	})
-}
-
-type clippedPainter struct {
-	Painter raster.Painter
-	Clipr   draw.Rectangle
-}
-
-func (p *clippedPainter) Paint(ss []raster.Span, last bool) {
-	r := p.Clipr
-	j := 0
-	// quick check that we've at least got some rows that might be painted
-	if len(ss) > 0 && ss[0].Y < r.Max.Y && ss[len(ss)-1].Y > r.Min.Y {
-		for i, s := range ss {
-			if s.Y >= r.Min.Y {
-				ss = ss[i:]
-				break
-			}
-		}
-		for i, s := range ss {
-			if s.Y >= r.Max.Y {
-				break
-			}
-			if s.X0 < r.Max.X && r.Min.X < s.X1 {
-				sp := &ss[j]
-				if i != j {
-					*sp = s
-				}
-				if s.X0 < r.Min.X {
-					sp.X0 = r.Min.X
-				}
-				if s.X1 > r.Max.X {
-					sp.X1 = r.Max.X
-				}
-				j++
-			}
-		}
-	}
-	if j > 0 || last {
-		p.Painter.Paint(ss[0:j], last)
-	}
-}
-
-func rasterBbox(rasterizer *raster.Rasterizer) (r draw.Rectangle) {
-	r.Min.X = 1e9
-	r.Min.Y = 1e9
-	r.Max.X = -1e9
-	r.Max.Y = -1e9
-	rasterizer.Rasterize(raster.PainterFunc(func(ss []raster.Span, end bool) {
-		if len(ss) > 0 {
-			sp := &ss[0]
-			if sp.Y < r.Min.Y {
-				r.Min.Y = sp.Y
-			}
-			sp = &ss[len(ss)-1]
-			if sp.Y > r.Max.Y {
-				r.Max.Y = sp.Y
-			}
-			for i := range ss {
-				sp := &ss[i]
-				if sp.X0 < r.Min.X {
-					r.Min.X = sp.X0
-				}
-				if sp.X1 > r.Max.X {
-					r.Max.X = sp.X1
-				}
-			}
-		}
-	}))
-	if r.Min.X > r.Max.X || r.Min.Y > r.Max.Y {
-		return draw.ZR
-	}
-	return
-}
-
-func spans2ys(ss []raster.Span) []int {
-	f := make([]int, len(ss))
-	for i, s := range ss {
-		f[i] = s.Y
-	}
-	return f
 }
 
 

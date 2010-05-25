@@ -4,11 +4,16 @@ import (
 	"exp/draw/x11"
 	"exp/draw"
 	"image"
+	"io/ioutil"
 	"fmt"
+	"log"
 	"math"
+	"os"
 	"rand"
 	"time"
 	"rog-go.googlecode.com/hg/canvas"
+	"freetype-go.googlecode.com/hg/freetype"
+	"freetype-go.googlecode.com/hg/freetype/truetype"
 )
 
 // to add:
@@ -69,8 +74,7 @@ func main() {
 	rand.Seed(0)
 	ctxt, err := x11.NewWindow()
 	if ctxt == nil {
-		fmt.Printf("no window: %v\n", err)
-		return
+		log.Exitf("no window: %v", err)
 	}
 	screen := ctxt.Screen()
 	window = canvas.NewCanvas(screen.(*image.RGBA), draw.PaleBlueGreen, flushFunc(ctxt))
@@ -84,6 +88,7 @@ func main() {
 	addLine(draw.Pt(csz.X, -1), draw.Pt(csz.X, csz.Y))
 	addLine(draw.Pt(csz.X, csz.Y), draw.Pt(-1, csz.Y))
 	addLine(draw.Pt(-1, csz.Y), draw.Pt(-1, -1))
+	window.Flush()
 
 	mkball := make(chan ball)
 	delball := make(chan bool)
@@ -118,15 +123,37 @@ func main() {
 				mc = nil
 			}
 		case k := <-kc:
+fmt.Printf("got key %c (%d)\n", k, k)
 			switch k {
 			case ' ':
 				pause <- true
+			case 'd':
+				delball <- true
 			}
 		case mc = <-mcc:
 			break
 		}
 	}
 }
+
+func defaultFont() *truetype.Font {
+	goroot := os.Getenv("GOROOT")
+	if goroot == "" {
+		log.Exit("no goroot set")
+	}
+	path := goroot + "/src/pkg/freetype-go.googlecode.com/hg/luxi-fonts/luxisr.ttf"
+	// Read the font data.
+	fontBytes, err := ioutil.ReadFile(path)
+	if err != nil {
+		log.Exit(err)
+	}
+	font, err := freetype.ParseFont(fontBytes)
+	if err != nil {
+		log.Exit(err)
+	}
+	return font
+}
+
 
 // Start a modal loop to handle mouse events, running f.
 // f is passed the mouse event that caused the modal loop
@@ -172,7 +199,7 @@ func randColour() (c draw.Color) {
 }
 
 func addLine(p0, p1 draw.Point) *line {
-	obj := canvas.NewLine(window, image.Black, p0, p1, 10)
+	obj := canvas.NewLine(window, image.Black, p0, p1, 3)
 	ln := line{obj, p0, p1}
 	lines = &lineList{ln, lines}
 	lineVersion++
@@ -188,7 +215,7 @@ func lineMaker(m draw.Mouse, mc <-chan draw.Mouse) {
 	ln := addLine(p0, p0)
 	for m.Buttons&1 != 0 {
 		m = <-mc
-		ln.obj.Move(p0, m.Point)
+		ln.obj.SetEndPoints(p0, m.Point)
 		ln.p1 = m.Point
 		lineVersion++
 		window.Flush()
@@ -256,34 +283,34 @@ func draw2realPoint(p draw.Point) realPoint {
 	return realPoint{float64(p.X), float64(p.Y)}
 }
 
-func nullproc(c chan bool) {
-	for <-c {
-		c <- true
-	}
-}
-
-func monitor(mkball <-chan ball, delball chan bool, pause chan bool) {
-	type procList struct {
-		c    chan bool
-		next *procList
-	}
-	procl := &procList{make(chan bool), nil}
-	proc := procl
-	go nullproc(procl.c) // always there to avoid deadlock when no balls.
-	procl.c <- true      // hand token to dummy proc
+func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
+	ballcountText := canvas.NewText(window,
+			draw.Pt(window.Width() - 5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30)
+	ballcountText.SetColor(image.Red)
+	window.Flush()
+	ctl := make(chan (chan<- bool))
+	nballs := 0
 	for {
 		select {
 		case b := <-mkball:
-			procl = &procList{make(chan bool), procl}
-			go animateBall(procl.c, b)
+			go animateBall(ctl, b)
+			nballs++
+			ballcountText.SetText(fmt.Sprintf("%d balls", nballs))
 
-		case <-proc.c:
-			if proc = proc.next; proc == nil {
-				proc = procl
-			}
-			proc.c <- true
 		case <-pause:
+			reply := make(chan bool)
+			for i := 0; i < nballs; i++ {
+				ctl <- reply
+			}
 			<-pause
+			for i := 0; i < nballs; i++ {
+				<-reply
+			}
+		case <-delball:
+			// delete a random ball
+			if nballs > 0 {
+				ctl <- nil
+			}
 		}
 	}
 }
@@ -300,12 +327,12 @@ func makeBall(b ball) Ball {
 
 func (obj *Ball) Move(p realPoint) {
 	bp := draw.Point{round(p.x), round(p.y)}.Sub(draw.Pt(ballSize/2, ballSize/2))
-	obj.Image.Move(bp)
+	obj.Image.SetMinPoint(bp)
 }
 
 const large = 1000000
 
-func animateBall(c chan bool, b ball) {
+func animateBall(c <-chan (chan<- bool), b ball) {
 	var speed float64
 	b.v, speed = makeUnit(b.v)
 	obj := makeBall(b)
@@ -327,8 +354,12 @@ loop:
 		if dist == large {
 			fmt.Printf("no intersection!\n")
 			obj.Delete()
-			for <-c {
-				c <- true
+			for {
+				reply := <-c
+				if reply == nil {
+					return
+				}
+				reply <- false
 			}
 		}
 		if dist < 1e-4 {
@@ -349,13 +380,18 @@ loop:
 				b.p, hitline, version = currp, oldline, lineVersion
 				continue loop
 			}
-			// pass the token back to the monitor
-			if !<-c {
-				obj.Delete()
-				window.Flush()
-				return
+			if reply, ok := <-c; ok {
+				if reply == nil {
+					obj.Delete()
+fmt.Printf("deleted ball\n")
+					window.Flush()
+					return
+				}
+				reply <- false
+				// we were paused, so pretend no time went by
+				t0 = time.Nanoseconds() - t
 			}
-			c <- true
+			time.Sleep(0.01e9)
 			t = time.Nanoseconds() - t0
 			if t >= dt {
 				break
