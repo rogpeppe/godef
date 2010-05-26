@@ -3,6 +3,7 @@ import (
 	"exp/draw"
 )
 
+
 type Dragger interface {
 	Move(delta draw.Point)
 }

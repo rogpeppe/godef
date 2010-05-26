@@ -22,22 +22,26 @@ func Box(width, height int, col image.Image, border int, borderCol image.Image) 
 	return img
 }
 
-type BoxDrawer struct {
-	r draw.Rectangle
-	col draw.Color
-}
-
 // An ImageItem is a CanvasObject that uses an image
 // to draw itself.
 type ImageItem struct {
 	r   draw.Rectangle
 	img image.Image
+	opaque bool
 }
 
 func (obj *ImageItem) Draw(dst *image.RGBA, clip draw.Rectangle) {
 	dr := obj.r.Clip(clip)
 	sp := dr.Min.Sub(obj.r.Min)
-	draw.Draw(dst, dr, obj.img, sp)
+	op := draw.Over
+	if obj.opaque {
+		op = draw.Src
+	}
+	draw.DrawMask(dst, dr, obj.img, sp, nil, draw.ZP, op)
+}
+
+func (obj *ImageItem) Opaque() bool {
+	return obj.opaque
 }
 
 func (obj *ImageItem) Bbox() draw.Rectangle {
@@ -59,11 +63,12 @@ type Image struct {
 // Image returns a new Image which will be drawn using img,
 // with p giving the coordinate of the image's top left corner.
 //
-func NewImage(c *Canvas, img image.Image, p draw.Point) *Image {
+func NewImage(c *Canvas, img image.Image, opaque bool, p draw.Point) *Image {
 	obj := new(Image)
 	obj.canvas = c
 	obj.item.r = draw.Rectangle{p, p.Add(draw.Pt(img.Width(), img.Height()))}
 	obj.item.img = img
+	obj.item.opaque = opaque
 	c.AddItem(&obj.item, obj)
 	return obj
 }
@@ -74,11 +79,11 @@ func (obj *Image) SetMinPoint(p draw.Point) {
 	if p.Eq(obj.item.r.Min) {
 		return
 	}
-	obj.canvas.Atomically(func(flush func(r draw.Rectangle)) {
+	obj.canvas.Atomically(func(flush FlushFunc) {
 		r := obj.item.r
 		obj.item.r = r.Add(p.Sub(r.Min))
-		flush(r)
-		flush(obj.item.r)
+		flush(r, false, &obj.item)
+		flush(obj.item.r, false, &obj.item)
 	})
 }
 
@@ -124,7 +129,7 @@ func (obj *Polygon) HandleMouse(_ Item, _ draw.Mouse, _ <-chan draw.Mouse) bool 
 }
 
 func (obj *Polygon) Move(delta draw.Point) {
-	obj.canvas.Atomically(func(flush func(draw.Rectangle)) {
+	obj.canvas.Atomically(func(flush FlushFunc) {
 		r := obj.raster.Bbox()
 		rdelta := pixel2fixPoint(delta)
 		for i := range obj.points {
@@ -133,8 +138,8 @@ func (obj *Polygon) Move(delta draw.Point) {
 			p.Y += rdelta.Y
 		}
 		obj.rasterize()
-		flush(r)
-		flush(obj.raster.Bbox())
+		flush(r, false, &obj.raster)
+		flush(obj.raster.Bbox(), false, &obj.raster)
 	})
 }
 
@@ -209,13 +214,13 @@ func (obj *Line) Move(delta draw.Point) {
 // SetEndPoints changes the end coordinates of the Line.
 //
 func (obj *Line) SetEndPoints(p0, p1 draw.Point) {
-	obj.canvas.Atomically(func(flush func(draw.Rectangle)) {
+	obj.canvas.Atomically(func(flush FlushFunc) {
 		r := obj.raster.Bbox()
 		obj.p0 = pixel2fixPoint(p0)
 		obj.p1 = pixel2fixPoint(p1)
 		obj.rasterize()
-		flush(r)
-		flush(obj.raster.Bbox())
+		flush(r, false, &obj.raster)
+		flush(obj.raster.Bbox(), false, &obj.raster)
 	})
 }
 
@@ -226,9 +231,9 @@ func (obj *Line) Delete() {
 // SetColor changes the colour of the line
 //
 func (obj *Line) SetColor(col image.Color) {
-	obj.canvas.Atomically(func(flush func(r draw.Rectangle)) {
+	obj.canvas.Atomically(func(flush FlushFunc) {
 		obj.raster.SetColor(col)
-		flush(obj.raster.Bbox())
+		flush(obj.raster.Bbox(), false, &obj.raster)
 	})
 }
 

@@ -56,6 +56,7 @@ func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
 		}
 	}
 	return func(_ draw.Rectangle) {
+fmt.Printf("flushimage\n")
 		ctxt.FlushImage()
 	}
 }
@@ -77,8 +78,11 @@ func main() {
 		log.Exitf("no window: %v", err)
 	}
 	screen := ctxt.Screen()
-	window = canvas.NewCanvas(screen.(*image.RGBA), draw.PaleBlueGreen, flushFunc(ctxt))
-	nballs := 1
+fmt.Printf("underlying screen %T\n", screen)
+	bg := canvas.NewBackground(screen.(*image.RGBA), draw.PaleBlueGreen, flushFunc(ctxt))
+	window = canvas.NewCanvas(bg, nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
+	bg.SetItem(window)
+	nballs := 0
 	ctxt.FlushImage()
 
 	csz := draw.Pt(window.Width(), window.Height())
@@ -109,7 +113,7 @@ func main() {
 			fmt.Printf("quitting\n")
 			return
 		case m := <-mc:
-//fmt.Printf("mouse %v\n", m)
+fmt.Printf("mouse %v\n", m)
 			switch {
 			case m.Buttons&4 != 0:
 				return
@@ -322,7 +326,7 @@ type Ball struct {
 func makeBall(b ball) Ball {
 	img := canvas.Box(ballSize, ballSize, b.col, 1, image.Black)
 	p := b.p.point().Sub(draw.Pt(ballSize/2, ballSize/2))
-	return Ball{canvas.NewImage(window, img, p)}
+	return Ball{canvas.NewImage(window, img, true, p)}
 }
 
 func (obj *Ball) Move(p realPoint) {

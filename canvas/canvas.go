@@ -8,24 +8,42 @@ import (
 	"container/list"
 	"exp/draw"
 	"image"
-	//	"fmt"
-	"sync"
 )
 
-type Canvas struct {
-	lock       sync.Mutex
-	dst        *image.RGBA
-	flushrect  draw.Rectangle
-	r          draw.Rectangle // for convenience, the bounding rectangle of the dst
-	waste      int
-	background image.Image
-	items    list.List 	// foreground objects are at the end of the list
-	flushFunc  func(r draw.Rectangle)
+// A Backer represents a graphical area containing
+// a number of Drawer objects.
+// To change its appearance, one of those objects
+// may call Atomically, passing it a function which
+// will be called (once) to make the changes.
+// The function will be passed a FlushFunc that
+// can be used to inform the Backer of any changes
+// that are made.
+//
+type Backing interface {
+	Atomically(func(f FlushFunc))
+	Flush()
+	Width() int
+	Height() int
 }
 
-type canvasItem struct {
-	item	Item
-	object Object				// object associated with the item.
+// A FlushFunc can be used to inform a Backing object
+// of a changed area of pixels. r specifies the rectangle that has changed;
+// drawn indicates whether the rectangle has already been redrawn
+// (only appropriate if the all pixels in the rectangle have
+// been non-transparently overwritten); and
+// draw gives the item that has changed, which must
+// be directly inside the Backer.
+//
+type FlushFunc func(r draw.Rectangle, drawn bool, draw Drawer)
+
+// The Draw method should draw a representation of
+// the object onto dst. No pixels outside clipr should
+// be changed. It should not interact with any object
+// outside its direct control (for example by modifying
+// the appearance of another object using the same Backer)
+//
+type Drawer interface {
+	Draw(dst *image.RGBA, clipr draw.Rectangle)
 }
 
 // Values that implement the Item interface may be added
@@ -36,9 +54,10 @@ type canvasItem struct {
 // the Atomically function.
 //
 type Item interface {
-	Draw(img *image.RGBA, clip draw.Rectangle)
+	Drawer
 	Bbox() draw.Rectangle
 	HitTest(p draw.Point) bool
+	Opaque() bool
 }
 
 // Each Item may be associated with an handler Object.
@@ -51,170 +70,158 @@ type Object interface {
 	HandleMouse(item Item, m draw.Mouse, mc <-chan draw.Mouse) bool
 }
 
-// NewCanvas return a new Canvas object that uses dst for its
-// underlying image. The background image will used to
-// draw the background, and the flush function, if non-nil
-// will be called when dst has been modified, with
-// a bounding rectangle of the changed area.
-//
-func NewCanvas(dst *image.RGBA, background image.Image, flush func(r draw.Rectangle)) *Canvas {
-	c := new(Canvas)
-	c.dst = dst
-
-	c.r = draw.Rect(0, 0, dst.Width(), dst.Height())
-	c.flushrect = c.r
-	c.background = background
-	c.flushFunc = flush
-
-	return c
+// A Canvas represents a z-ordered set of drawable Items.
+// As a Canvas itself implements Item and Backing, Canvas's can
+// be nested indefinitely.
+type Canvas struct {
+	r draw.Rectangle		// the bounding rectangle of the canvas.
+	img *image.RGBA		// image we were last drawn onto
+	backing Backing
+	opaque bool
+	background image.Image
+	items    list.List 	// foreground objects are at the end of the list
 }
 
-// stolen from inferno's devdraw
-func (c *Canvas) addFlush(r draw.Rectangle) {
-//	defer func() {
-//		if !c.flushrect.Eq(c.flushrect.Canon() {
-//			panic("setting non-canonical flushrect")
-//		}
-//	}()
-	if c.flushrect.Empty() {
-		c.flushrect = r
-		c.waste = 0
-		return
-	}
-	nbb := c.flushrect.Combine(r)
-	ar := r.Dx() * r.Dy()
-	abb := c.flushrect.Dx() * c.flushrect.Dy()
-	anbb := nbb.Dx() * nbb.Dy()
+type canvasItem struct {
+	item	Item
+	object Object				// object associated with the item.
+}
 
-	// Area of new waste is area of new bb minus area of old bb,
-	// less the area of the new segment, which we assume is not waste.
-	// This could be negative, but that's OK.
-	c.waste += anbb - abb - ar
-	if c.waste < 0 {
-		c.waste = 0
+// NewCanvas returns a new Canvas object that is inside
+// backing. The background image, if non-nil, must
+// be opaque, and will used to draw the background.
+// r gives the extent of the canvas.
+//
+func NewCanvas(backing Backing, background image.Color, r draw.Rectangle) *Canvas {
+	c := new(Canvas)
+	c.backing = backing
+	if background != nil {
+		_, _, _, a := background.RGBA()
+		c.opaque = a == 0xffffffff
+		c.background = image.ColorImage{background}
 	}
-
-	//absorb if:
-	//	total area is small
-	//	waste is less than half total area
-	// 	rectangles touch
-	if anbb <= 1024 || c.waste*2 < anbb || c.flushrect.Overlaps(r) {
-		c.flushrect = nbb
-		return
-	}
-	//  emit current state
-	if !c.flushrect.Empty() {
-		c.flush()
-	}
-	c.flushrect = r
+	c.r = r
+	return c
 }
 
 // Width returns the width of the canvas, which is
 // the width of its underlying image.
 //
 func (c *Canvas) Width() int {
-	return c.dst.Width()
+	return c.r.Dx()
 }
 
 // Width returns the height of the canvas, which is
 // the height of its underlying image.
 //
 func (c *Canvas) Height() int {
-	return c.dst.Height()
+	return c.r.Dy()
 }
 
-// Flush flushes any pending changes to the underlying image.
-//
+func (c *Canvas) Bbox() draw.Rectangle {
+	return c.r
+}
+
 func (c *Canvas) Flush() {
-	c.lock.Lock()
-	c.flush()
-	c.lock.Unlock()
+	c.backing.Flush()
 }
 
-func (c *Canvas) flush() {
-	c.flushrect = c.flushrect.Clip(c.r)
-	if c.flushrect.Empty() {
-		return
+func (c *Canvas) Draw(dst *image.RGBA, clipr draw.Rectangle) {
+	clipr = clipr.Clip(c.r)
+	c.img = dst
+	if c.background != nil {
+		draw.DrawMask(dst, clipr, c.background, clipr.Min, nil, draw.ZP, draw.Src)
 	}
-	//	fmt.Println("draw:", c.flushrect, c.flushrect.Min)
-	//	fmt.Printf("images: dst %v; background %v\n", size(c.dst), size(c.background) )
-	//fmt.Printf("redraw %v\n", c.flushrect)
-	draw.DrawMask(c.dst, c.flushrect, c.background, c.flushrect.Min, nil, draw.ZP, draw.Src)
+	clipr = clipr.Clip(c.r)
 	for e := c.items.Front(); e != nil; e = e.Next() {
 		ci := e.Value.(canvasItem)
-		r := ci.item.Bbox()
-		if r.Overlaps(c.flushrect) {
-			ci.item.Draw(c.dst, c.flushrect)
+		if ci.item.Bbox().Overlaps(clipr) {
+			ci.item.Draw(dst, clipr)
 		}
 	}
-	if c.flushFunc != nil {
-		c.flushFunc(c.flushrect)
-	}
-	c.flushrect = draw.ZR
 }
+
+// drawAbove draws only those items above it.
+//
+func (c *Canvas) drawAbove(it Item, clipr draw.Rectangle) {
+	clipr = clipr.Clip(c.r)
+	drawing := false
+	for e := c.items.Front(); e != nil; e = e.Next() {
+		ci := e.Value.(canvasItem)
+		if drawing && ci.item.Bbox().Overlaps(clipr) {
+			ci.item.Draw(c.img, clipr)
+		}else if ci.item == it {
+			drawing = true
+		}
+	}
+}
+	
 
 // DeleteItem deletes a single item from the canvas.
 //
 func (c *Canvas) DeleteItem(item Item) {
-	c.lock.Lock()
-	var next *list.Element
-	for e := c.items.Front(); e != nil; e = next {
-		next = e.Next()
-		ci := e.Value.(canvasItem)
-		if ci.item == item {
-			c.items.Remove(e)
-			c.addFlush(item.Bbox())
+	c.Atomically(func (flush FlushFunc) {
+		var next *list.Element
+		for e := c.items.Front(); e != nil; e = next {
+			next = e.Next()
+			ci := e.Value.(canvasItem)
+			if ci.item == item {
+				c.items.Remove(e)
+				flush(item.Bbox(), false, item)
+			}
 		}
-	}
-	c.lock.Unlock()
+	})
 }
 
 // Delete deletes all the items associated with obj from the canvas.
 //
 func (c *Canvas) Delete(obj Object) {
-	c.lock.Lock()
-	var next *list.Element
-	for e := c.items.Front(); e != nil; e = next {
-		next = e.Next()
-		ci := e.Value.(canvasItem)
-		if ci.object == obj {
-			c.items.Remove(e)
-			c.addFlush(ci.item.Bbox())
+	c.Atomically(func (flush FlushFunc) {
+		var next *list.Element
+		for e := c.items.Front(); e != nil; e = next {
+			next = e.Next()
+			ci := e.Value.(canvasItem)
+			if ci.object == obj {
+				c.items.Remove(e)
+				flush(ci.item.Bbox(), false, nil)
+			}
 		}
-	}
-	c.lock.Unlock()
+	})
 }
 
 
-// Atomically calls f while the canvas's lock is held,
-// allowing objects to adjust their appearance without
-// risk of drawing anomalies. Flush can be called
-// to flush dirty areas of the canvas.
-// An object should not change its appearance outside
-// of this call.
+// Atomically calls f, which can then make changes to
+// the appearance of items in the canvas.
+// See the Backing interface for details
 //
-func (c *Canvas) Atomically(f func(flush func(r draw.Rectangle))) {
-	// could pre-allocate inside c if we cared.
-	flush := func(r draw.Rectangle) {
-		c.addFlush(r)
-	}
-	c.lock.Lock()
-	defer c.lock.Unlock()
-	f(flush)
+func (c *Canvas) Atomically(f func(FlushFunc)) {
+	c.backing.Atomically(func(bflush FlushFunc) {
+		f(func(r draw.Rectangle, drawn bool, it Drawer) {
+			if drawn {
+				c.drawAbove(it.(Item), r)
+			}else if c.img != nil && c.opaque {
+				// if we're opaque, then we can just redraw ourselves
+				// without worrying about what might be underneath.
+				c.Draw(c.img, r)
+				drawn = true
+			}
+			bflush(r, drawn, c)
+		})
+	})
 }
 
 func (c *Canvas) AddItem(item Item, obj Object) {
-	c.lock.Lock()
-	c.items.PushBack(canvasItem{item, obj})
-	r := item.Bbox()
-	if c.flushrect.Empty() {
-		item.Draw(c.dst, r)
-	} else {
-		c.addFlush(r)
-	}
-	c.lock.Unlock()
+	c.Atomically(func(flush FlushFunc) {
+		c.items.PushBack(canvasItem{item, obj})
+		r := item.Bbox()
+		if item.Opaque() && c.img != nil {
+			item.Draw(c.img, r)
+			flush(r, true, item)
+		}else{
+			flush(r, false, item)
+		}
+	})
 }
-
 
 type sizer interface {
 	Width() int
