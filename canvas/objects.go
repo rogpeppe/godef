@@ -22,8 +22,9 @@ func Box(width, height int, col image.Image, border int, borderCol image.Image) 
 	return img
 }
 
-// An ImageItem is a CanvasObject that uses an image
-// to draw itself.
+// An ImageItem is an Item that uses an image
+// to draw itself. It is intended to be used as a building
+// block for other Items.
 type ImageItem struct {
 	r   draw.Rectangle
 	img image.Image
@@ -38,6 +39,9 @@ func (obj *ImageItem) Draw(dst *image.RGBA, clip draw.Rectangle) {
 		op = draw.Src
 	}
 	draw.DrawMask(dst, dr, obj.img, sp, nil, draw.ZP, op)
+}
+
+func (obj *ImageItem) SetContainer(c *Canvas) {
 }
 
 func (obj *ImageItem) Opaque() bool {
@@ -56,21 +60,25 @@ func (obj *ImageItem) HitTest(p draw.Point) bool {
 // transparent) image.
 //
 type Image struct {
-	item ImageItem
+	Item	
+	item ImageItem			// access to the fields of the ImageItem
 	canvas *Canvas
 }
 
 // Image returns a new Image which will be drawn using img,
 // with p giving the coordinate of the image's top left corner.
 //
-func NewImage(c *Canvas, img image.Image, opaque bool, p draw.Point) *Image {
+func NewImage(img image.Image, opaque bool, p draw.Point) *Image {
 	obj := new(Image)
-	obj.canvas = c
+	obj.Item = &obj.item
 	obj.item.r = draw.Rectangle{p, p.Add(draw.Pt(img.Width(), img.Height()))}
 	obj.item.img = img
 	obj.item.opaque = opaque
-	c.AddItem(&obj.item, obj)
 	return obj
+}
+
+func (obj *Image) SetContainer(c *Canvas) {
+	obj.canvas = c
 }
 
 // SetMinPoint moves the image's upper left corner to p.
@@ -87,17 +95,14 @@ func (obj *Image) SetMinPoint(p draw.Point) {
 	})
 }
 
-func (obj *Image) HandleMouse(_ Item, _ draw.Mouse, _ <-chan draw.Mouse) bool {
-	return false
-}
-
 func (obj *Image) Delete() {
-	obj.canvas.Delete(obj)
+	obj.canvas.Delete(&obj.item)
 }
 
 // A Polygon represents a filled polygon.
 //
 type Polygon struct {
+	Item
 	raster RasterItem
 	canvas *Canvas
 	points []raster.Point
@@ -106,26 +111,28 @@ type Polygon struct {
 // Polygon returns a new PolyObject, using col for its fill colour, and
 // using points for its vertices.
 //
-func NewPolygon(c *Canvas, col image.Color, points []draw.Point) *Polygon {
+func NewPolygon(col image.Color, points []draw.Point) *Polygon {
 	obj := new(Polygon)
 	rpoints := make([]raster.Point, len(points))
 	for i, p := range points {
 		rpoints[i] = pixel2fixPoint(p)
 	}
 	obj.raster.SetColor(col)
-	obj.raster.SetBounds(c.Width(), c.Height())
-	obj.rasterize()
 	obj.points = rpoints
-	c.AddItem(&obj.raster, obj)
+	obj.Item = &obj.raster
 	return obj
+}
+
+func (obj *Polygon) SetContainer(c *Canvas) {
+	obj.canvas = c
+	if c != nil {
+		obj.raster.SetBounds(c.Width(), c.Height())
+		obj.rasterize()
+	}
 }
 
 func (obj *Polygon) Delete() {
 	obj.canvas.Delete(obj)
-}
-
-func (obj *Polygon) HandleMouse(_ Item, _ draw.Mouse, _ <-chan draw.Mouse) bool {
-	return false
 }
 
 func (obj *Polygon) Move(delta draw.Point) {
@@ -157,6 +164,7 @@ func (obj *Polygon) rasterize() {
 
 // A line object represents a single straight line.
 type Line struct {
+	Item
 	raster RasterItem
 	canvas *Canvas
 	p0, p1 raster.Point
@@ -166,20 +174,23 @@ type Line struct {
 // Line returns a new Line, coloured with col, from p0 to p1,
 // of the given width.
 //
-func NewLine(c *Canvas, col image.Color, p0, p1 draw.Point, width float) *Line {
+func NewLine(col image.Color, p0, p1 draw.Point, width float) *Line {
 	obj := new(Line)
-	obj.canvas = c
 	obj.p0 = pixel2fixPoint(p0)
 	obj.p1 = pixel2fixPoint(p1)
 	obj.width = float2fix(width)
 	obj.raster.SetColor(col)
-	obj.raster.SetBounds(c.Width(), c.Height())
+	obj.Item = &obj.raster
 	obj.rasterize()
-	c.AddItem(&obj.raster, obj)
 	return obj
 }
-func (obj *Line) HandleMouse(_ Item, _ draw.Mouse, _ <-chan draw.Mouse) bool {
-	return false
+
+func (obj *Line) SetContainer(c *Canvas) {
+	obj.canvas = c
+	if c != nil {
+		obj.raster.SetBounds(c.Width(), c.Height())
+		obj.rasterize()
+	}
 }
 
 func (obj *Line) rasterize() {
@@ -225,7 +236,7 @@ func (obj *Line) SetEndPoints(p0, p1 draw.Point) {
 }
 
 func (obj *Line) Delete() {
-	obj.canvas.Delete(obj)
+	obj.canvas.Delete(&obj.raster)
 }
 
 // SetColor changes the colour of the line

@@ -41,6 +41,9 @@ func (obj *RasterItem) HitTest(p draw.Point) bool {
 	return hit.Hit
 }
 
+func (obj *RasterItem) SetContainer(_ *Canvas) {
+}
+
 func (obj *RasterItem) Bbox() draw.Rectangle {
 	return obj.bbox
 }

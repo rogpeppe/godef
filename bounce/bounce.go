@@ -78,7 +78,6 @@ func main() {
 		log.Exitf("no window: %v", err)
 	}
 	screen := ctxt.Screen()
-fmt.Printf("underlying screen %T\n", screen)
 	bg := canvas.NewBackground(screen.(*image.RGBA), draw.PaleBlueGreen, flushFunc(ctxt))
 	window = canvas.NewCanvas(bg, nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
 	bg.SetItem(window)
@@ -113,7 +112,6 @@ fmt.Printf("underlying screen %T\n", screen)
 			fmt.Printf("quitting\n")
 			return
 		case m := <-mc:
-fmt.Printf("mouse %v\n", m)
 			switch {
 			case m.Buttons&4 != 0:
 				return
@@ -203,7 +201,8 @@ func randColour() (c draw.Color) {
 }
 
 func addLine(p0, p1 draw.Point) *line {
-	obj := canvas.NewLine(window, image.Black, p0, p1, 3)
+	obj := canvas.NewLine(image.Black, p0, p1, 3)
+	window.AddItem(obj)
 	ln := line{obj, p0, p1}
 	lines = &lineList{ln, lines}
 	lineVersion++
@@ -288,8 +287,9 @@ func draw2realPoint(p draw.Point) realPoint {
 }
 
 func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
-	ballcountText := canvas.NewText(window,
+	ballcountText := canvas.NewText(
 			draw.Pt(window.Width() - 5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30)
+	window.AddItem(ballcountText)
 	ballcountText.SetColor(image.Red)
 	window.Flush()
 	ctl := make(chan (chan<- bool))
@@ -326,7 +326,9 @@ type Ball struct {
 func makeBall(b ball) Ball {
 	img := canvas.Box(ballSize, ballSize, b.col, 1, image.Black)
 	p := b.p.point().Sub(draw.Pt(ballSize/2, ballSize/2))
-	return Ball{canvas.NewImage(window, img, true, p)}
+	item := canvas.NewImage(img, true, p)
+	window.AddItem(item)
+	return Ball{item}
 }
 
 func (obj *Ball) Move(p realPoint) {

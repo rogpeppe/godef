@@ -58,6 +58,7 @@ type Item interface {
 	Bbox() draw.Rectangle
 	HitTest(p draw.Point) bool
 	Opaque() bool
+	SetContainer(c *Canvas)
 }
 
 // Each Item may be associated with an handler Object.
@@ -66,7 +67,7 @@ type Item interface {
 // called, and HitTest succeeds on an item, then
 // HandleMouse will be invoked on its associated Object.
 //
-type Object interface {
+type MouseHandler interface {
 	HandleMouse(item Item, m draw.Mouse, mc <-chan draw.Mouse) bool
 }
 
@@ -80,11 +81,6 @@ type Canvas struct {
 	opaque bool
 	background image.Image
 	items    list.List 	// foreground objects are at the end of the list
-}
-
-type canvasItem struct {
-	item	Item
-	object Object				// object associated with the item.
 }
 
 // NewCanvas returns a new Canvas object that is inside
@@ -134,9 +130,9 @@ func (c *Canvas) Draw(dst *image.RGBA, clipr draw.Rectangle) {
 	}
 	clipr = clipr.Clip(c.r)
 	for e := c.items.Front(); e != nil; e = e.Next() {
-		ci := e.Value.(canvasItem)
-		if ci.item.Bbox().Overlaps(clipr) {
-			ci.item.Draw(dst, clipr)
+		it := e.Value.(Item)
+		if it.Bbox().Overlaps(clipr) {
+			it.Draw(dst, clipr)
 		}
 	}
 }
@@ -147,46 +143,55 @@ func (c *Canvas) drawAbove(it Item, clipr draw.Rectangle) {
 	clipr = clipr.Clip(c.r)
 	drawing := false
 	for e := c.items.Front(); e != nil; e = e.Next() {
-		ci := e.Value.(canvasItem)
-		if drawing && ci.item.Bbox().Overlaps(clipr) {
-			ci.item.Draw(c.img, clipr)
-		}else if ci.item == it {
+		item := e.Value.(Item)
+		if drawing && item.Bbox().Overlaps(clipr) {
+			item.Draw(c.img, clipr)
+		}else if item == it {
 			drawing = true
 		}
 	}
 }
-	
 
 // DeleteItem deletes a single item from the canvas.
 //
-func (c *Canvas) DeleteItem(item Item) {
+func (c *Canvas) Delete(it Item) {
+	if c == nil {
+		return
+	}
+	removed := false
 	c.Atomically(func (flush FlushFunc) {
 		var next *list.Element
 		for e := c.items.Front(); e != nil; e = next {
 			next = e.Next()
-			ci := e.Value.(canvasItem)
-			if ci.item == item {
+			if e.Value.(Item) == it {
 				c.items.Remove(e)
-				flush(item.Bbox(), false, item)
+				flush(it.Bbox(), false, it)
+				removed = true
+				break
 			}
 		}
 	})
+	if removed {
+		it.SetContainer(nil)
+	}
 }
 
-// Delete deletes all the items associated with obj from the canvas.
-//
-func (c *Canvas) Delete(obj Object) {
+func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
 	c.Atomically(func (flush FlushFunc) {
 		var next *list.Element
 		for e := c.items.Front(); e != nil; e = next {
 			next = e.Next()
-			ci := e.Value.(canvasItem)
-			if ci.object == obj {
-				c.items.Remove(e)
-				flush(ci.item.Bbox(), false, nil)
+			if e.Value.(Item) == it {
+				r := it.Bbox()
+				e.Value = it1
+				flush(r, false, it)
+				flush(it1.Bbox(), false, it1)
+				replaced = true
+				break
 			}
 		}
 	})
+	return
 }
 
 
@@ -195,6 +200,13 @@ func (c *Canvas) Delete(obj Object) {
 // See the Backing interface for details
 //
 func (c *Canvas) Atomically(f func(FlushFunc)) {
+	if c == nil {
+		// if an object isn't inside a canvas, then
+		// just perform the action anyway,
+		// as atomicity doesn't matter then.
+		f(func(r draw.Rectangle, drawn bool, it Drawer) { })
+		return
+	}
 	c.backing.Atomically(func(bflush FlushFunc) {
 		f(func(r draw.Rectangle, drawn bool, it Drawer) {
 			if drawn {
@@ -210,9 +222,10 @@ func (c *Canvas) Atomically(f func(FlushFunc)) {
 	})
 }
 
-func (c *Canvas) AddItem(item Item, obj Object) {
+func (c *Canvas) AddItem(item Item) {
+	item.SetContainer(c)
 	c.Atomically(func(flush FlushFunc) {
-		c.items.PushBack(canvasItem{item, obj})
+		c.items.PushBack(item)
 		r := item.Bbox()
 		if item.Opaque() && c.img != nil {
 			item.Draw(c.img, r)
