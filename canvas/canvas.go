@@ -75,12 +75,12 @@ type MouseHandler interface {
 // As a Canvas itself implements Item and Backing, Canvas's can
 // be nested indefinitely.
 type Canvas struct {
-	r draw.Rectangle		// the bounding rectangle of the canvas.
-	img *image.RGBA		// image we were last drawn onto
-	backing Backing
-	opaque bool
+	r          draw.Rectangle // the bounding rectangle of the canvas.
+	img        *image.RGBA    // image we were last drawn onto
+	backing    Backing
+	opaque     bool
 	background image.Image
-	items    list.List 	// foreground objects are at the end of the list
+	items      list.List // foreground objects are at the end of the list
 }
 
 // NewCanvas returns a new Canvas object that is inside
@@ -146,7 +146,7 @@ func (c *Canvas) drawAbove(it Item, clipr draw.Rectangle) {
 		item := e.Value.(Item)
 		if drawing && item.Bbox().Overlaps(clipr) {
 			item.Draw(c.img, clipr)
-		}else if item == it {
+		} else if item == it {
 			drawing = true
 		}
 	}
@@ -159,7 +159,7 @@ func (c *Canvas) Delete(it Item) {
 		return
 	}
 	removed := false
-	c.Atomically(func (flush FlushFunc) {
+	c.Atomically(func(flush FlushFunc) {
 		var next *list.Element
 		for e := c.items.Front(); e != nil; e = next {
 			next = e.Next()
@@ -177,7 +177,7 @@ func (c *Canvas) Delete(it Item) {
 }
 
 func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
-	c.Atomically(func (flush FlushFunc) {
+	c.Atomically(func(flush FlushFunc) {
 		var next *list.Element
 		for e := c.items.Front(); e != nil; e = next {
 			next = e.Next()
@@ -204,14 +204,14 @@ func (c *Canvas) Atomically(f func(FlushFunc)) {
 		// if an object isn't inside a canvas, then
 		// just perform the action anyway,
 		// as atomicity doesn't matter then.
-		f(func(r draw.Rectangle, drawn bool, it Drawer) { })
+		f(func(r draw.Rectangle, drawn bool, it Drawer) {})
 		return
 	}
 	c.backing.Atomically(func(bflush FlushFunc) {
 		f(func(r draw.Rectangle, drawn bool, it Drawer) {
 			if drawn {
 				c.drawAbove(it.(Item), r)
-			}else if c.img != nil && c.opaque {
+			} else if c.img != nil && c.opaque {
 				// if we're opaque, then we can just redraw ourselves
 				// without worrying about what might be underneath.
 				c.Draw(c.img, r)
@@ -230,7 +230,7 @@ func (c *Canvas) AddItem(item Item) {
 		if item.Opaque() && c.img != nil {
 			item.Draw(c.img, r)
 			flush(r, true, item)
-		}else{
+		} else {
 			flush(r, false, item)
 		}
 	})

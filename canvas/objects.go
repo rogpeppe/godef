@@ -26,8 +26,8 @@ func Box(width, height int, col image.Image, border int, borderCol image.Image) 
 // to draw itself. It is intended to be used as a building
 // block for other Items.
 type ImageItem struct {
-	r   draw.Rectangle
-	img image.Image
+	r      draw.Rectangle
+	img    image.Image
 	opaque bool
 }
 
@@ -60,8 +60,8 @@ func (obj *ImageItem) HitTest(p draw.Point) bool {
 // transparent) image.
 //
 type Image struct {
-	Item	
-	item ImageItem			// access to the fields of the ImageItem
+	Item
+	item   ImageItem // access to the fields of the ImageItem
 	canvas *Canvas
 }
 
@@ -284,9 +284,9 @@ func isincos2(x, y raster.Fixed) (isin, icos raster.Fixed) {
 
 func float2fixed(f float64) raster.Fixed {
 	if f < 0 {
-		return raster.Fixed(f * 256 + 0.5)
+		return raster.Fixed(f*256 + 0.5)
 	}
-	return raster.Fixed(f * 256 - 0.5)
+	return raster.Fixed(f*256 - 0.5)
 }
 
 func fixed2float(f raster.Fixed) float64 {

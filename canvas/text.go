@@ -9,18 +9,18 @@ import (
 )
 
 const (
-	dpi      = 72
-	gamma    = 1
+	dpi   = 72
+	gamma = 1
 )
 
 type TextItem struct {
 	freetype.Context
 	Text string
-	Pt raster.Point
+	Pt   raster.Point
 	bbox draw.Rectangle
-	rp       *raster.RGBAPainter
-	gp       *raster.GammaCorrectionPainter
-	cp	clippedPainter
+	rp   *raster.RGBAPainter
+	gp   *raster.GammaCorrectionPainter
+	cp   clippedPainter
 }
 
 func (d *TextItem) Init() *TextItem {
@@ -63,9 +63,9 @@ func (d *TextItem) SetContainer(_ *Canvas) {
 
 type Text struct {
 	Item
-	item TextItem
-	delta	draw.Point // vector from upper left of bbox to text origin
-	p draw.Point
+	item   TextItem
+	delta  draw.Point // vector from upper left of bbox to text origin
+	p      draw.Point
 	anchor Anchor
 	canvas *Canvas
 }
@@ -114,7 +114,7 @@ func (t *Text) recalc(sizechanged bool) {
 		t.item.CalcBbox()
 		bbox = t.item.Bbox()
 		t.delta = draw.Point{0, 0}.Sub(bbox.Min)
-	}else{
+	} else {
 		bbox = t.item.Bbox()
 	}
 	bbox = anchor(bbox, t.anchor, t.p)
@@ -152,7 +152,7 @@ func (t *Text) SetFontSize(size float) {
 type Anchor int
 
 const (
-	N = Anchor(1<<iota)
+	N = Anchor(1 << iota)
 	S
 	E
 	W
@@ -161,16 +161,16 @@ const (
 
 func anchor(r draw.Rectangle, flags Anchor, p draw.Point) draw.Rectangle {
 	var dp draw.Point
-	switch flags & (E|W) {
+	switch flags & (E | W) {
 	case E:
 		dp.X = r.Dx()
-	case E|W:
+	case E | W:
 		dp.X = r.Dx() / 2
 	}
-	switch flags & (N|S) {
+	switch flags & (N | S) {
 	case S:
 		dp.Y = r.Dy()
-	case S|N:
+	case S | N:
 		dp.Y = r.Dy() / 2
 	}
 	return r.Add(p.Sub(r.Min).Sub(dp))

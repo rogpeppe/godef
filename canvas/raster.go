@@ -94,7 +94,7 @@ func (p *clippedPainter) Paint(ss []raster.Span, last bool) {
 }
 
 type hitTestPainter struct {
-	P draw.Point
+	P   draw.Point
 	Hit bool
 }
 
@@ -128,7 +128,7 @@ func (h *hitTestPainter) Paint(ss []raster.Span, _ bool) {
 // Each Paint request will be forwarded
 // to Painter if it is non-nil.
 type bboxPainter struct {
-	R draw.Rectangle
+	R       draw.Rectangle
 	Painter raster.Painter
 }
 
@@ -164,7 +164,7 @@ func (p *bboxPainter) Paint(ss []raster.Span, last bool) {
 	}
 	if r.Min.X > r.Max.X || r.Min.Y > r.Max.Y {
 		p.R = draw.ZR
-	}else{
+	} else {
 		p.R = r
 	}
 }

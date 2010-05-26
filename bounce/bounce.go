@@ -56,7 +56,7 @@ func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
 		}
 	}
 	return func(_ draw.Rectangle) {
-fmt.Printf("flushimage\n")
+		fmt.Printf("flushimage\n")
 		ctxt.FlushImage()
 	}
 }
@@ -119,13 +119,13 @@ func main() {
 				go handleMouse(m, mc, mcc, lineMaker)
 				mc = nil
 			case m.Buttons&2 != 0:
-				go handleMouse(m, mc, mcc, func(m draw.Mouse, mc <-chan draw.Mouse){
+				go handleMouse(m, mc, mcc, func(m draw.Mouse, mc <-chan draw.Mouse) {
 					ballMaker(m, mc, mkball)
 				})
 				mc = nil
 			}
 		case k := <-kc:
-fmt.Printf("got key %c (%d)\n", k, k)
+			fmt.Printf("got key %c (%d)\n", k, k)
 			switch k {
 			case ' ':
 				pause <- true
@@ -162,10 +162,7 @@ func defaultFont() *truetype.Font {
 // to be started, and the mouse channel.
 // When f finishes, the mouse channel is handed back
 // on mcc.
-func handleMouse(m draw.Mouse,
-		mc <-chan draw.Mouse,
-		mcc chan (<-chan draw.Mouse),
-		f func(first draw.Mouse, mc <-chan draw.Mouse)) {
+func handleMouse(m draw.Mouse, mc <-chan draw.Mouse, mcc chan (<-chan draw.Mouse), f func(first draw.Mouse, mc <-chan draw.Mouse)) {
 	defer func() {
 		mcc <- mc
 	}()
@@ -232,9 +229,9 @@ func abs(x float64) float64 {
 	return x
 }
 
-func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<-ball){
+func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<- ball) {
 	const sampleTime = 0.25e9
-	var vecs [8]realPoint		// approx sampleTime's worth of velocities
+	var vecs [8]realPoint // approx sampleTime's worth of velocities
 	i := 0
 	n := 0
 	m0 := m
@@ -242,7 +239,7 @@ func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<-ball){
 	for {
 		m1 = <-mc
 		dt := m1.Nsec - m.Nsec
-		if dt >= sampleTime/int64(len(vecs)) || m.Buttons&2 == 0{
+		if dt >= sampleTime/int64(len(vecs)) || m.Buttons&2 == 0 {
 			delta := draw2realPoint(m1.Sub(m.Point))
 			vecs[i].x = delta.x / float64(dt)
 			vecs[i].y = delta.y / float64(dt)
@@ -264,12 +261,12 @@ func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<-ball){
 	avg.x /= float64(n)
 	avg.y /= float64(n)
 	var b ball
-	speed := math.Sqrt(avg.x*avg.x + avg.y*avg.y)		// in pixels/ns
+	speed := math.Sqrt(avg.x*avg.x + avg.y*avg.y) // in pixels/ns
 	if speed < 3e-9 {
 		// a click with no drag starts a ball with random velocity.
 		b = randBall()
 		b.p = draw2realPoint(m0.Point)
-	}else{
+	} else {
 		v, _ := makeUnit(draw2realPoint(m1.Sub(m0.Point)))
 		v.x *= speed
 		v.y *= speed
@@ -288,7 +285,7 @@ func draw2realPoint(p draw.Point) realPoint {
 
 func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
 	ballcountText := canvas.NewText(
-			draw.Pt(window.Width() - 5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30)
+		draw.Pt(window.Width()-5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30)
 	window.AddItem(ballcountText)
 	ballcountText.SetColor(image.Red)
 	window.Flush()
@@ -389,7 +386,7 @@ loop:
 			if reply, ok := <-c; ok {
 				if reply == nil {
 					obj.Delete()
-fmt.Printf("deleted ball\n")
+					fmt.Printf("deleted ball\n")
 					window.Flush()
 					return
 				}

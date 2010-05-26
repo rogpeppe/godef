@@ -1,4 +1,5 @@
 package canvas
+
 import (
 	"exp/draw"
 	"image"
@@ -6,22 +7,22 @@ import (
 )
 
 type Background struct {
-	lock sync.Mutex
-	r draw.Rectangle	// overall rectangle (always origin 0, 0)
-	img *image.RGBA
-	bg image.Image
-	item Drawer
+	lock     sync.Mutex
+	r        draw.Rectangle // overall rectangle (always origin 0, 0)
+	img      *image.RGBA
+	bg       image.Image
+	item     Drawer
 	imgflush func(r draw.Rectangle)
 
 	flushrect draw.Rectangle
-	waste int
+	waste     int
 }
 
 func NewBackground(img *image.RGBA, bg image.Image, flush func(r draw.Rectangle)) *Background {
 	return &Background{
-		img: img,
-		bg: bg,
-		r: draw.Rect(0, 0, img.Width(), img.Height()),
+		img:      img,
+		bg:       bg,
+		r:        draw.Rect(0, 0, img.Width(), img.Height()),
 		imgflush: flush,
 	}
 }
@@ -44,7 +45,7 @@ func (b *Background) Height() int {
 
 func (b *Background) Atomically(f func(FlushFunc)) {
 	// could pre-allocate inside b if we cared.
-	flush := func(r draw.Rectangle, drawn bool, draw Drawer){
+	flush := func(r draw.Rectangle, drawn bool, draw Drawer) {
 		if draw != b.item {
 			panic("flushed object not directly inside Background")
 		}
