@@ -68,6 +68,8 @@ var window *canvas.Canvas
 var lines *lineList
 var lineVersion int
 
+var sleepTime = int64(0.01e9)
+
 const ballSize = 8
 
 func main() {
@@ -90,6 +92,10 @@ func main() {
 	addLine(draw.Pt(csz.X, -1), draw.Pt(csz.X, csz.Y))
 	addLine(draw.Pt(csz.X, csz.Y), draw.Pt(-1, csz.Y))
 	addLine(draw.Pt(-1, csz.Y), draw.Pt(-1, -1))
+
+	slider, sliderc := canvas.NewSlider(draw.Rect(10, 10, 100, 40), draw.White, draw.Blue)
+	window.AddItem(slider)
+	go sliderProc(sliderc)
 
 //	makeRect(draw.Rect(30, 30, 200, 100))
 //	makeRect(draw.Rect(200, 200, 230, 230))
@@ -144,6 +150,13 @@ func main() {
 		case mc = <-mcc:
 			break
 		}
+	}
+}
+
+func sliderProc(sliderc <-chan float) {
+	for{
+		val := <-sliderc
+		sleepTime = int64((val * 0.1 + 0.001) * 1e9)
 	}
 }
 
@@ -410,7 +423,7 @@ loop:
 				// we were paused, so pretend no time went by
 				t0 = time.Nanoseconds() - t
 			}
-			time.Sleep(0.01e9)
+			time.Sleep(sleepTime)
 			t = time.Nanoseconds() - t0
 			if t >= dt {
 				break

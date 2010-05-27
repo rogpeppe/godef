@@ -82,6 +82,10 @@ type HandlerItem interface {
 	HandleMouser
 }
 
+// static interface checks:
+var _ Backing = (*Canvas)(nil)
+var _ HandlerItem = (*Canvas)(nil)
+
 // A Canvas represents a z-ordered set of drawable Items.
 // As a Canvas itself implements Item and Backing, Canvas's can
 // be nested indefinitely.
@@ -98,17 +102,25 @@ type Canvas struct {
 // backing. The background image, if non-nil, must
 // be opaque, and will used to draw the background.
 // r gives the extent of the canvas.
+// TODO: if background==nil and backing==nil, then
+// r is irrelevant, and we can just calculate our bbox
+// from the items we hold
 //
 func NewCanvas(backing Backing, background image.Color, r draw.Rectangle) *Canvas {
 	c := new(Canvas)
 	c.backing = backing
 	if background != nil {
-		_, _, _, a := background.RGBA()
-		c.opaque = a == 0xffffffff
+		c.opaque = opaqueColor(background)
 		c.background = image.ColorImage{background}
 	}
 	c.r = r
 	return c
+}
+
+func (c *Canvas) Opaque() bool {
+	// could do better by seeing if any opaque sub-item
+	// covers the whole area.
+	return c.opaque
 }
 
 // Width returns the width of the canvas, which is
@@ -134,7 +146,9 @@ func (c *Canvas) Bbox() draw.Rectangle {
 }
 
 func (c *Canvas) Flush() {
-	c.backing.Flush()
+	if c.backing != nil {
+		c.backing.Flush()
+	}
 }
 
 // HandleMouse delivers the mouse events to the top-most
@@ -156,6 +170,18 @@ func (c *Canvas) HandleMouse(_ Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool
 		return chosen.HandleMouse(c, m, mc)
 	}
 	return false
+}
+
+func (c *Canvas) HitTest(p draw.Point) (hit bool) {
+	c.Atomically(func(_ FlushFunc){
+		for e := c.items.Back(); e != nil; e = e.Prev() {
+			if e.Value.(Item).HitTest(p) {
+				hit = true
+				break
+			}
+		}
+	})
+	return
 }
 
 func (c *Canvas) Draw(dst *image.RGBA, clipr draw.Rectangle) {
@@ -239,7 +265,7 @@ func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
 // See the Backing interface for details
 //
 func (c *Canvas) Atomically(f func(FlushFunc)) {
-	if c == nil {
+	if c == nil || c.backing == nil {
 		// if an object isn't inside a canvas, then
 		// just perform the action anyway,
 		// as atomicity doesn't matter then.

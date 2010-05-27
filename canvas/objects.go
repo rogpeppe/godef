@@ -3,8 +3,8 @@ package canvas
 import (
 	"rog-go.googlecode.com/hg/draw"
 	"image"
-	//	"fmt"
 	"math"
+	//	"fmt"
 	"freetype-go.googlecode.com/hg/freetype/raster"
 )
 
@@ -252,32 +252,6 @@ func (obj *Line) SetColor(col image.Color) {
 	})
 }
 
-
-const (
-	fixBits  = 8
-	fixScale = 1 << fixBits // matches raster.Fixed
-)
-
-func float2fix(f float) raster.Fixed {
-	return raster.Fixed(f*fixScale + 0.5)
-}
-
-func int2fix(i int) raster.Fixed {
-	return raster.Fixed(i << fixBits)
-}
-
-func fix2int(i raster.Fixed) int {
-	return int((i + fixScale/2) >> fixBits)
-}
-
-func pixel2fixPoint(p draw.Point) raster.Point {
-	return raster.Point{raster.Fixed(p.X << fixBits), raster.Fixed(p.Y << fixBits)}
-}
-
-func fix2pixelPoint(p raster.Point) draw.Point {
-	return draw.Point{int((p.X + fixScale/2) >> fixBits), int((p.Y + fixScale/2) >> fixBits)}
-}
-
 // could do it in fixed point, but what's 0.5us between friends?
 func isincos2(x, y raster.Fixed) (isin, icos raster.Fixed) {
 	sin, cos := math.Sincos(math.Atan2(fixed2float(x), fixed2float(y)))
@@ -286,13 +260,99 @@ func isincos2(x, y raster.Fixed) (isin, icos raster.Fixed) {
 	return
 }
 
-func float2fixed(f float64) raster.Fixed {
-	if f < 0 {
-		return raster.Fixed(f*256 + 0.5)
-	}
-	return raster.Fixed(f*256 - 0.5)
+type Slider struct {
+	backing Backing
+	Item
+	c *Canvas
+	val float
+	out chan float
+	box ImageItem
+	button ImageItem
 }
 
-func fixed2float(f raster.Fixed) float64 {
-	return float64(f) / 256
+func NewSlider(r draw.Rectangle, fg, bg image.Color) (obj *Slider, out <-chan float) {
+	obj = new(Slider)
+	obj.out = make(chan float)
+	obj.c = NewCanvas(nil, draw.Green, r)
+	obj.box.r = r
+	obj.box.img = Box(r.Dx(), r.Dy(), image.ColorImage{bg}, 1, image.Black)
+	obj.box.opaque = opaqueColor(bg)
+
+	br := obj.buttonRect()
+	obj.button.r = br
+	obj.button.img = Box(br.Dx(), br.Dy(), image.ColorImage{fg}, 1, image.Black)
+	obj.button.opaque = opaqueColor(bg)
+	obj.c.AddItem(&obj.box)
+	obj.c.AddItem(&obj.button)
+	
+	obj.Item = obj.c
+	return obj, obj.out
+}
+
+const ButtonWidth = 6
+func (obj *Slider) SetContainer(c *Canvas) {
+	obj.backing = c
+}
+
+func (obj *Slider) buttonRect() (r draw.Rectangle) {
+	r.Min.Y = obj.box.r.Min.Y
+	r.Max.Y = obj.box.r.Max.Y
+	p := obj.val
+	centre := int(p * float(obj.box.r.Max.X - obj.box.r.Min.X - ButtonWidth) + 0.5) + obj.box.r.Min.X + ButtonWidth/2
+	r.Min.X = centre - ButtonWidth / 2
+	r.Max.X = centre + ButtonWidth / 2
+	return
+}
+
+func (obj *Slider) SetValue(v float) {
+	obj.backing.Atomically(func (flush FlushFunc) {
+		if v > 1 {
+			v = 1
+		}
+		if v < 0 {
+			v = 0
+		}
+		obj.val = v
+		r := obj.button.r
+		obj.button.r = obj.buttonRect()
+		flush(r, false, nil)
+		flush(obj.button.r, false, nil)
+	})
+}
+
+func (obj *Slider) x2val(x int) float {
+	return float(x - (obj.box.r.Min.X + ButtonWidth/2)) / float(obj.box.r.Dx() - ButtonWidth)
+}
+
+func (obj *Slider) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool {
+	if m.Buttons&1 == 0 {
+		return false
+	}
+	offset := 0
+	br := obj.buttonRect()
+	if !m.In(br) {
+		val := obj.x2val(m.X)
+		obj.SetValue(val)
+		f.Flush()
+	}else{
+		offset = m.X - (br.Min.X + br.Max.X) / 2
+	}
+
+	but := m.Buttons
+	for {
+		m = <-mc
+		obj.SetValue(obj.x2val(m.X - offset))
+		f.Flush()
+		obj.out <- obj.val
+		if (m.Buttons & but) != but {
+			break
+		}
+	}
+	return true
+}
+
+
+func opaqueColor(col image.Color) bool {
+	_, _, _, a := col.RGBA()
+	return a == 0xffffffff
 }

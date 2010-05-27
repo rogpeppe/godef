@@ -123,6 +123,38 @@ func (h *hitTestPainter) Paint(ss []raster.Span, _ bool) {
 	}
 }
 
+type checkPainter struct {
+	Painter *raster.RGBAPainter
+	PreCheck func(c image.RGBAColor, p draw.Point) bool
+	PostCheck func(c image.RGBAColor, p draw.Point) bool
+	Ok bool
+}
+
+func (p *checkPainter) Paint(ss []raster.Span, last bool) {
+	for _, s := range ss {
+		row := p.Painter.Image.Pixel[s.Y]
+		if p.PreCheck != nil {
+			for x := s.X0; x < s.X1; x++ {
+				if !p.PreCheck(row[x], draw.Point{x, s.Y}) {
+					p.Ok = false
+				}
+			}
+		}
+	}
+	p.Painter.Paint(ss, last)
+	for _, s := range ss {
+		row := p.Painter.Image.Pixel[s.Y]
+		if p.PostCheck != nil {
+			for x := s.X0; x < s.X1; x++ {
+				if !p.PostCheck(row[x], draw.Point{x, s.Y}) {
+					p.Ok = false
+				}
+			}
+		}
+	}
+}
+	
+
 // A bboxPainter is a raster.Painter that calculates
 // the bounding box of all spans that it is asked to paint.
 // Each Paint request will be forwarded
@@ -181,4 +213,40 @@ func spans2ys(ss []raster.Span) []int {
 		f[i] = s.Y
 	}
 	return f
+}
+
+const (
+	fixBits  = 8
+	fixScale = 1 << fixBits // matches raster.Fixed
+)
+
+func float2fix(f float) raster.Fixed {
+	return raster.Fixed(f*fixScale + 0.5)
+}
+
+func int2fix(i int) raster.Fixed {
+	return raster.Fixed(i << fixBits)
+}
+
+func fix2int(i raster.Fixed) int {
+	return int((i + fixScale/2) >> fixBits)
+}
+
+func pixel2fixPoint(p draw.Point) raster.Point {
+	return raster.Point{raster.Fixed(p.X << fixBits), raster.Fixed(p.Y << fixBits)}
+}
+
+func fix2pixelPoint(p raster.Point) draw.Point {
+	return draw.Point{int((p.X + fixScale/2) >> fixBits), int((p.Y + fixScale/2) >> fixBits)}
+}
+
+func float2fixed(f float64) raster.Fixed {
+	if f < 0 {
+		return raster.Fixed(f*256 + 0.5)
+	}
+	return raster.Fixed(f*256 - 0.5)
+}
+
+func fixed2float(f raster.Fixed) float64 {
+	return float64(f) / 256
 }
