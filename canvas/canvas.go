@@ -8,7 +8,12 @@ import (
 	"container/list"
 	"exp/draw"
 	"image"
+	"log"
 )
+
+type Flusher interface {
+	Flush()
+}
 
 // A Backer represents a graphical area containing
 // a number of Drawer objects.
@@ -20,8 +25,8 @@ import (
 // that are made.
 //
 type Backing interface {
+	Flusher
 	Atomically(func(f FlushFunc))
-	Flush()
 	Width() int
 	Height() int
 }
@@ -69,7 +74,12 @@ type Item interface {
 // mc should not be used after HandleMouse returns.
 //
 type HandleMouser interface {
-	HandleMouse(m draw.Mouse, mc <-chan draw.Mouse) bool
+	HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool
+}
+
+type HandlerItem interface {
+	Item
+	HandleMouser
 }
 
 // A Canvas represents a z-ordered set of drawable Items.
@@ -127,6 +137,27 @@ func (c *Canvas) Flush() {
 	c.backing.Flush()
 }
 
+// HandleMouse delivers the mouse events to the top-most
+// item that that is hit by the mouse point.
+//
+func (c *Canvas) HandleMouse(_ Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool {
+	var chosen HandlerItem
+	c.Atomically(func(_ FlushFunc){
+		for e := c.items.Back(); e != nil; e = e.Prev() {
+			if h, ok := e.Value.(HandlerItem); ok {
+				if h.HitTest(m.Point) {
+					chosen = h
+					break
+				}
+			}
+		}
+	})
+	if chosen != nil {
+		return chosen.HandleMouse(c, m, mc)
+	}
+	return false
+}
+
 func (c *Canvas) Draw(dst *image.RGBA, clipr draw.Rectangle) {
 	clipr = clipr.Clip(c.r)
 	c.img = dst
@@ -148,6 +179,9 @@ func (c *Canvas) drawAbove(it Item, clipr draw.Rectangle) {
 	clipr = clipr.Clip(c.r)
 	drawing := false
 	for e := c.items.Front(); e != nil; e = e.Next() {
+		if e.Value == nil {
+			continue
+		}
 		item := e.Value.(Item)
 		if drawing && item.Bbox().Overlaps(clipr) {
 			item.Draw(c.img, clipr)
@@ -239,6 +273,10 @@ func (c *Canvas) AddItem(item Item) {
 			flush(r, false, item)
 		}
 	})
+}
+
+func debugp(f string, a ... interface{}) {
+	log.Stdoutf(f, a)
 }
 
 type sizer interface {

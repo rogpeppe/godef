@@ -90,6 +90,10 @@ func main() {
 	addLine(draw.Pt(csz.X, -1), draw.Pt(csz.X, csz.Y))
 	addLine(draw.Pt(csz.X, csz.Y), draw.Pt(-1, csz.Y))
 	addLine(draw.Pt(-1, csz.Y), draw.Pt(-1, -1))
+
+//	makeRect(draw.Rect(30, 30, 200, 100))
+//	makeRect(draw.Rect(200, 200, 230, 230))
+
 	window.Flush()
 
 	mkball := make(chan ball)
@@ -111,6 +115,12 @@ func main() {
 			fmt.Printf("quitting\n")
 			return
 		case m := <-mc:
+			if m.Buttons == 0 {
+				break
+			}
+			if window.HandleMouse(window, m, mc) {
+				break
+			}
 			switch {
 			case m.Buttons&4 != 0:
 				return
@@ -197,7 +207,7 @@ func randColour() (c draw.Color) {
 }
 
 func addLine(p0, p1 draw.Point) *line {
-	obj := canvas.NewLine(image.Black, p0, p1, 3)
+	obj := canvas.NewLine(image.Black, p0, p1, 50)
 	window.AddItem(obj)
 	ln := line{obj, p0, p1}
 	lines = &lineList{ln, lines}
@@ -281,11 +291,18 @@ func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<- ball) {
 func draw2realPoint(p draw.Point) realPoint {
 	return realPoint{float64(p.X), float64(p.Y)}
 }
+	
+
+func makeRect(r draw.Rectangle) {
+	img := canvas.Box(r.Dx(), r.Dy(), image.Red, 1, image.Red)
+	item := canvas.NewImage(img, true, r.Min)
+	window.AddItem(canvas.Draggable(item))
+}
 
 func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
 	ballcountText := canvas.NewText(
 		draw.Pt(window.Width()-5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30)
-	window.AddItem(ballcountText)
+	window.AddItem(canvas.Draggable(ballcountText))
 	ballcountText.SetColor(image.Red)
 	window.Flush()
 	ctl := make(chan (chan<- bool))

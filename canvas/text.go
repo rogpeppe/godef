@@ -88,10 +88,6 @@ func (t *Text) SetContainer(c *Canvas) {
 	t.canvas = c
 }
 
-func (t *Text) HandleMouse(_ Item, _ draw.Mouse, _ <-chan draw.Mouse) bool {
-	return false
-}
-
 func (t *Text) Move(delta draw.Point) {
 	t.SetPoint(t.p.Add(delta))
 }

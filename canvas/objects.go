@@ -95,6 +95,10 @@ func (obj *Image) SetMinPoint(p draw.Point) {
 	})
 }
 
+func (obj *Image) Move(delta draw.Point) {
+	obj.SetMinPoint(obj.item.r.Min.Add(delta))
+}
+
 func (obj *Image) Delete() {
 	obj.canvas.Delete(&obj.item)
 }

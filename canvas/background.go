@@ -49,6 +49,10 @@ func (b *Background) Atomically(f func(FlushFunc)) {
 		if draw != b.item {
 			panic("flushed object not directly inside Background")
 		}
+		if !r.Canon().Eq(r) {
+			debugp("non canonical flushrect %v", r)
+			panic("oops background")
+		}
 		b.addFlush(r, drawn)
 	}
 	b.lock.Lock()

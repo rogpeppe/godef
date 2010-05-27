@@ -221,8 +221,10 @@ func (c *conn) pumper(mouse chan<- draw.Mouse) {
 		}
 	}
 	close(c.flush)
+	close(c.mouse)
+	close(c.resize)
+	close(c.quit)
 	// TODO(nigeltao): Is this the right place for c.c.Close()?
-	// TODO(nigeltao): Should we explicitly close our kbd/mouse/resize/quit chans?
 }
 
 // connect connects to the X server given by the full X11 display name (e.g.

@@ -111,7 +111,7 @@ func (h *hitTestPainter) Paint(ss []raster.Span, _ bool) {
 			if s.Y != p.Y {
 				break
 			}
-			if p.X >= s.X0 && p.Y < s.X1 {
+			if p.X >= s.X0 && p.X < s.X1 {
 				h.Hit = true
 				// If we were feeling Evil, we could do a panic
 				// to return control without painting any
@@ -146,8 +146,8 @@ func (p *bboxPainter) Paint(ss []raster.Span, last bool) {
 			r.Min.Y = sp.Y
 		}
 		sp = &ss[len(ss)-1]
-		if sp.Y > r.Max.Y {
-			r.Max.Y = sp.Y
+		if sp.Y + 1> r.Max.Y {
+			r.Max.Y = sp.Y + 1
 		}
 		for i := range ss {
 			sp := &ss[i]
