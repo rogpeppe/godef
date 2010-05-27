@@ -1,7 +1,7 @@
 package main
 
 import (
-	"exp/draw/x11"
+	"rog-go.googlecode.com/hg/x11"
 	"exp/draw"
 	"image"
 	"io/ioutil"
