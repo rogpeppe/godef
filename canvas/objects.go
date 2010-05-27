@@ -263,13 +263,18 @@ func isincos2(x, y raster.Fixed) (isin, icos raster.Fixed) {
 type Slider struct {
 	backing Backing
 	Item
-	c *Canvas
-	val float
-	out chan float
-	box ImageItem
+	c      *Canvas
+	val    float
+	out    chan float
+	box    ImageItem
 	button ImageItem
 }
 
+// A Slider shows a mouse-adjustable slider bar.
+// NewSlider returns the Slider item, and a channel
+// which can be read to get values of the slider
+// as they change. Values range from 0 to 1.
+//
 func NewSlider(r draw.Rectangle, fg, bg image.Color) (obj *Slider, out <-chan float) {
 	obj = new(Slider)
 	obj.out = make(chan float)
@@ -284,12 +289,13 @@ func NewSlider(r draw.Rectangle, fg, bg image.Color) (obj *Slider, out <-chan fl
 	obj.button.opaque = opaqueColor(bg)
 	obj.c.AddItem(&obj.box)
 	obj.c.AddItem(&obj.button)
-	
+
 	obj.Item = obj.c
 	return obj, obj.out
 }
 
-const ButtonWidth = 6
+const buttonWidth = 6
+
 func (obj *Slider) SetContainer(c *Canvas) {
 	obj.backing = c
 }
@@ -298,14 +304,16 @@ func (obj *Slider) buttonRect() (r draw.Rectangle) {
 	r.Min.Y = obj.box.r.Min.Y
 	r.Max.Y = obj.box.r.Max.Y
 	p := obj.val
-	centre := int(p * float(obj.box.r.Max.X - obj.box.r.Min.X - ButtonWidth) + 0.5) + obj.box.r.Min.X + ButtonWidth/2
-	r.Min.X = centre - ButtonWidth / 2
-	r.Max.X = centre + ButtonWidth / 2
+	centre := int(p*float(obj.box.r.Max.X-obj.box.r.Min.X-buttonWidth)+0.5) + obj.box.r.Min.X + buttonWidth/2
+	r.Min.X = centre - buttonWidth/2
+	r.Max.X = centre + buttonWidth/2
 	return
 }
 
+// SetValue sets the current value of the Slider to v,
+// a value between 0 and 1.
 func (obj *Slider) SetValue(v float) {
-	obj.backing.Atomically(func (flush FlushFunc) {
+	obj.backing.Atomically(func(flush FlushFunc) {
 		if v > 1 {
 			v = 1
 		}
@@ -321,7 +329,7 @@ func (obj *Slider) SetValue(v float) {
 }
 
 func (obj *Slider) x2val(x int) float {
-	return float(x - (obj.box.r.Min.X + ButtonWidth/2)) / float(obj.box.r.Dx() - ButtonWidth)
+	return float(x-(obj.box.r.Min.X+buttonWidth/2)) / float(obj.box.r.Dx()-buttonWidth)
 }
 
 func (obj *Slider) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool {
@@ -334,8 +342,8 @@ func (obj *Slider) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bo
 		val := obj.x2val(m.X)
 		obj.SetValue(val)
 		f.Flush()
-	}else{
-		offset = m.X - (br.Min.X + br.Max.X) / 2
+	} else {
+		offset = m.X - (br.Min.X+br.Max.X)/2
 	}
 
 	but := m.Buttons

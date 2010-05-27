@@ -235,9 +235,9 @@ func drawRGBA(dst *image.RGBA, r Rectangle, src image.Image, sp Point, mask imag
 	for y := y0; y != y1; y, sy, my = y+dy, sy+dy, my+dy {
 		sx := sp.X + x0 - r.Min.X
 		mx := mp.X + x0 - r.Min.X
-if y < 0 || y >= len(dst.Pixel) {
-panic(fmt.Sprintf("y %d; r %v; sp %v", y, r, sp))
-}
+		if y < 0 || y >= len(dst.Pixel) {
+			panic(fmt.Sprintf("y %d; r %v; sp %v", y, r, sp))
+		}
 		p := dst.Pixel[y]
 		for x := x0; x != x1; x, sx, mx = x+dx, sx+dx, mx+dx {
 			const M = 1<<16 - 1

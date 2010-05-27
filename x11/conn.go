@@ -639,7 +639,7 @@ func (t *timeTranslate) Nanoseconds(ms uint32) int64 {
 
 func bufferMouse(mc <-chan draw.Mouse) <-chan draw.Mouse {
 	out := make(chan draw.Mouse)
-	go func(){
+	go func() {
 		type mouseQueue struct {
 			m    draw.Mouse
 			next *mouseQueue
@@ -672,7 +672,7 @@ func bufferMouse(mc <-chan draw.Mouse) <-chan draw.Mouse {
 					mc = nil
 					break
 				}
-	
+
 				// Only if the queue is empty or the buttons state
 				// has changed do we add a new event to the queue;
 				// otherwise we just update the event at its head.

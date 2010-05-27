@@ -124,10 +124,10 @@ func (h *hitTestPainter) Paint(ss []raster.Span, _ bool) {
 }
 
 type checkPainter struct {
-	Painter *raster.RGBAPainter
-	PreCheck func(c image.RGBAColor, p draw.Point) bool
+	Painter   *raster.RGBAPainter
+	PreCheck  func(c image.RGBAColor, p draw.Point) bool
 	PostCheck func(c image.RGBAColor, p draw.Point) bool
-	Ok bool
+	Ok        bool
 }
 
 func (p *checkPainter) Paint(ss []raster.Span, last bool) {
@@ -153,7 +153,7 @@ func (p *checkPainter) Paint(ss []raster.Span, last bool) {
 		}
 	}
 }
-	
+
 
 // A bboxPainter is a raster.Painter that calculates
 // the bounding box of all spans that it is asked to paint.
@@ -178,7 +178,7 @@ func (p *bboxPainter) Paint(ss []raster.Span, last bool) {
 			r.Min.Y = sp.Y
 		}
 		sp = &ss[len(ss)-1]
-		if sp.Y + 1> r.Max.Y {
+		if sp.Y+1 > r.Max.Y {
 			r.Max.Y = sp.Y + 1
 		}
 		for i := range ss {

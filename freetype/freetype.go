@@ -59,8 +59,8 @@ type Context struct {
 // given size onto an RGBA image.
 type RGBAContext struct {
 	Context
-	rp       *raster.RGBAPainter
-	gp       *raster.GammaCorrectionPainter
+	rp *raster.RGBAPainter
+	gp *raster.GammaCorrectionPainter
 }
 
 func (c *Context) Init() *Context {

@@ -97,8 +97,8 @@ func main() {
 	window.AddItem(slider)
 	go sliderProc(sliderc)
 
-//	makeRect(draw.Rect(30, 30, 200, 100))
-//	makeRect(draw.Rect(200, 200, 230, 230))
+	//	makeRect(draw.Rect(30, 30, 200, 100))
+	//	makeRect(draw.Rect(200, 200, 230, 230))
 
 	window.Flush()
 
@@ -154,9 +154,9 @@ func main() {
 }
 
 func sliderProc(sliderc <-chan float) {
-	for{
+	for {
 		val := <-sliderc
-		sleepTime = int64((val * 0.1 + 0.001) * 1e9)
+		sleepTime = int64((val*0.1 + 0.001) * 1e9)
 	}
 }
 
@@ -304,7 +304,7 @@ func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<- ball) {
 func draw2realPoint(p draw.Point) realPoint {
 	return realPoint{float64(p.X), float64(p.Y)}
 }
-	
+
 
 func makeRect(r draw.Rectangle) {
 	img := canvas.Box(r.Dx(), r.Dy(), image.Red, 1, image.Red)

@@ -156,7 +156,7 @@ func (c *Canvas) Flush() {
 //
 func (c *Canvas) HandleMouse(_ Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool {
 	var chosen HandlerItem
-	c.Atomically(func(_ FlushFunc){
+	c.Atomically(func(_ FlushFunc) {
 		for e := c.items.Back(); e != nil; e = e.Prev() {
 			if h, ok := e.Value.(HandlerItem); ok {
 				if h.HitTest(m.Point) {
@@ -173,7 +173,7 @@ func (c *Canvas) HandleMouse(_ Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool
 }
 
 func (c *Canvas) HitTest(p draw.Point) (hit bool) {
-	c.Atomically(func(_ FlushFunc){
+	c.Atomically(func(_ FlushFunc) {
 		for e := c.items.Back(); e != nil; e = e.Prev() {
 			if e.Value.(Item).HitTest(p) {
 				hit = true
@@ -301,7 +301,7 @@ func (c *Canvas) AddItem(item Item) {
 	})
 }
 
-func debugp(f string, a ... interface{}) {
+func debugp(f string, a ...interface{}) {
 	log.Stdoutf(f, a)
 }
 
