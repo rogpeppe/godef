@@ -61,14 +61,15 @@ type Item interface {
 	SetContainer(c *Canvas)
 }
 
-// Each Item may be associated with an handler Object.
-// More than one Item may be associated with the same
-// Object. If the canvas's HandleMouse method is
-// called, and HitTest succeeds on an item, then
-// HandleMouse will be invoked on its associated Object.
+// HandleMouse can be implemented by any object
+// that might wish to handle mouse events. It is
+// called with an initial mouse event, and a channel
+// from which further mouse events can be read.
+// It returns true if the initial mouse event was absorbed.
+// mc should not be used after HandleMouse returns.
 //
-type MouseHandler interface {
-	HandleMouse(item Item, m draw.Mouse, mc <-chan draw.Mouse) bool
+type HandleMouser interface {
+	HandleMouse(m draw.Mouse, mc <-chan draw.Mouse) bool
 }
 
 // A Canvas represents a z-ordered set of drawable Items.
@@ -112,6 +113,10 @@ func (c *Canvas) Width() int {
 //
 func (c *Canvas) Height() int {
 	return c.r.Dy()
+}
+
+func (c *Canvas) SetContainer(c1 *Canvas) {
+	// XXX
 }
 
 func (c *Canvas) Bbox() draw.Rectangle {

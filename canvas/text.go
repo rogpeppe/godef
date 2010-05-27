@@ -3,7 +3,7 @@ package canvas
 import (
 	"exp/draw"
 	"image"
-	"freetype-go.googlecode.com/hg/freetype"
+	"rog-go.googlecode.com/hg/freetype"
 	"freetype-go.googlecode.com/hg/freetype/raster"
 	"freetype-go.googlecode.com/hg/freetype/truetype"
 )

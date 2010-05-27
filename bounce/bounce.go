@@ -12,7 +12,6 @@ import (
 	"rand"
 	"time"
 	"rog-go.googlecode.com/hg/canvas"
-	"freetype-go.googlecode.com/hg/freetype"
 	"freetype-go.googlecode.com/hg/freetype/truetype"
 )
 
@@ -149,7 +148,7 @@ func defaultFont() *truetype.Font {
 	if err != nil {
 		log.Exit(err)
 	}
-	font, err := freetype.ParseFont(fontBytes)
+	font, err := truetype.Parse(fontBytes)
 	if err != nil {
 		log.Exit(err)
 	}
