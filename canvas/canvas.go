@@ -6,7 +6,7 @@ package canvas
 
 import (
 	"container/list"
-	"exp/draw"
+	"rog-go.googlecode.com/hg/draw"
 	"image"
 	"log"
 )
