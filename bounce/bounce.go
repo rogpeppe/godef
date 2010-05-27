@@ -207,7 +207,7 @@ func randColour() (c draw.Color) {
 }
 
 func addLine(p0, p1 draw.Point) *line {
-	obj := canvas.NewLine(image.Black, p0, p1, 50)
+	obj := canvas.NewLine(image.Black, p0, p1, 3)
 	window.AddItem(obj)
 	ln := line{obj, p0, p1}
 	lines = &lineList{ln, lines}
