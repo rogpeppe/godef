@@ -118,6 +118,7 @@ func main() {
 			fmt.Printf("quitting\n")
 			return
 		case m := <-mc:
+again:
 			if m.Buttons == 0 {
 				break
 			}
@@ -128,8 +129,21 @@ func main() {
 			case m.Buttons&4 != 0:
 				return
 			case m.Buttons&1 != 0:
-				go handleMouse(m, mc, mcc, lineMaker)
-				mc = nil
+				count := 0
+				for c := range clicker(m, mc) {
+					if c.done {
+						m = c.m
+						break
+					}
+					count++
+				}
+				if count > 1 {
+					go handleMouse(m, mc, mcc, rasterMaker)
+					mc = nil
+				}else if m.Buttons != 0 {
+					go handleMouse(m, mc, mcc, lineMaker)
+					mc = nil
+				}
 			case m.Buttons&2 != 0:
 				go handleMouse(m, mc, mcc, func(m draw.Mouse, mc <-chan draw.Mouse) {
 					ballMaker(m, mc, mkball)
@@ -237,16 +251,82 @@ func (p realPoint) point() draw.Point {
 }
 
 func lineMaker(m draw.Mouse, mc <-chan draw.Mouse) {
-	p0 := m.Point
-	ln := addLine(p0, p0)
+	m0 := m
+	ln := addLine(m0.Point, m0.Point)
 	for m.Buttons&1 != 0 {
 		m = <-mc
-		ln.obj.SetEndPoints(p0, m.Point)
+		ln.obj.SetEndPoints(m0.Point, m.Point)
 		ln.p1 = m.Point
 		lineVersion++
 		window.Flush()
 	}
 }
+
+const ClickDist = 4
+const ClickTime = 0.3e9
+
+type Click struct {
+	done bool			// clicker is done. if m.Buttons!=0, user is still dragging.
+	m draw.Mouse		// mouse event at start of click
+}
+
+// clicker handles possibly multiple click mouse actions.
+// It should be called with the first mouse event that triggered
+// the action (which should have m.Buttons != 0), and the
+// channel from which it will read mouse events.
+// It sends Click values on the channel that it returns
+// for each extra click sent by the user, giving the
+// initial mouse event for that click. For the final
+// Click event only, done==true, and signifies that
+// clicker has finished. If Buttons!=0, the
+// user continues to drag the mouse, and the
+// mouse event holds the first event of the drag;
+// otherwise it holds the most recent mouse event.
+//
+// Note that the first Click event with done==false
+// actually signifies the second click - the caller of
+// clicker should have processed the first.
+//
+func clicker(m0 draw.Mouse, mc <-chan draw.Mouse) (<-chan Click) {
+	c := make(chan Click)
+	go func() {
+		m := m0
+		for !closed(mc) {
+			// wait for button up or delta or time to move outside limit.
+			for m = range mc {
+				if m.Buttons == 0 {
+					// does a long click with no intervening movement still count as a click?
+					break
+				}
+				d := m.Sub(m0.Point)
+				if m.Nsec - m0.Nsec > ClickTime || d.X * d.X + d.Y * d.Y > ClickDist {
+					c <- Click{true, m0}
+					close(c)
+					return
+				}
+			}
+	
+			// wait for button down or delta or time to move outside limit.
+			for m = range mc {
+				d := m.Sub(m0.Point)
+				if m.Nsec - m0.Nsec > ClickTime || d.X * d.X + d.Y * d.Y > ClickDist {
+					c <- Click{true, m}
+					close(c)
+					return
+				}
+				if m.Buttons != 0 {
+					break
+				}
+			}
+			c <- Click{false, m0}
+			m0 = m
+		}
+		c <- Click{true, m}
+		close(c)
+	}()
+	return c
+}
+
 
 func abs(x float64) float64 {
 	if x < 0 {
