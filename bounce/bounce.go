@@ -138,8 +138,8 @@ again:
 					count++
 				}
 				if count > 1 {
-					go handleMouse(m, mc, mcc, rasterMaker)
-					mc = nil
+//					go handleMouse(m, mc, mcc, rasterMaker)
+//					mc = nil
 				}else if m.Buttons != 0 {
 					go handleMouse(m, mc, mcc, lineMaker)
 					mc = nil
