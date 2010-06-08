@@ -362,7 +362,7 @@ func makeBall(b ball) Ball {
 	p := b.p.point().Sub(draw.Pt(ballSize/2, ballSize/2))
 	item := canvas.NewImage(img, true, p)
 	window.AddItem(item)
-	window.Lower(item, nil)
+	window.Raise(item, nil, false)
 	return Ball{item}
 }
 

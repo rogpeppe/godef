@@ -199,8 +199,14 @@ func (c *Canvas) Draw(dst *image.RGBA, clipr draw.Rectangle) {
 	}
 }
 
-func (c *Canvas) Raise(it, above Item) {
-	if it == above {
+// Raise moves the Item it adjacent to nextto in the canvas z-ordering.
+// If above is true, the item will be placed just above nextto,
+// otherwise it will be placed just below.
+// If nextto is nil, then the item will be placed at
+// the very top (above==true) or the very bottom (above==false).
+//
+func (c *Canvas) Raise(it, nextto Item, above bool) {
+	if it == nextto {
 		return
 	}
 	c.Atomically(func(flush FlushFunc) {
@@ -209,42 +215,24 @@ func (c *Canvas) Raise(it, above Item) {
 			switch e.Value.(Item) {
 			case it:
 				ie = e
-			case above:
+			case nextto:
 				ae = e
 			}
 		}
-		if ie != nil && (above == nil || ae != nil) {
+		if ie != nil && (nextto == nil || ae != nil) {
 			c.items.Remove(ie)
-			if ae != nil { 
-				c.items.InsertAfter(it, ae)
+			if ae != nil {
+				if above {
+					c.items.InsertAfter(it, ae)
+				}else{
+					c.items.InsertBefore(it, ae)
+				}
 			}else{
-				c.items.PushBack(it)
-			}
-			flush(it.Bbox(), nil)
-		}
-	})
-}
-
-func (c *Canvas) Lower(it, below Item) {
-	if it == below {
-		return
-	}
-	c.Atomically(func(flush FlushFunc) {
-		var ie, ae *list.Element
-		for e := c.items.Front(); e != nil; e = e.Next() {
-			switch e.Value.(Item) {
-			case it:
-				ie = e
-			case below:
-				ae = e
-			}
-		}
-		if ie != nil && (below == nil || ae != nil) {
-			c.items.Remove(ie)
-			if ae != nil { 
-				c.items.InsertBefore(it, ae)
-			}else{
-				c.items.PushFront(it)
+				if above {
+					c.items.PushBack(it)
+				}else{
+					c.items.PushFront(it)
+				}
 			}
 			flush(it.Bbox(), nil)
 		}
