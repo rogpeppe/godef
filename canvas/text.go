@@ -3,7 +3,7 @@ package canvas
 import (
 	"rog-go.googlecode.com/hg/draw"
 	"image"
-	"rog-go.googlecode.com/hg/freetype"
+	"freetype-go.googlecode.com/hg/freetype"
 	"freetype-go.googlecode.com/hg/freetype/raster"
 	"freetype-go.googlecode.com/hg/freetype/truetype"
 )
@@ -14,7 +14,7 @@ const (
 )
 
 type TextItem struct {
-	freetype.Context
+	*freetype.Context
 	Text string
 	Pt   raster.Point
 	bbox draw.Rectangle
@@ -24,7 +24,7 @@ type TextItem struct {
 }
 
 func (d *TextItem) Init() *TextItem {
-	d.Context.Init()
+	d.Context = freetype.NewContext()
 	d.rp = raster.NewRGBAPainter(nil)
 	d.gp = raster.NewGammaCorrectionPainter(d.rp, gamma)
 	d.cp.Painter = d.gp
@@ -33,7 +33,7 @@ func (d *TextItem) Init() *TextItem {
 
 func (d *TextItem) CalcBbox() {
 	var bbox bboxPainter
-	d.DrawText(d.Pt, d.Text, &bbox)
+	d.DrawText(&bbox, d.Pt, d.Text)
 	d.bbox = bbox.R
 }
 
@@ -44,13 +44,13 @@ func (d *TextItem) Opaque() bool {
 func (d *TextItem) Draw(dst *image.RGBA, clip draw.Rectangle) {
 	d.cp.Clipr = clip
 	d.rp.Image = dst
-	d.DrawText(d.Pt, d.Text, &d.cp)
+	d.DrawText(&d.cp, d.Pt, d.Text)
 }
 
 func (d *TextItem) HitTest(p draw.Point) bool {
 	var hit hitTestPainter
 	hit.P = p
-	d.DrawText(d.Pt, d.Text, &hit)
+	d.DrawText(&hit, d.Pt, d.Text)
 	return hit.Hit
 }
 
@@ -58,7 +58,7 @@ func (d *TextItem) Bbox() draw.Rectangle {
 	return d.bbox
 }
 
-func (d *TextItem) SetContainer(_ *Canvas) {
+func (d *TextItem) SetContainer(_ Backing) {
 }
 
 type Text struct {
@@ -67,10 +67,15 @@ type Text struct {
 	delta  draw.Point // vector from upper left of bbox to text origin
 	p      draw.Point
 	anchor Anchor
-	canvas *Canvas
+	canvas Backing
+	value Value
 }
 
-func NewText(p draw.Point, where Anchor, s string, font *truetype.Font, size float) *Text {
+// NewText creates a new item to display a line of text.
+// If val is non-nil, it should be a string-typed Value,
+// and the Value's text will be displayed instead of s.
+//
+func NewText(p draw.Point, where Anchor, s string, font *truetype.Font, size float, val Value) *Text {
 	t := new(Text)
 	t.item.Init()
 	t.item.SetFont(font)
@@ -81,10 +86,21 @@ func NewText(p draw.Point, where Anchor, s string, font *truetype.Font, size flo
 	t.anchor = where
 	t.recalc(true)
 	t.Item = &t.item
+	if val != nil {
+		t.value = val
+		go t.listener()
+	}
 	return t
 }
 
-func (t *Text) SetContainer(c *Canvas) {
+func (t *Text) listener() {
+	for x := range t.value.Iter() {
+		t.SetText(x.(string))
+		t.canvas.Flush()
+	}
+}
+
+func (t *Text) SetContainer(c Backing) {
 	t.canvas = c
 }
 
@@ -97,8 +113,8 @@ func (t *Text) SetPoint(p0 draw.Point) {
 		r := t.item.Bbox()
 		t.p = p0
 		t.recalc(false)
-		flush(r, false, &t.item)
-		flush(t.item.Bbox(), false, &t.item)
+		flush(r, nil)
+		flush(t.item.Bbox(), nil)
 	})
 }
 
@@ -121,7 +137,7 @@ func (t *Text) recalc(sizechanged bool) {
 func (t *Text) SetColor(col image.Color) {
 	t.canvas.Atomically(func(flush FlushFunc) {
 		t.item.rp.SetColor(col)
-		flush(t.item.Bbox(), false, &t.item)
+		flush(t.item.Bbox(), nil)
 	})
 }
 
@@ -130,8 +146,8 @@ func (t *Text) SetText(s string) {
 		r := t.item.Bbox()
 		t.item.Text = s
 		t.recalc(true)
-		flush(r, false, &t.item)
-		flush(t.item.Bbox(), false, &t.item)
+		flush(r, nil)
+		flush(t.item.Bbox(), nil)
 	})
 }
 
@@ -140,8 +156,8 @@ func (t *Text) SetFontSize(size float) {
 		r := t.item.Bbox()
 		t.item.SetFontSize(size)
 		t.recalc(true)
-		flush(r, false, &t.item)
-		flush(t.item.Bbox(), false, &t.item)
+		flush(r, nil)
+		flush(t.item.Bbox(), nil)
 	})
 }
 

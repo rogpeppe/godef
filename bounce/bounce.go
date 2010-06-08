@@ -55,7 +55,6 @@ func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
 		}
 	}
 	return func(_ draw.Rectangle) {
-		fmt.Printf("flushimage\n")
 		ctxt.FlushImage()
 	}
 }
@@ -93,9 +92,7 @@ func main() {
 	addLine(draw.Pt(csz.X, csz.Y), draw.Pt(-1, csz.Y))
 	addLine(draw.Pt(-1, csz.Y), draw.Pt(-1, -1))
 
-	slider, sliderc := canvas.NewSlider(draw.Rect(10, 10, 100, 40), draw.White, draw.Blue)
-	window.AddItem(slider)
-	go sliderProc(sliderc)
+	go sliderProc()
 
 	//	makeRect(draw.Rect(30, 30, 200, 100))
 	//	makeRect(draw.Rect(200, 200, 230, 230))
@@ -153,10 +150,17 @@ func main() {
 	}
 }
 
-func sliderProc(sliderc <-chan float) {
-	for {
-		val := <-sliderc
-		sleepTime = int64((val*0.1 + 0.001) * 1e9)
+func sliderProc() {
+	val := canvas.NewValue(float64(0.0))
+	slider := canvas.NewSlider(draw.Rect(10, 10, 100, 40), draw.White, draw.Blue, val)
+	rval := canvas.Transform(val, canvas.UnitFloat2RangedFloat(0.001e9, 0.1e9))
+	window.AddItem(slider)
+	window.Flush()
+	timeText := canvas.NewText(
+		draw.Pt(10, 50), canvas.N|canvas.W, "", defaultFont(), 12, canvas.Transform(rval, canvas.FloatMultiply(1e-6).Combine(canvas.Float2String("%6.2gms", "%gms"))))
+	window.AddItem(timeText)
+	for x := range rval.Iter() {
+		sleepTime = int64(x.(float64))
 	}
 }
 
@@ -195,8 +199,8 @@ func randBall() ball {
 	csz := draw.Point{window.Width(), window.Height()}
 	var b ball
 	b.p = randPoint(csz)
-	b.v.x = rand.Float64() - 1
-	b.v.y = rand.Float64() - 1
+	b.v.x = rand.Float64() - 0.5
+	b.v.y = rand.Float64() - 0.5
 	if b.v.x == 0 && b.v.y == 0 {
 		panic("did that really happen?!")
 	}
@@ -314,7 +318,7 @@ func makeRect(r draw.Rectangle) {
 
 func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
 	ballcountText := canvas.NewText(
-		draw.Pt(window.Width()-5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30)
+		draw.Pt(window.Width()-5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30, nil)
 	window.AddItem(canvas.Draggable(ballcountText))
 	ballcountText.SetColor(image.Red)
 	window.Flush()
@@ -385,7 +389,7 @@ loop:
 		}
 		if dist == large {
 			fmt.Printf("no intersection!\n")
-			obj.Delete()
+			window.Delete(obj)
 			for {
 				reply := <-c
 				if reply == nil {
@@ -414,7 +418,7 @@ loop:
 			}
 			if reply, ok := <-c; ok {
 				if reply == nil {
-					obj.Delete()
+					window.Delete(obj)
 					fmt.Printf("deleted ball\n")
 					window.Flush()
 					return

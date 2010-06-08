@@ -33,13 +33,13 @@ type Backing interface {
 
 // A FlushFunc can be used to inform a Backing object
 // of a changed area of pixels. r specifies the rectangle that has changed;
-// drawn indicates whether the rectangle has already been redrawn
-// (only appropriate if the all pixels in the rectangle have
-// been non-transparently overwritten); and
-// draw gives the item that has changed, which must
-// be directly inside the Backer.
+// if drawn is non-nil, it indicates that the rectangle has already
+// been redrawn (only appropriate if all pixels in the
+// rectangle have been non-transparently overwritten);
+// its value gives the item that has changed,
+// which must be a direct child of the Backing object.
 //
-type FlushFunc func(r draw.Rectangle, drawn bool, draw Drawer)
+type FlushFunc func(r draw.Rectangle, drawn Drawer)
 
 // The Draw method should draw a representation of
 // the object onto dst. No pixels outside clipr should
@@ -63,7 +63,7 @@ type Item interface {
 	Bbox() draw.Rectangle
 	HitTest(p draw.Point) bool
 	Opaque() bool
-	SetContainer(c *Canvas)
+	SetContainer(Backing)
 }
 
 // HandleMouse can be implemented by any object
@@ -137,7 +137,7 @@ func (c *Canvas) Height() int {
 	return c.r.Dy()
 }
 
-func (c *Canvas) SetContainer(c1 *Canvas) {
+func (c *Canvas) SetContainer(b Backing) {
 	// XXX
 }
 
@@ -230,7 +230,7 @@ func (c *Canvas) Delete(it Item) {
 			next = e.Next()
 			if e.Value.(Item) == it {
 				c.items.Remove(e)
-				flush(it.Bbox(), false, it)
+				flush(it.Bbox(), nil)
 				removed = true
 				break
 			}
@@ -249,8 +249,8 @@ func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
 			if e.Value.(Item) == it {
 				r := it.Bbox()
 				e.Value = it1
-				flush(r, false, it)
-				flush(it1.Bbox(), false, it1)
+				flush(r, nil)
+				flush(it1.Bbox(), nil)
 				replaced = true
 				break
 			}
@@ -269,20 +269,21 @@ func (c *Canvas) Atomically(f func(FlushFunc)) {
 		// if an object isn't inside a canvas, then
 		// just perform the action anyway,
 		// as atomicity doesn't matter then.
-		f(func(r draw.Rectangle, drawn bool, it Drawer) {})
+		f(func(_ draw.Rectangle, _ Drawer) {})
 		return
 	}
 	c.backing.Atomically(func(bflush FlushFunc) {
-		f(func(r draw.Rectangle, drawn bool, it Drawer) {
-			if drawn {
-				c.drawAbove(it.(Item), r)
+		f(func(r draw.Rectangle, drawn Drawer) {
+			if drawn != nil {
+				c.drawAbove(drawn.(Item), r)
+				drawn = c
 			} else if c.img != nil && c.opaque {
 				// if we're opaque, then we can just redraw ourselves
 				// without worrying about what might be underneath.
 				c.Draw(c.img, r)
-				drawn = true
+				drawn = c
 			}
-			bflush(r, drawn, c)
+			bflush(r, drawn)
 		})
 	})
 }
@@ -294,9 +295,9 @@ func (c *Canvas) AddItem(item Item) {
 		r := item.Bbox()
 		if item.Opaque() && c.img != nil {
 			item.Draw(c.img, r)
-			flush(r, true, item)
+			flush(r, item)
 		} else {
-			flush(r, false, item)
+			flush(r, nil)
 		}
 	})
 }

@@ -4,7 +4,6 @@ import (
 	"rog-go.googlecode.com/hg/draw"
 	"image"
 	"math"
-	//	"fmt"
 	"freetype-go.googlecode.com/hg/freetype/raster"
 )
 
@@ -41,7 +40,7 @@ func (obj *ImageItem) Draw(dst *image.RGBA, clip draw.Rectangle) {
 	draw.DrawMask(dst, dr, obj.img, sp, nil, draw.ZP, op)
 }
 
-func (obj *ImageItem) SetContainer(c *Canvas) {
+func (obj *ImageItem) SetContainer(c Backing) {
 }
 
 func (obj *ImageItem) Opaque() bool {
@@ -62,7 +61,7 @@ func (obj *ImageItem) HitTest(p draw.Point) bool {
 type Image struct {
 	Item
 	item   ImageItem // access to the fields of the ImageItem
-	canvas *Canvas
+	canvas Backing
 }
 
 // Image returns a new Image which will be drawn using img,
@@ -77,7 +76,7 @@ func NewImage(img image.Image, opaque bool, p draw.Point) *Image {
 	return obj
 }
 
-func (obj *Image) SetContainer(c *Canvas) {
+func (obj *Image) SetContainer(c Backing) {
 	obj.canvas = c
 }
 
@@ -90,8 +89,8 @@ func (obj *Image) SetMinPoint(p draw.Point) {
 	obj.canvas.Atomically(func(flush FlushFunc) {
 		r := obj.item.r
 		obj.item.r = r.Add(p.Sub(r.Min))
-		flush(r, false, &obj.item)
-		flush(obj.item.r, false, &obj.item)
+		flush(r, nil)
+		flush(obj.item.r, nil)
 	})
 }
 
@@ -99,16 +98,12 @@ func (obj *Image) Move(delta draw.Point) {
 	obj.SetMinPoint(obj.item.r.Min.Add(delta))
 }
 
-func (obj *Image) Delete() {
-	obj.canvas.Delete(&obj.item)
-}
-
 // A Polygon represents a filled polygon.
 //
 type Polygon struct {
 	Item
 	raster RasterItem
-	canvas *Canvas
+	canvas Backing
 	points []raster.Point
 }
 
@@ -127,16 +122,12 @@ func NewPolygon(col image.Color, points []draw.Point) *Polygon {
 	return obj
 }
 
-func (obj *Polygon) SetContainer(c *Canvas) {
+func (obj *Polygon) SetContainer(c Backing) {
 	obj.canvas = c
 	if c != nil {
 		obj.raster.SetBounds(c.Width(), c.Height())
 		obj.rasterize()
 	}
-}
-
-func (obj *Polygon) Delete() {
-	obj.canvas.Delete(obj)
 }
 
 func (obj *Polygon) Move(delta draw.Point) {
@@ -149,8 +140,8 @@ func (obj *Polygon) Move(delta draw.Point) {
 			p.Y += rdelta.Y
 		}
 		obj.rasterize()
-		flush(r, false, &obj.raster)
-		flush(obj.raster.Bbox(), false, &obj.raster)
+		flush(r, nil)
+		flush(obj.raster.Bbox(), nil)
 	})
 }
 
@@ -170,7 +161,7 @@ func (obj *Polygon) rasterize() {
 type Line struct {
 	Item
 	raster RasterItem
-	canvas *Canvas
+	canvas Backing
 	p0, p1 raster.Point
 	width  raster.Fixed
 }
@@ -189,7 +180,7 @@ func NewLine(col image.Color, p0, p1 draw.Point, width float) *Line {
 	return obj
 }
 
-func (obj *Line) SetContainer(c *Canvas) {
+func (obj *Line) SetContainer(c Backing) {
 	obj.canvas = c
 	if c != nil {
 		obj.raster.SetBounds(c.Width(), c.Height())
@@ -234,13 +225,9 @@ func (obj *Line) SetEndPoints(p0, p1 draw.Point) {
 		obj.p0 = pixel2fixPoint(p0)
 		obj.p1 = pixel2fixPoint(p1)
 		obj.rasterize()
-		flush(r, false, &obj.raster)
-		flush(obj.raster.Bbox(), false, &obj.raster)
+		flush(r, nil)
+		flush(obj.raster.Bbox(), nil)
 	})
-}
-
-func (obj *Line) Delete() {
-	obj.canvas.Delete(&obj.raster)
 }
 
 // SetColor changes the colour of the line
@@ -248,7 +235,7 @@ func (obj *Line) Delete() {
 func (obj *Line) SetColor(col image.Color) {
 	obj.canvas.Atomically(func(flush FlushFunc) {
 		obj.raster.SetColor(col)
-		flush(obj.raster.Bbox(), false, &obj.raster)
+		flush(obj.raster.Bbox(), nil)
 	})
 }
 
@@ -262,22 +249,23 @@ func isincos2(x, y raster.Fixed) (isin, icos raster.Fixed) {
 
 type Slider struct {
 	backing Backing
+	value Value
 	Item
 	c      *Canvas
-	val    float
-	out    chan float
+	val    float64
 	box    ImageItem
 	button ImageItem
 }
 
 // A Slider shows a mouse-adjustable slider bar.
-// NewSlider returns the Slider item, and a channel
-// which can be read to get values of the slider
-// as they change. Values range from 0 to 1.
+// NewSlider returns the Slider item.
+// The value is used to set and get the current slider value;
+// its Type() should be float64; the slider's value is in the
+// range [0, 1].
 //
-func NewSlider(r draw.Rectangle, fg, bg image.Color) (obj *Slider, out <-chan float) {
+func NewSlider(r draw.Rectangle, fg, bg image.Color, value Value) (obj *Slider) {
 	obj = new(Slider)
-	obj.out = make(chan float)
+	obj.value = value
 	obj.c = NewCanvas(nil, draw.Green, r)
 	obj.box.r = r
 	obj.box.img = Box(r.Dx(), r.Dy(), image.ColorImage{bg}, 1, image.Black)
@@ -290,13 +278,15 @@ func NewSlider(r draw.Rectangle, fg, bg image.Color) (obj *Slider, out <-chan fl
 	obj.c.AddItem(&obj.box)
 	obj.c.AddItem(&obj.button)
 
+	go obj.listener()
+
 	obj.Item = obj.c
-	return obj, obj.out
+	return obj
 }
 
 const buttonWidth = 6
 
-func (obj *Slider) SetContainer(c *Canvas) {
+func (obj *Slider) SetContainer(c Backing) {
 	obj.backing = c
 }
 
@@ -304,32 +294,34 @@ func (obj *Slider) buttonRect() (r draw.Rectangle) {
 	r.Min.Y = obj.box.r.Min.Y
 	r.Max.Y = obj.box.r.Max.Y
 	p := obj.val
-	centre := int(p*float(obj.box.r.Max.X-obj.box.r.Min.X-buttonWidth)+0.5) + obj.box.r.Min.X + buttonWidth/2
+	centre := int(p*float64(obj.box.r.Max.X-obj.box.r.Min.X-buttonWidth)+0.5) + obj.box.r.Min.X + buttonWidth/2
 	r.Min.X = centre - buttonWidth/2
 	r.Max.X = centre + buttonWidth/2
 	return
 }
 
-// SetValue sets the current value of the Slider to v,
-// a value between 0 and 1.
-func (obj *Slider) SetValue(v float) {
-	obj.backing.Atomically(func(flush FlushFunc) {
-		if v > 1 {
-			v = 1
-		}
-		if v < 0 {
-			v = 0
-		}
-		obj.val = v
-		r := obj.button.r
-		obj.button.r = obj.buttonRect()
-		flush(r, false, nil)
-		flush(obj.button.r, false, nil)
-	})
+func (obj *Slider) listener() {
+	for x := range obj.value.Iter() {
+		v := x.(float64)
+		obj.backing.Atomically(func(flush FlushFunc) {
+			if v > 1 {
+				v = 1
+			}
+			if v < 0 {
+				v = 0
+			}
+			obj.val = v
+			r := obj.button.r
+			obj.button.r = obj.buttonRect()
+			flush(r, nil)
+			flush(obj.button.r, nil)
+		})
+		obj.backing.Flush()
+	}
 }
 
-func (obj *Slider) x2val(x int) float {
-	return float(x-(obj.box.r.Min.X+buttonWidth/2)) / float(obj.box.r.Dx()-buttonWidth)
+func (obj *Slider) x2val(x int) float64 {
+	return float64(x-(obj.box.r.Min.X+buttonWidth/2)) / float64(obj.box.r.Dx()-buttonWidth)
 }
 
 func (obj *Slider) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool {
@@ -339,9 +331,7 @@ func (obj *Slider) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bo
 	offset := 0
 	br := obj.buttonRect()
 	if !m.In(br) {
-		val := obj.x2val(m.X)
-		obj.SetValue(val)
-		f.Flush()
+		obj.value.Set(obj.x2val(m.X))
 	} else {
 		offset = m.X - (br.Min.X+br.Max.X)/2
 	}
@@ -349,9 +339,7 @@ func (obj *Slider) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bo
 	but := m.Buttons
 	for {
 		m = <-mc
-		obj.SetValue(obj.x2val(m.X - offset))
-		f.Flush()
-		obj.out <- obj.val
+		obj.value.Set(obj.x2val(m.X - offset))
 		if (m.Buttons & but) != but {
 			break
 		}

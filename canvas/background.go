@@ -45,26 +45,30 @@ func (b *Background) Height() int {
 
 func (b *Background) Atomically(f func(FlushFunc)) {
 	// could pre-allocate inside b if we cared.
-	flush := func(r draw.Rectangle, drawn bool, draw Drawer) {
-		if draw != b.item {
+	flush := func(r draw.Rectangle, drawn Drawer) {
+		if drawn != nil && drawn != b.item {
 			panic("flushed object not directly inside Background")
 		}
 		if !r.Canon().Eq(r) {
 			debugp("non canonical flushrect %v", r)
 			panic("oops background")
 		}
-		b.addFlush(r, drawn)
+		b.addFlush(r, drawn != nil)
 	}
 	b.lock.Lock()
 	defer b.lock.Unlock()
-	f(FlushFunc(flush))
+	f(flush)
 }
 
 // stolen from inferno's devdraw
 func (b *Background) addFlush(r draw.Rectangle, drawn bool) {
 	r = r.Clip(b.r)
 	if b.flushrect.Empty() {
-		if !drawn {
+		if drawn {
+			if b.imgflush != nil {
+				b.imgflush(r)
+			}
+		} else {
 			b.flushrect = r
 			b.waste = 0
 		}
@@ -73,9 +77,12 @@ func (b *Background) addFlush(r draw.Rectangle, drawn bool) {
 
 	// if the new segment doesn't overlap with the
 	// old segment and it has already been drawn,
-	// do nothing.
+	// do nothing except possible call the external flush.
 	overlaps := b.flushrect.Overlaps(r)
 	if !overlaps && drawn {
+		if b.imgflush != nil {
+			b.imgflush(r)
+		}
 		return
 	}
 	nbb := b.flushrect.Combine(r)
@@ -107,12 +114,14 @@ func (b *Background) addFlush(r draw.Rectangle, drawn bool) {
 }
 
 func (b *Background) flush() {
-	draw.DrawMask(b.img, b.flushrect, b.bg, b.flushrect.Min, nil, draw.ZP, draw.Src)
-	b.item.Draw(b.img, b.flushrect)
-	if b.imgflush != nil {
-		b.imgflush(b.flushrect)
+	if !b.flushrect.Empty() {
+		draw.DrawMask(b.img, b.flushrect, b.bg, b.flushrect.Min, nil, draw.ZP, draw.Src)
+		b.item.Draw(b.img, b.flushrect)
+		if b.imgflush != nil {
+			b.imgflush(b.flushrect)
+		}
+		b.flushrect = draw.ZR
 	}
-	b.flushrect = draw.ZR
 }
 
 func (b *Background) Flush() {
