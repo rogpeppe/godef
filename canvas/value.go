@@ -329,7 +329,7 @@ func Float2String(printf, scanf string) *Mirror {
 	var f float64
 	_, err := fmt.Sscanf(s, scanf, &f)
 	if err != nil || f != 0 {
-		panic(fmt.Sprintf("non-reversible format %#v<->%#v (got %#v), err %v", printf, scanf, err))
+		panic(fmt.Sprintf("non-reversible format %#v<->%#v (got %#v), err %v", printf, scanf, s, err))
 	}
 	return NewMirror(
 		func(f float64) (string, os.Error) {
