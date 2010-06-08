@@ -1,7 +1,7 @@
 package canvas
 
 import (
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"image"
 	"freetype-go.googlecode.com/hg/freetype/raster"
 )

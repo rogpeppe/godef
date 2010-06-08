@@ -6,7 +6,7 @@ package canvas
 
 import (
 	"container/list"
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"image"
 	"log"
 )
@@ -188,7 +188,7 @@ func (c *Canvas) Draw(dst *image.RGBA, clipr draw.Rectangle) {
 	clipr = clipr.Clip(c.r)
 	c.img = dst
 	if c.background != nil {
-		draw.DrawMask(dst, clipr, c.background, clipr.Min, nil, draw.ZP, draw.Src)
+		draw.Draw(dst, clipr, c.background, clipr.Min)
 	}
 	clipr = clipr.Clip(c.r)
 	for e := c.items.Front(); e != nil; e = e.Next() {
@@ -199,6 +199,59 @@ func (c *Canvas) Draw(dst *image.RGBA, clipr draw.Rectangle) {
 	}
 }
 
+func (c *Canvas) Raise(it, above Item) {
+	if it == above {
+		return
+	}
+	c.Atomically(func(flush FlushFunc) {
+		var ie, ae *list.Element
+		for e := c.items.Front(); e != nil; e = e.Next() {
+			switch e.Value.(Item) {
+			case it:
+				ie = e
+			case above:
+				ae = e
+			}
+		}
+		if ie != nil && (above == nil || ae != nil) {
+			c.items.Remove(ie)
+			if ae != nil { 
+				c.items.InsertAfter(it, ae)
+			}else{
+				c.items.PushBack(it)
+			}
+			flush(it.Bbox(), nil)
+		}
+	})
+}
+
+func (c *Canvas) Lower(it, below Item) {
+	if it == below {
+		return
+	}
+	c.Atomically(func(flush FlushFunc) {
+		var ie, ae *list.Element
+		for e := c.items.Front(); e != nil; e = e.Next() {
+			switch e.Value.(Item) {
+			case it:
+				ie = e
+			case below:
+				ae = e
+			}
+		}
+		if ie != nil && (below == nil || ae != nil) {
+			c.items.Remove(ie)
+			if ae != nil { 
+				c.items.InsertBefore(it, ae)
+			}else{
+				c.items.PushFront(it)
+			}
+			flush(it.Bbox(), nil)
+		}
+	})
+}
+
+
 // drawAbove draws only those items above it.
 //
 func (c *Canvas) drawAbove(it Item, clipr draw.Rectangle) {
@@ -206,6 +259,7 @@ func (c *Canvas) drawAbove(it Item, clipr draw.Rectangle) {
 	drawing := false
 	for e := c.items.Front(); e != nil; e = e.Next() {
 		if e.Value == nil {
+panic("nil value - can't happen?")
 			continue
 		}
 		item := e.Value.(Item)

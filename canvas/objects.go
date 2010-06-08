@@ -1,7 +1,7 @@
 package canvas
 
 import (
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"image"
 	"math"
 	"freetype-go.googlecode.com/hg/freetype/raster"
@@ -16,8 +16,8 @@ func Box(width, height int, col image.Image, border int, borderCol image.Image) 
 		border = 0
 	}
 	r := draw.Rect(0, 0, width, height)
-	draw.Draw(img, r.Inset(border), col, draw.ZP)
-	draw.Border(img, r, border, borderCol, draw.ZP)
+	draw.DrawMask(img, r.Inset(border), col, draw.ZP, nil, draw.ZP, draw.Src)
+	BorderOp(img, r, border, borderCol, draw.ZP, draw.Src)
 	return img
 }
 
@@ -266,7 +266,7 @@ type Slider struct {
 func NewSlider(r draw.Rectangle, fg, bg image.Color, value Value) (obj *Slider) {
 	obj = new(Slider)
 	obj.value = value
-	obj.c = NewCanvas(nil, draw.Green, r)
+	obj.c = NewCanvas(nil, nil, r)
 	obj.box.r = r
 	obj.box.img = Box(r.Dx(), r.Dy(), image.ColorImage{bg}, 1, image.Black)
 	obj.box.opaque = opaqueColor(bg)
@@ -274,7 +274,7 @@ func NewSlider(r draw.Rectangle, fg, bg image.Color, value Value) (obj *Slider) 
 	br := obj.buttonRect()
 	obj.button.r = br
 	obj.button.img = Box(br.Dx(), br.Dy(), image.ColorImage{fg}, 1, image.Black)
-	obj.button.opaque = opaqueColor(bg)
+	obj.button.opaque = opaqueColor(fg)
 	obj.c.AddItem(&obj.box)
 	obj.c.AddItem(&obj.button)
 
@@ -350,5 +350,32 @@ func (obj *Slider) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bo
 
 func opaqueColor(col image.Color) bool {
 	_, _, _, a := col.RGBA()
-	return a == 0xffffffff
+	return a == 0xffff
+}
+
+func DrawOp(dst draw.Image, r draw.Rectangle, src image.Image, sp draw.Point, op draw.Op) {
+	draw.DrawMask(dst, r, src, sp, nil, draw.ZP, op)
+}
+
+// Border aligns r.Min in dst with sp in src and then replaces pixels
+// in a w-pixel border around r in dst with the result of the Porter-Duff compositing
+// operation ``src over dst.''  If w is positive, the border extends w pixels inside r.
+// If w is negative, the border extends w pixels outside r.
+func BorderOp(dst draw.Image, r draw.Rectangle, w int, src image.Image, sp draw.Point, op draw.Op) {
+	i := w
+	if i > 0 {
+		// inside r
+		DrawOp(dst, draw.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+i), src, sp, op)                          // top
+		DrawOp(dst, draw.Rect(r.Min.X, r.Min.Y+i, r.Min.X+i, r.Max.Y-i), src, sp.Add(draw.Pt(0, i)), op)        // left
+		DrawOp(dst, draw.Rect(r.Max.X-i, r.Min.Y+i, r.Max.X, r.Max.Y-i), src, sp.Add(draw.Pt(r.Dx()-i, i)), op) // right
+		DrawOp(dst, draw.Rect(r.Min.X, r.Max.Y-i, r.Max.X, r.Max.Y), src, sp.Add(draw.Pt(0, r.Dy()-i)), op)     // bottom
+		return
+	}
+
+	// outside r;
+	i = -i
+	DrawOp(dst, draw.Rect(r.Min.X-i, r.Min.Y-i, r.Max.X+i, r.Min.Y), src, sp.Add(draw.Pt(-i, -i)), op) // top
+	DrawOp(dst, draw.Rect(r.Min.X-i, r.Min.Y, r.Min.X, r.Max.Y), src, sp.Add(draw.Pt(-i, 0)), op)      // left
+	DrawOp(dst, draw.Rect(r.Max.X, r.Min.Y, r.Max.X+i, r.Max.Y), src, sp.Add(draw.Pt(r.Dx(), 0)), op)  // right
+	DrawOp(dst, draw.Rect(r.Min.X-i, r.Max.Y, r.Max.X+i, r.Max.Y+i), src, sp.Add(draw.Pt(-i, 0)), op)  // bottom
 }

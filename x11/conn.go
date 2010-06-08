@@ -12,7 +12,7 @@ package x11
 
 import (
 	"bufio"
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"image"
 	"io"
 	"net"

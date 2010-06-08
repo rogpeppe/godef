@@ -2,7 +2,7 @@ package main
 
 import (
 	"rog-go.googlecode.com/hg/x11"
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"image"
 	"io/ioutil"
 	"fmt"
@@ -78,7 +78,7 @@ func main() {
 		log.Exitf("no window: %v", err)
 	}
 	screen := ctxt.Screen()
-	bg := canvas.NewBackground(screen.(*image.RGBA), draw.PaleBlueGreen, flushFunc(ctxt))
+	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
 	window = canvas.NewCanvas(bg, nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
 	bg.SetItem(window)
 	nballs := 0
@@ -94,8 +94,8 @@ func main() {
 
 	go sliderProc()
 
-	//	makeRect(draw.Rect(30, 30, 200, 100))
-	//	makeRect(draw.Rect(200, 200, 230, 230))
+	makeRect(draw.Rect(30, 30, 200, 100), draw.Red.SetAlpha(128))
+	makeRect(draw.Rect(150, 90, 230, 230), draw.Blue.SetAlpha(128))
 
 	window.Flush()
 
@@ -152,12 +152,12 @@ func main() {
 
 func sliderProc() {
 	val := canvas.NewValue(float64(0.0))
-	slider := canvas.NewSlider(draw.Rect(10, 10, 100, 40), draw.White, draw.Blue, val)
-	rval := canvas.Transform(val, canvas.UnitFloat2RangedFloat(0.001e9, 0.1e9))
-	window.AddItem(slider)
+	window.AddItem(canvas.NewSlider(draw.Rect(10, 10, 100, 40), draw.White, draw.Blue, val))
+	window.AddItem(canvas.NewSlider(draw.Rect(15, 35, 100, 70), draw.White, draw.Red.SetAlpha(128), val))
 	window.Flush()
+	rval := canvas.Transform(val, canvas.UnitFloat2RangedFloat(0.001e9, 0.1e9))
 	timeText := canvas.NewText(
-		draw.Pt(10, 50), canvas.N|canvas.W, "", defaultFont(), 12, canvas.Transform(rval, canvas.FloatMultiply(1e-6).Combine(canvas.Float2String("%6.2gms", "%gms"))))
+		draw.Pt(10, 80), canvas.N|canvas.W, "", defaultFont(), 12, canvas.Transform(rval, canvas.FloatMultiply(1e-6).Combine(canvas.Float2String("%6.2gms", "%gms"))))
 	window.AddItem(timeText)
 	for x := range rval.Iter() {
 		sleepTime = int64(x.(float64))
@@ -288,7 +288,7 @@ func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<- ball) {
 	avg.y /= float64(n)
 	var b ball
 	speed := math.Sqrt(avg.x*avg.x + avg.y*avg.y) // in pixels/ns
-	if speed < 3e-9 {
+	if speed < 10e-9 {
 		// a click with no drag starts a ball with random velocity.
 		b = randBall()
 		b.p = draw2realPoint(m0.Point)
@@ -309,11 +309,15 @@ func draw2realPoint(p draw.Point) realPoint {
 	return realPoint{float64(p.X), float64(p.Y)}
 }
 
-
-func makeRect(r draw.Rectangle) {
-	img := canvas.Box(r.Dx(), r.Dy(), image.Red, 1, image.Red)
-	item := canvas.NewImage(img, true, r.Min)
+func makeRect(r draw.Rectangle, col draw.Color) {
+	img := canvas.Box(r.Dx(), r.Dy(), col, 1, image.Black)
+	item := canvas.NewImage(img, opaqueColor(col), r.Min)
 	window.AddItem(canvas.Draggable(item))
+}
+
+func opaqueColor(col image.Color) bool {
+	_, _, _, a := col.RGBA()
+	return a == 0xffff
 }
 
 func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
@@ -358,6 +362,7 @@ func makeBall(b ball) Ball {
 	p := b.p.point().Sub(draw.Pt(ballSize/2, ballSize/2))
 	item := canvas.NewImage(img, true, p)
 	window.AddItem(item)
+	window.Lower(item, nil)
 	return Ball{item}
 }
 
