@@ -15,12 +15,12 @@ type dragger struct {
 }
 
 func Draggable(it MoveableItem) Item {
-	return dragger{it, it}
+	return &dragger{it, it}
 }
 
-var _ HandlerItem = dragger{}
+var _ HandlerItem = &dragger{}
 
-func (d dragger) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool {
+func (d *dragger) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool {
 	if m.Buttons&1 == 0 {
 		return false
 	}

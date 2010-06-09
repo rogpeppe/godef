@@ -131,15 +131,16 @@ again:
 			case m.Buttons&1 != 0:
 				count := 0
 				for c := range clicker(m, mc) {
+					count++
 					if c.done {
 						m = c.m
 						break
 					}
-					count++
 				}
+fmt.Printf("clicked %d\n", count)
 				if count > 1 {
-//					go handleMouse(m, mc, mcc, rasterMaker)
-//					mc = nil
+					go handleMouse(m, mc, mcc, rasterMaker)
+					mc = nil
 				}else if m.Buttons != 0 {
 					go handleMouse(m, mc, mcc, lineMaker)
 					mc = nil

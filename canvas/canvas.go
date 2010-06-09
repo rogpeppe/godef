@@ -5,6 +5,7 @@
 package canvas
 
 import (
+"fmt"
 	"container/list"
 	"exp/draw"
 	"image"
@@ -173,15 +174,12 @@ func (c *Canvas) HandleMouse(_ Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool
 }
 
 func (c *Canvas) HitTest(p draw.Point) (hit bool) {
-	c.Atomically(func(_ FlushFunc) {
-		for e := c.items.Back(); e != nil; e = e.Prev() {
-			if e.Value.(Item).HitTest(p) {
-				hit = true
-				break
-			}
+	for e := c.items.Back(); e != nil; e = e.Prev() {
+		if e.Value.(Item).HitTest(p) {
+			return true
 		}
-	})
-	return
+	}
+	return false
 }
 
 func (c *Canvas) Draw(dst *image.RGBA, clipr draw.Rectangle) {
@@ -336,7 +334,8 @@ func (c *Canvas) AddItem(item Item) {
 		c.items.PushBack(item)
 		r := item.Bbox()
 		if item.Opaque() && c.img != nil {
-			item.Draw(c.img, r)
+fmt.Printf("drawing %T, bbox %v; c.r %v\n", c.img, r, c.r)
+			item.Draw(c.img, r.Clip(c.r))
 			flush(r, item)
 		} else {
 			flush(r, nil)
