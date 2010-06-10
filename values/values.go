@@ -1,3 +1,9 @@
+// The values package provides multiple-writer,
+// multiple-listener access to changing values.
+// It also provides (through the Transform function
+// and the Lens type) the facility to have multiple,
+// mutually updating views of the same value.
+//
 package values
 
 import (
@@ -70,7 +76,6 @@ func NewValue(initial interface{}) Value {
 func (v *value) Type() reflect.Type {
 	return v.vtype
 }
-
 func (v *value) Set(val interface{}) os.Error {
 	if v.vtype != nil && reflect.Typeof(val) != v.vtype {
 		panic(fmt.Sprintf("wrong type set on Value[%v]: %T", v.vtype, val))

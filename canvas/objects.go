@@ -22,16 +22,16 @@ func Box(width, height int, col image.Image, border int, borderCol image.Image) 
 	return img
 }
 
-// An ImageItem is an Item that uses an image
+// An imageItem is an Item that uses an image
 // to draw itself. It is intended to be used as a building
 // block for other Items.
-type ImageItem struct {
+type imageItem struct {
 	r      draw.Rectangle
 	img    image.Image
 	opaque bool
 }
 
-func (obj *ImageItem) Draw(dst *image.RGBA, clip draw.Rectangle) {
+func (obj *imageItem) Draw(dst *image.RGBA, clip draw.Rectangle) {
 	dr := obj.r.Clip(clip)
 	sp := dr.Min.Sub(obj.r.Min)
 	op := draw.Over
@@ -41,18 +41,18 @@ func (obj *ImageItem) Draw(dst *image.RGBA, clip draw.Rectangle) {
 	draw.DrawMask(dst, dr, obj.img, sp, nil, draw.ZP, op)
 }
 
-func (obj *ImageItem) SetContainer(c Backing) {
+func (obj *imageItem) SetContainer(c Backing) {
 }
 
-func (obj *ImageItem) Opaque() bool {
+func (obj *imageItem) Opaque() bool {
 	return obj.opaque
 }
 
-func (obj *ImageItem) Bbox() draw.Rectangle {
+func (obj *imageItem) Bbox() draw.Rectangle {
 	return obj.r
 }
 
-func (obj *ImageItem) HitTest(p draw.Point) bool {
+func (obj *imageItem) HitTest(p draw.Point) bool {
 	return p.In(obj.r)
 }
 
@@ -61,7 +61,7 @@ func (obj *ImageItem) HitTest(p draw.Point) bool {
 //
 type Image struct {
 	Item
-	item   ImageItem // access to the fields of the ImageItem
+	item   imageItem // access to the fields of the imageItem
 	backing Backing
 }
 
@@ -256,8 +256,8 @@ type Slider struct {
 	Item
 	c      *Canvas
 	val    float64
-	box    ImageItem
-	button ImageItem
+	box    imageItem
+	button imageItem
 }
 
 // A Slider shows a mouse-adjustable slider bar.

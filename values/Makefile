@@ -4,6 +4,6 @@ TARG=rog-go.googlecode.com/hg/values
 GOFILES=\
 	lens.go\
 	lenses.go\
-	value.go\
+	values.go\
 
 include $(GOROOT)/src/Make.pkg
