@@ -113,7 +113,7 @@ func main() {
 				return
 			case m.Buttons&1 != 0:
 				go handleMouse(m, mc, mcc, lineMaker)
-					mc = nil
+				mc = nil
 			case m.Buttons&2 != 0:
 				go handleMouse(m, mc, mcc, func(m draw.Mouse, mc <-chan draw.Mouse) {
 					ballMaker(m, mc, mkball)
@@ -134,12 +134,11 @@ func main() {
 	}
 }
 
+// this will go.
 type RectFlusherContext interface {
 	draw.Context
 	FlushImageRect(r draw.Rectangle)
 }
-
-// this will go.
 func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
 	if fctxt, ok := ctxt.(RectFlusherContext); ok {
 		return func(r draw.Rectangle) {
@@ -253,8 +252,8 @@ const ClickDist = 4
 const ClickTime = 0.3e9
 
 type Click struct {
-	done bool			// clicker is done. if m.Buttons!=0, user is still dragging.
-	m draw.Mouse		// mouse event at start of click
+	done bool       // clicker is done. if m.Buttons!=0, user is still dragging.
+	m    draw.Mouse // mouse event at start of click
 }
 
 // clicker handles possibly multiple click mouse actions.
@@ -274,7 +273,7 @@ type Click struct {
 // actually signifies the second click - the caller of
 // clicker should have processed the first.
 //
-func clicker(m0 draw.Mouse, mc <-chan draw.Mouse) (<-chan Click) {
+func clicker(m0 draw.Mouse, mc <-chan draw.Mouse) <-chan Click {
 	c := make(chan Click)
 	go func() {
 		m := m0
@@ -286,17 +285,17 @@ func clicker(m0 draw.Mouse, mc <-chan draw.Mouse) (<-chan Click) {
 					break
 				}
 				d := m.Sub(m0.Point)
-				if m.Nsec - m0.Nsec > ClickTime || d.X * d.X + d.Y * d.Y > ClickDist {
+				if m.Nsec-m0.Nsec > ClickTime || d.X*d.X+d.Y*d.Y > ClickDist {
 					c <- Click{true, m0}
 					close(c)
 					return
 				}
 			}
-	
+
 			// wait for button down or delta or time to move outside limit.
 			for m = range mc {
 				d := m.Sub(m0.Point)
-				if m.Nsec - m0.Nsec > ClickTime || d.X * d.X + d.Y * d.Y > ClickDist {
+				if m.Nsec-m0.Nsec > ClickTime || d.X*d.X+d.Y*d.Y > ClickDist {
 					c <- Click{true, m}
 					close(c)
 					return

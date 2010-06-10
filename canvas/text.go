@@ -177,13 +177,13 @@ func anchor(r draw.Rectangle, flags Anchor, p draw.Point) draw.Rectangle {
 	switch flags & (E | W) {
 	case E:
 		dp.X = r.Dx()
-	case E | W:
+	case E | W, 0:
 		dp.X = r.Dx() / 2
 	}
 	switch flags & (N | S) {
 	case S:
 		dp.Y = r.Dy()
-	case S | N:
+	case S | N, 0:
 		dp.Y = r.Dy() / 2
 	}
 	return r.Add(p.Sub(r.Min).Sub(dp))

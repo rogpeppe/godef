@@ -126,7 +126,7 @@ func (obj *Polygon) SetContainer(c Backing) {
 	obj.canvas = c
 	if c != nil {
 		obj.raster.SetBounds(c.Width(), c.Height())
-		obj.rasterize()
+		obj.makeOutline()
 	}
 }
 
@@ -140,13 +140,13 @@ func (obj *Polygon) SetCentre(cp draw.Point) {
 			p.X += rdelta.X
 			p.Y += rdelta.Y
 		}
-		obj.rasterize()
+		obj.makeOutline()
 		flush(r, nil)
 		flush(obj.raster.Bbox(), nil)
 	})
 }
 
-func (obj *Polygon) rasterize() {
+func (obj *Polygon) makeOutline() {
 	obj.raster.Clear()
 	if len(obj.points) > 0 {
 		obj.raster.Start(obj.points[0])
@@ -177,7 +177,7 @@ func NewLine(col image.Color, p0, p1 draw.Point, width float) *Line {
 	obj.width = float2fix(width)
 	obj.raster.SetColor(col)
 	obj.Item = &obj.raster
-	obj.rasterize()
+	obj.makeOutline()
 	return obj
 }
 
@@ -185,11 +185,11 @@ func (obj *Line) SetContainer(c Backing) {
 	obj.canvas = c
 	if c != nil {
 		obj.raster.SetBounds(c.Width(), c.Height())
-		obj.rasterize()
+		obj.makeOutline()
 	}
 }
 
-func (obj *Line) rasterize() {
+func (obj *Line) makeOutline() {
 	obj.raster.Clear()
 	sin, cos := isincos2(obj.p1.X-obj.p0.X, obj.p1.Y-obj.p0.Y)
 	dx := (cos * obj.width) / (2 * fixScale)
@@ -225,7 +225,7 @@ func (obj *Line) SetEndPoints(p0, p1 draw.Point) {
 		r := obj.raster.Bbox()
 		obj.p0 = pixel2fixPoint(p0)
 		obj.p1 = pixel2fixPoint(p1)
-		obj.rasterize()
+		obj.makeOutline()
 		flush(r, nil)
 		flush(obj.raster.Bbox(), nil)
 	})
@@ -347,7 +347,6 @@ func (obj *Slider) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bo
 	}
 	return true
 }
-
 
 func opaqueColor(col image.Color) bool {
 	_, _, _, a := col.RGBA()
