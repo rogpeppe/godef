@@ -6,6 +6,7 @@ import (
 	"log"
 	"image"
 	"rog-go.googlecode.com/hg/canvas"
+	"rog-go.googlecode.com/hg/values"
 	"freetype-go.googlecode.com/hg/freetype/raster"
 )
 
@@ -81,8 +82,8 @@ type ControlPoint struct {
 	backing  canvas.Backing
 	p        draw.Point
 	col      draw.Color
-	value    canvas.Value // Point Value
-	colValue canvas.Value // draw.Color Value
+	value    values.Value // Point Value
+	colValue values.Value // draw.Color Value
 }
 
 type moveEvent struct {
@@ -96,7 +97,7 @@ type rpoint struct {
 }
 
 type rasterPlay struct {
-	colValue canvas.Value
+	colValue values.Value
 	canvas.HandlerItem
 	c      *canvas.Canvas
 	points []rpoint
@@ -104,7 +105,7 @@ type rasterPlay struct {
 	raster canvas.RasterItem
 }
 
-func NewControlPoint(value, colValue canvas.Value) canvas.Item {
+func NewControlPoint(value, colValue values.Value) canvas.Item {
 	cp := new(ControlPoint)
 	cp.value = value
 	cp.colValue = colValue
@@ -170,7 +171,7 @@ func (cp *ControlPoint) Draw(dst *image.RGBA, clipr draw.Rectangle) {
 }
 
 func (obj *rasterPlay) AddPoint(new bool, p draw.Point) {
-	value := canvas.NewValue(p)
+	value := values.NewValue(p)
 	cp := NewControlPoint(value, obj.colValue)
 	n := len(obj.points)
 	obj.points = obj.points[0 : n+1]
@@ -251,7 +252,7 @@ func newRasterPlay() *rasterPlay {
 	obj.moved = make(chan moveEvent)
 	obj.raster.SetColor(draw.Color(0x808080ff).SetAlpha(0x80))
 	obj.c = canvas.NewCanvas(cvs, nil, cvs.Bbox())
-	obj.colValue = canvas.NewValue(draw.Black)
+	obj.colValue = values.NewValue(draw.Black)
 	obj.HandlerItem = obj.c
 	obj.c.AddItem(&obj.raster)
 	go obj.listener()

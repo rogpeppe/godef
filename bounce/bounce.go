@@ -12,16 +12,14 @@ import (
 	"rand"
 	"time"
 	"rog-go.googlecode.com/hg/canvas"
+	"rog-go.googlecode.com/hg/values"
 	"freetype-go.googlecode.com/hg/freetype/truetype"
 )
 
 // to add:
-// Rectangle.Eq()
 // modifications for mac os X11
 // should it crash if Draw is passed a non-canonical rectangle?
 // it's a pity that image.RGBAColor isn't a draw.Color
-
-// os.Error("heelo") gives internal compiler error
 
 type line struct {
 	obj    *canvas.Line
@@ -109,8 +107,6 @@ func main() {
 				break
 			}
 			switch {
-			case m.Buttons&4 != 0:
-				return
 			case m.Buttons&1 != 0:
 				go handleMouse(m, mc, mcc, lineMaker)
 				mc = nil
@@ -151,13 +147,13 @@ func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
 }
 
 func sliderProc() {
-	val := canvas.NewValue(float64(0.0))
+	val := values.NewValue(float64(0.0))
 	window.AddItem(canvas.NewSlider(draw.Rect(10, 10, 100, 40), draw.White, draw.Blue, val))
 	window.AddItem(canvas.NewSlider(draw.Rect(15, 35, 100, 70), draw.White, draw.Red.SetAlpha(128), val))
 	window.Flush()
-	rval := canvas.Transform(val, canvas.UnitFloat2RangedFloat(0.001e9, 0.1e9))
+	rval := values.Transform(val, values.UnitFloat2RangedFloat(0.001e9, 0.1e9))
 	timeText := canvas.NewText(
-		draw.Pt(10, 80), canvas.N|canvas.W, "", defaultFont(), 12, canvas.Transform(rval, canvas.FloatMultiply(1e-6).Combine(canvas.Float2String("%6.2gms", "%gms"))))
+		draw.Pt(10, 80), canvas.N|canvas.W, "", defaultFont(), 12, values.Transform(rval, values.FloatMultiply(1e-6).Combine(values.Float2String("%6.2gms", "%gms"))))
 	window.AddItem(timeText)
 	for x := range rval.Iter() {
 		sleepTime = int64(x.(float64))
@@ -311,14 +307,6 @@ func clicker(m0 draw.Mouse, mc <-chan draw.Mouse) <-chan Click {
 		close(c)
 	}()
 	return c
-}
-
-
-func abs(x float64) float64 {
-	if x < 0 {
-		return -x
-	}
-	return x
 }
 
 func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<- ball) {

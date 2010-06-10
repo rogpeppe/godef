@@ -5,6 +5,7 @@ import (
 	"image"
 	"math"
 	"freetype-go.googlecode.com/hg/freetype/raster"
+	"rog-go.googlecode.com/hg/values"
 )
 
 // Box creates a rectangular image of the given size, filled with the given colour,
@@ -250,7 +251,7 @@ func isincos2(x, y raster.Fixed) (isin, icos raster.Fixed) {
 
 type Slider struct {
 	backing Backing
-	value Value
+	value values.Value
 	Item
 	c      *Canvas
 	val    float64
@@ -264,7 +265,7 @@ type Slider struct {
 // its Type() should be float64; the slider's value is in the
 // range [0, 1].
 //
-func NewSlider(r draw.Rectangle, fg, bg image.Color, value Value) (obj *Slider) {
+func NewSlider(r draw.Rectangle, fg, bg image.Color, value values.Value) (obj *Slider) {
 	obj = new(Slider)
 	obj.value = value
 	obj.c = NewCanvas(nil, nil, r)

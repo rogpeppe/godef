@@ -6,6 +6,7 @@ import (
 	"freetype-go.googlecode.com/hg/freetype"
 	"freetype-go.googlecode.com/hg/freetype/raster"
 	"freetype-go.googlecode.com/hg/freetype/truetype"
+	"rog-go.googlecode.com/hg/values"
 )
 
 const (
@@ -68,14 +69,14 @@ type Text struct {
 	p      draw.Point
 	anchor Anchor
 	canvas Backing
-	value Value
+	value values.Value
 }
 
 // NewText creates a new item to display a line of text.
 // If val is non-nil, it should be a string-typed Value,
 // and the Value's text will be displayed instead of s.
 //
-func NewText(p draw.Point, where Anchor, s string, font *truetype.Font, size float, val Value) *Text {
+func NewText(p draw.Point, where Anchor, s string, font *truetype.Font, size float, val values.Value) *Text {
 	t := new(Text)
 	t.item.Init()
 	t.item.SetFont(font)

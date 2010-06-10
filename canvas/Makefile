@@ -7,7 +7,6 @@ GOFILES=\
 	objects.go\
 	raster.go\
 	text.go\
-	value.go\
 	fanciful.go\
 
 include $(GOROOT)/src/Make.pkg
