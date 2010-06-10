@@ -115,6 +115,8 @@ func main() {
 					ballMaker(m, mc, mkball)
 				})
 				mc = nil
+			case m.Buttons&4 != 0:
+				delball <- true
 			}
 		case k := <-kc:
 			fmt.Printf("got key %c (%d)\n", k, k)
@@ -402,13 +404,15 @@ func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
 			// delete a random ball
 			if nballs > 0 {
 				ctl <- nil
+				nballs--
+				ballcountText.SetText(fmt.Sprintf("%d balls", nballs))
 			}
 		}
 	}
 }
 
 type Ball struct {
-	*canvas.Image
+	item *canvas.Image
 }
 
 func makeBall(b ball) Ball {
@@ -420,9 +424,9 @@ func makeBall(b ball) Ball {
 	return Ball{item}
 }
 
-func (obj *Ball) Move(p realPoint) {
+func (obj *Ball) SetCentre(p realPoint) {
 	bp := draw.Point{round(p.x), round(p.y)}.Sub(draw.Pt(ballSize/2, ballSize/2))
-	obj.Image.SetMinPoint(bp)
+	obj.item.SetMinPoint(bp)
 }
 
 const large = 1000000
@@ -448,7 +452,8 @@ loop:
 		}
 		if dist == large {
 			fmt.Printf("no intersection!\n")
-			window.Delete(obj)
+			window.Delete(obj.item)
+			window.Flush()
 			for {
 				reply := <-c
 				if reply == nil {
@@ -469,7 +474,7 @@ loop:
 		for {
 			s := float64(t) * speed
 			currp := realPoint{b.p.x + s*b.v.x, b.p.y + s*b.v.y}
-			obj.Move(currp)
+			obj.SetCentre(currp)
 			window.Flush()
 			if lineVersion > version {
 				b.p, hitline, version = currp, oldline, lineVersion
@@ -477,8 +482,7 @@ loop:
 			}
 			if reply, ok := <-c; ok {
 				if reply == nil {
-					window.Delete(obj)
-					fmt.Printf("deleted ball\n")
+					window.Delete(obj.item)
 					window.Flush()
 					return
 				}

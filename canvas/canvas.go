@@ -278,6 +278,8 @@ func (c *Canvas) Delete(it Item) {
 	})
 	if removed {
 		it.SetContainer(nil)
+	}else{
+		log.Stderrf("item %T not removed", it)
 	}
 }
 
