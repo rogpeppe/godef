@@ -2,7 +2,7 @@
 // for managing independently updating objects
 // inside a graphics window.
 //
-// The principle type is Canvas, which displays a
+// The principal type is Canvas, which displays a
 // z-ordered set of objects. New objects may be added,
 // deleted and change their appearance: the Canvas 
 // manages any necessary re-drawing.

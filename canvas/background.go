@@ -6,6 +6,9 @@ import (
 	"sync"
 )
 
+// A Background is the base layer on which other
+// objects can be layered. It implements the Backing
+// interface and displays a single object only.
 type Background struct {
 	lock     sync.Mutex
 	r        draw.Rectangle // overall rectangle (always origin 0, 0)
@@ -18,6 +21,12 @@ type Background struct {
 	waste     int
 }
 
+// NewBackground creates a new Background object that
+// draws to img, and uses bg (which should be opaque)
+// as an eraser. The flush function, if non-nil, will be called to
+// whenever changes are to be made visible externally
+// (for example when Flush() is called.
+//
 func NewBackground(img *image.RGBA, bg image.Image, flush func(r draw.Rectangle)) *Background {
 	r := draw.Rect(0, 0, img.Width(), img.Height())
 	return &Background{
@@ -29,13 +38,17 @@ func NewBackground(img *image.RGBA, bg image.Image, flush func(r draw.Rectangle)
 	}
 }
 
+// SetItem sets the item to draw on top of the background.
+//
 func (b *Background) SetItem(item Drawer) {
 	b.lock.Lock()
 	b.item = item
 	b.flushrect = b.r
 	b.waste = 0
 	b.lock.Unlock()
-	b.item.SetContainer(b)
+	if item != nil {
+		b.item.SetContainer(b)
+	}
 }
 
 func (b *Background) Width() int {
@@ -127,6 +140,8 @@ func (b *Background) flush() {
 	}
 }
 
+// Flush flushes all pending changes, and makes them visible.
+//
 func (b *Background) Flush() {
 	b.lock.Lock()
 	b.flush()
