@@ -104,7 +104,8 @@ func (t *Text) SetContainer(c Backing) {
 	t.canvas = c
 }
 
-func (t *Text) Move(delta draw.Point) {
+func (t *Text) SetCentre(cp draw.Point) {
+	delta := cp.Sub(centre(t.Bbox()))
 	t.SetPoint(t.p.Add(delta))
 }
 

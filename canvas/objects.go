@@ -94,8 +94,8 @@ func (obj *Image) SetMinPoint(p draw.Point) {
 	})
 }
 
-func (obj *Image) Move(delta draw.Point) {
-	obj.SetMinPoint(obj.item.r.Min.Add(delta))
+func (obj *Image) SetCentre(p draw.Point) {
+	obj.SetMinPoint(p.Sub(centreDist(obj.Bbox())))
 }
 
 // A Polygon represents a filled polygon.
@@ -130,9 +130,10 @@ func (obj *Polygon) SetContainer(c Backing) {
 	}
 }
 
-func (obj *Polygon) Move(delta draw.Point) {
+func (obj *Polygon) SetCentre(cp draw.Point) {
 	obj.canvas.Atomically(func(flush FlushFunc) {
 		r := obj.raster.Bbox()
+		delta := cp.Sub(centre(r))
 		rdelta := pixel2fixPoint(delta)
 		for i := range obj.points {
 			p := &obj.points[i]
@@ -210,8 +211,8 @@ func (obj *Line) rasterize() {
 	obj.raster.Add1(p0)
 	obj.raster.CalcBbox()
 }
-
-func (obj *Line) Move(delta draw.Point) {
+func (obj *Line) SetCentre(cp draw.Point) {
+	delta := cp.Sub(centre(obj.Bbox()))
 	p0 := fix2pixelPoint(obj.p0)
 	p1 := fix2pixelPoint(obj.p1)
 	obj.SetEndPoints(p0.Add(delta), p1.Add(delta))
@@ -378,4 +379,12 @@ func BorderOp(dst draw.Image, r draw.Rectangle, w int, src image.Image, sp draw.
 	DrawOp(dst, draw.Rect(r.Min.X-i, r.Min.Y, r.Min.X, r.Max.Y), src, sp.Add(draw.Pt(-i, 0)), op)      // left
 	DrawOp(dst, draw.Rect(r.Max.X, r.Min.Y, r.Max.X+i, r.Max.Y), src, sp.Add(draw.Pt(r.Dx(), 0)), op)  // right
 	DrawOp(dst, draw.Rect(r.Min.X-i, r.Max.Y, r.Max.X+i, r.Max.Y+i), src, sp.Add(draw.Pt(-i, 0)), op)  // bottom
+}
+
+func centreDist(r draw.Rectangle) draw.Point {
+	return draw.Pt(r.Dx() / 2, r.Dy() / 2)
+}
+
+func centre(r draw.Rectangle) draw.Point {
+	return draw.Pt((r.Min.X + r.Max.X) / 2, (r.Min.Y + r.Max.Y) / 2)
 }

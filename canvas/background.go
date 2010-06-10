@@ -19,10 +19,12 @@ type Background struct {
 }
 
 func NewBackground(img *image.RGBA, bg image.Image, flush func(r draw.Rectangle)) *Background {
+	r := draw.Rect(0, 0, img.Width(), img.Height())
 	return &Background{
 		img:      img,
 		bg:       bg,
-		r:        draw.Rect(0, 0, img.Width(), img.Height()),
+		r:        r,
+		flushrect: r,
 		imgflush: flush,
 	}
 }

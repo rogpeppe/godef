@@ -5,11 +5,11 @@
 package canvas
 
 import (
-"fmt"
 	"container/list"
 	"exp/draw"
 	"image"
 	"log"
+	"sync"
 )
 
 type Flusher interface {
@@ -147,7 +147,7 @@ func (c *Canvas) Bbox() draw.Rectangle {
 }
 
 func (c *Canvas) Flush() {
-	if c.backing != nil {
+	if c != nil && c.backing != nil {
 		c.backing.Flush()
 	}
 }
@@ -299,7 +299,7 @@ func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
 	return
 }
 
-
+var globalLock sync.Mutex
 // Atomically calls f, which can then make changes to
 // the appearance of items in the canvas.
 // See the Backing interface for details
@@ -307,8 +307,9 @@ func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
 func (c *Canvas) Atomically(f func(FlushFunc)) {
 	if c == nil || c.backing == nil {
 		// if an object isn't inside a canvas, then
-		// just perform the action anyway,
-		// as atomicity doesn't matter then.
+		// perform the action with the global lock.
+		globalLock.Lock()
+		defer globalLock.Unlock()
 		f(func(_ draw.Rectangle, _ Drawer) {})
 		return
 	}
@@ -334,7 +335,6 @@ func (c *Canvas) AddItem(item Item) {
 		c.items.PushBack(item)
 		r := item.Bbox()
 		if item.Opaque() && c.img != nil {
-fmt.Printf("drawing %T, bbox %v; c.r %v\n", c.img, r, c.r)
 			item.Draw(c.img, r.Clip(c.r))
 			flush(r, item)
 		} else {

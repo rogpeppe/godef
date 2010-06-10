@@ -6,7 +6,7 @@ import (
 
 type MoveableItem interface {
 	Item
-	Move(delta draw.Point)
+	SetCentre(p draw.Point)
 }
 
 type dragger struct {
@@ -24,14 +24,12 @@ func (d *dragger) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) boo
 	if m.Buttons&1 == 0 {
 		return false
 	}
-	p := m.Point
+	delta := centre(d.it.Bbox()).Sub(m.Point)
 	but := m.Buttons
 	for {
 		m = <-mc
-		p = m.Sub(p)
-		d.it.Move(p)
+		d.it.SetCentre(m.Add(delta))
 		f.Flush()
-		p = m.Point
 		if (m.Buttons & but) != but {
 			break
 		}

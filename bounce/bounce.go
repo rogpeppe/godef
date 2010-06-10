@@ -23,11 +23,6 @@ import (
 
 // os.Error("heelo") gives internal compiler error
 
-type RectFlusherContext interface {
-	draw.Context
-	FlushImageRect(r draw.Rectangle)
-}
-
 type line struct {
 	obj    *canvas.Line
 	p0, p1 draw.Point
@@ -46,17 +41,6 @@ type ball struct {
 type lineList struct {
 	line line
 	next *lineList
-}
-
-func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
-	if fctxt, ok := ctxt.(RectFlusherContext); ok {
-		return func(r draw.Rectangle) {
-			fctxt.FlushImageRect(r)
-		}
-	}
-	return func(_ draw.Rectangle) {
-		ctxt.FlushImage()
-	}
 }
 
 var currtime int64
@@ -118,7 +102,6 @@ func main() {
 			fmt.Printf("quitting\n")
 			return
 		case m := <-mc:
-again:
 			if m.Buttons == 0 {
 				break
 			}
@@ -129,22 +112,8 @@ again:
 			case m.Buttons&4 != 0:
 				return
 			case m.Buttons&1 != 0:
-				count := 0
-				for c := range clicker(m, mc) {
-					count++
-					if c.done {
-						m = c.m
-						break
-					}
-				}
-fmt.Printf("clicked %d\n", count)
-				if count > 1 {
-					go handleMouse(m, mc, mcc, rasterMaker)
+				go handleMouse(m, mc, mcc, lineMaker)
 					mc = nil
-				}else if m.Buttons != 0 {
-					go handleMouse(m, mc, mcc, lineMaker)
-					mc = nil
-				}
 			case m.Buttons&2 != 0:
 				go handleMouse(m, mc, mcc, func(m draw.Mouse, mc <-chan draw.Mouse) {
 					ballMaker(m, mc, mkball)
@@ -162,6 +131,23 @@ fmt.Printf("clicked %d\n", count)
 		case mc = <-mcc:
 			break
 		}
+	}
+}
+
+type RectFlusherContext interface {
+	draw.Context
+	FlushImageRect(r draw.Rectangle)
+}
+
+// this will go.
+func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
+	if fctxt, ok := ctxt.(RectFlusherContext); ok {
+		return func(r draw.Rectangle) {
+			fctxt.FlushImageRect(r)
+		}
+	}
+	return func(_ draw.Rectangle) {
+		ctxt.FlushImage()
 	}
 }
 

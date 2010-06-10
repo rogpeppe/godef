@@ -1,7 +1,7 @@
 include $(GOROOT)/src/Make.$(GOARCH)
 
-TARG=bounce
+TARG=shape
 GOFILES=\
-	bounce.go\
+	shape.go\
 
 include $(GOROOT)/src/Make.cmd
