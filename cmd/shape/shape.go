@@ -20,7 +20,7 @@ func main() {
 	screen := ctxt.Screen()
 
 	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
-	cvs = canvas.NewCanvas(bg, nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
+	cvs = canvas.NewCanvas(nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
 	bg.SetItem(cvs)
 	qc := ctxt.QuitChan()
 	kc := ctxt.KeyboardChan()
@@ -251,7 +251,7 @@ func newRasterPlay() *rasterPlay {
 	obj.points = make([]rpoint, 0, 100) // expansion later
 	obj.moved = make(chan moveEvent)
 	obj.raster.SetColor(draw.Color(0x808080ff).SetAlpha(0x80))
-	obj.c = canvas.NewCanvas(cvs, nil, cvs.Bbox())
+	obj.c = canvas.NewCanvas(nil, cvs.Bbox())
 	obj.colValue = values.NewValue(draw.Black)
 	obj.HandlerItem = obj.c
 	obj.c.AddItem(&obj.raster)

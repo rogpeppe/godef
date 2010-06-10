@@ -62,7 +62,7 @@ func (obj *ImageItem) HitTest(p draw.Point) bool {
 type Image struct {
 	Item
 	item   ImageItem // access to the fields of the ImageItem
-	canvas Backing
+	backing Backing
 }
 
 // Image returns a new Image which will be drawn using img,
@@ -78,7 +78,7 @@ func NewImage(img image.Image, opaque bool, p draw.Point) *Image {
 }
 
 func (obj *Image) SetContainer(c Backing) {
-	obj.canvas = c
+	obj.backing = c
 }
 
 // SetMinPoint moves the image's upper left corner to p.
@@ -87,7 +87,7 @@ func (obj *Image) SetMinPoint(p draw.Point) {
 	if p.Eq(obj.item.r.Min) {
 		return
 	}
-	obj.canvas.Atomically(func(flush FlushFunc) {
+	obj.backing.Atomically(func(flush FlushFunc) {
 		r := obj.item.r
 		obj.item.r = r.Add(p.Sub(r.Min))
 		flush(r, nil)
@@ -104,7 +104,7 @@ func (obj *Image) SetCentre(p draw.Point) {
 type Polygon struct {
 	Item
 	raster RasterItem
-	canvas Backing
+	backing Backing
 	points []raster.Point
 }
 
@@ -124,7 +124,7 @@ func NewPolygon(col image.Color, points []draw.Point) *Polygon {
 }
 
 func (obj *Polygon) SetContainer(c Backing) {
-	obj.canvas = c
+	obj.backing = c
 	if c != nil {
 		obj.raster.SetBounds(c.Width(), c.Height())
 		obj.makeOutline()
@@ -132,7 +132,7 @@ func (obj *Polygon) SetContainer(c Backing) {
 }
 
 func (obj *Polygon) SetCentre(cp draw.Point) {
-	obj.canvas.Atomically(func(flush FlushFunc) {
+	obj.backing.Atomically(func(flush FlushFunc) {
 		r := obj.raster.Bbox()
 		delta := cp.Sub(centre(r))
 		rdelta := pixel2fixPoint(delta)
@@ -163,7 +163,7 @@ func (obj *Polygon) makeOutline() {
 type Line struct {
 	Item
 	raster RasterItem
-	canvas Backing
+	backing Backing
 	p0, p1 raster.Point
 	width  raster.Fixed
 }
@@ -182,10 +182,10 @@ func NewLine(col image.Color, p0, p1 draw.Point, width float) *Line {
 	return obj
 }
 
-func (obj *Line) SetContainer(c Backing) {
-	obj.canvas = c
-	if c != nil {
-		obj.raster.SetBounds(c.Width(), c.Height())
+func (obj *Line) SetContainer(b Backing) {
+	obj.backing = b
+	if b != nil {
+		obj.raster.SetBounds(b.Width(), b.Height())
 		obj.makeOutline()
 	}
 }
@@ -212,6 +212,7 @@ func (obj *Line) makeOutline() {
 	obj.raster.Add1(p0)
 	obj.raster.CalcBbox()
 }
+
 func (obj *Line) SetCentre(cp draw.Point) {
 	delta := cp.Sub(centre(obj.Bbox()))
 	p0 := fix2pixelPoint(obj.p0)
@@ -222,7 +223,7 @@ func (obj *Line) SetCentre(cp draw.Point) {
 // SetEndPoints changes the end coordinates of the Line.
 //
 func (obj *Line) SetEndPoints(p0, p1 draw.Point) {
-	obj.canvas.Atomically(func(flush FlushFunc) {
+	obj.backing.Atomically(func(flush FlushFunc) {
 		r := obj.raster.Bbox()
 		obj.p0 = pixel2fixPoint(p0)
 		obj.p1 = pixel2fixPoint(p1)
@@ -235,7 +236,7 @@ func (obj *Line) SetEndPoints(p0, p1 draw.Point) {
 // SetColor changes the colour of the line
 //
 func (obj *Line) SetColor(col image.Color) {
-	obj.canvas.Atomically(func(flush FlushFunc) {
+	obj.backing.Atomically(func(flush FlushFunc) {
 		obj.raster.SetColor(col)
 		flush(obj.raster.Bbox(), nil)
 	})
@@ -268,7 +269,7 @@ type Slider struct {
 func NewSlider(r draw.Rectangle, fg, bg image.Color, value values.Value) (obj *Slider) {
 	obj = new(Slider)
 	obj.value = value
-	obj.c = NewCanvas(nil, nil, r)
+	obj.c = NewCanvas(nil, r)
 	obj.box.r = r
 	obj.box.img = Box(r.Dx(), r.Dy(), image.ColorImage{bg}, 1, image.Black)
 	obj.box.opaque = opaqueColor(bg)

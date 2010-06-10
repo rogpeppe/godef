@@ -1,7 +1,17 @@
-// Package canvas layers a set of movable objects onto
-// a draw.Image. Objects in the canvas may be created,
-// moved and deleted; the Canvas manages any necessary
-// re-drawing.
+// The canvas package provides some a facility
+// for managing independently updating objects
+// inside a graphics window.
+//
+// The principle type is Canvas, which displays a
+// z-ordered set of objects. New objects may be added,
+// deleted and change their appearance: the Canvas 
+// manages any necessary re-drawing.
+//
+// Any object that implements the Item interface
+// may be placed onto a Canvas, including a Canvas
+// itself, allowing more complex objects to be built
+// relatively easily.
+//
 package canvas
 
 import (
@@ -12,6 +22,9 @@ import (
 	"sync"
 )
 
+// The Flush method is used to flush any pending changes
+// to the underlying image, usually the screen.
+//
 type Flusher interface {
 	Flush()
 }
@@ -20,7 +33,7 @@ type Flusher interface {
 // a number of Drawer objects.
 // To change its appearance, one of those objects
 // may call Atomically, passing it a function which
-// will be called (once) to make the changes.
+// will be called once to make the changes.
 // The function will be passed a FlushFunc that
 // can be used to inform the Backer of any changes
 // that are made.
@@ -42,14 +55,28 @@ type Backing interface {
 //
 type FlushFunc func(r draw.Rectangle, drawn Drawer)
 
+// The Drawer interface represents the basic level
+// of functionality for a drawn object.
+// SetContainer is called when the object is placed
+// inside another; b will be nil if the object is removed
+// from its container. SetContainer can be called twice
+// in a row with the same object if some ancestor has
+// changed.
+//
 // The Draw method should draw a representation of
 // the object onto dst. No pixels outside clipr should
-// be changed. It should not interact with any object
+// be changed. It is legitimate for the Drawer object
+// to retain the dst image until SetContainer is
+// called (for instance, to perform its own direct
+// manipulation of the image).
+//
+// Neither method in Drawer should interact with any object
 // outside its direct control (for example by modifying
 // the appearance of another object using the same Backer)
 //
 type Drawer interface {
 	Draw(dst *image.RGBA, clipr draw.Rectangle)
+	SetContainer(b Backing)
 }
 
 // Values that implement the Item interface may be added
@@ -64,7 +91,6 @@ type Item interface {
 	Bbox() draw.Rectangle
 	HitTest(p draw.Point) bool
 	Opaque() bool
-	SetContainer(Backing)
 }
 
 // HandleMouse can be implemented by any object
@@ -103,13 +129,12 @@ type Canvas struct {
 // backing. The background image, if non-nil, must
 // be opaque, and will used to draw the background.
 // r gives the extent of the canvas.
-// TODO: if background==nil and backing==nil, then
-// r is irrelevant, and we can just calculate our bbox
-// from the items we hold
 //
-func NewCanvas(backing Backing, background image.Color, r draw.Rectangle) *Canvas {
+func NewCanvas(background image.Color, r draw.Rectangle) *Canvas {
+	// TODO: if background==nil, then
+	// r is irrelevant, and we can just calculate our bbox
+	// from the items we hold
 	c := new(Canvas)
-	c.backing = backing
 	if background != nil {
 		c.opaque = opaqueColor(background)
 		c.background = image.ColorImage{background}
@@ -139,7 +164,11 @@ func (c *Canvas) Height() int {
 }
 
 func (c *Canvas) SetContainer(b Backing) {
-	// XXX
+	c.img = nil
+	c.backing = b
+	for e := c.items.Front(); e != nil; e = e.Next() {
+		e.Value.(Item).SetContainer(c)
+	}
 }
 
 func (c *Canvas) Bbox() draw.Rectangle {

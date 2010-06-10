@@ -61,7 +61,7 @@ func main() {
 	}
 	screen := ctxt.Screen()
 	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
-	window = canvas.NewCanvas(bg, nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
+	window = canvas.NewCanvas(nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
 	bg.SetItem(window)
 	nballs := 0
 	ctxt.FlushImage()

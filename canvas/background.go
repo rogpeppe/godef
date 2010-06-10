@@ -35,6 +35,7 @@ func (b *Background) SetItem(item Drawer) {
 	b.flushrect = b.r
 	b.waste = 0
 	b.lock.Unlock()
+	b.item.SetContainer(b)
 }
 
 func (b *Background) Width() int {
