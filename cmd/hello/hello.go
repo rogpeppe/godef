@@ -23,7 +23,7 @@ func main() {
 	screen := ctxt.Screen()
 
 	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
-	cvs = canvas.NewCanvas(bg, nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
+	cvs = canvas.NewCanvas(nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
 	bg.SetItem(cvs)
 
 	item := canvas.Draggable(
