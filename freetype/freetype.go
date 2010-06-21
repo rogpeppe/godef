@@ -10,7 +10,7 @@ package freetype
 
 import (
 	"freetype-go.googlecode.com/hg/freetype/raster"
-	"freetype-go.googlecode.com/hg/freetype/truetype"
+	"rog-go.googlecode.com/hg/freetype/truetype"
 	"os"
 )
 

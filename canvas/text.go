@@ -5,7 +5,7 @@ import (
 	"image"
 	"freetype-go.googlecode.com/hg/freetype"
 	"rog-go.googlecode.com/hg/freetype/raster"
-	"freetype-go.googlecode.com/hg/freetype/truetype"
+	"rog-go.googlecode.com/hg/freetype/truetype"
 	"rog-go.googlecode.com/hg/values"
 )
 
