@@ -10,7 +10,7 @@ import (
 	"io/ioutil"
 	"os"
 	"rog-go.googlecode.com/hg/canvas"
-	"rog-go.googlecode.com/hg/freetype/truetype"
+	"freetype-go.googlecode.com/hg/freetype/truetype"
 )
 
 var cvs *canvas.Canvas

@@ -7,7 +7,7 @@ import (
 	"image"
 	"rog-go.googlecode.com/hg/canvas"
 	"rog-go.googlecode.com/hg/values"
-	"rog-go.googlecode.com/hg/freetype/raster"
+	"freetype-go.googlecode.com/hg/freetype/raster"
 )
 
 var cvs *canvas.Canvas

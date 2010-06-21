@@ -13,7 +13,7 @@ import (
 	"time"
 	"rog-go.googlecode.com/hg/canvas"
 	"rog-go.googlecode.com/hg/values"
-	"rog-go.googlecode.com/hg/freetype/truetype"
+	"freetype-go.googlecode.com/hg/freetype/truetype"
 )
 
 // to add:

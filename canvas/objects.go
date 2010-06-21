@@ -4,7 +4,7 @@ import (
 	"exp/draw"
 	"image"
 	"math"
-	"rog-go.googlecode.com/hg/freetype/raster"
+	"freetype-go.googlecode.com/hg/freetype/raster"
 	"rog-go.googlecode.com/hg/values"
 )
 
