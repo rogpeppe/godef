@@ -9,6 +9,7 @@ import (
 )
 type stack struct {
 	f Fractal
+	centre draw.Point
 	next *stack
 }
 
@@ -17,7 +18,7 @@ type context struct {
 	f Fractal
 	pushed *stack
 	tiler *Tiler
-	item canvas.Item
+	item canvas.MoveableItem
 	cache tileTable
 }
 
@@ -44,7 +45,7 @@ func main() {
 	bg.SetItem(ctxt.cvs)
 	
 	ctxt.cache = NewTileTable()
-	ctxt.setFractal(NewMandelbrot(topArea, ctxt.cvs.Rect(), false, 0))
+	ctxt.setFractal(NewMandelbrot(topArea, ctxt.cvs.Rect(), false, 0), draw.ZP)
 
 	qc := wctxt.QuitChan()
 	kc := wctxt.KeyboardChan()
@@ -104,7 +105,7 @@ func main() {
 }
 
 func (ctxt *context) zoomRect(m draw.Mouse, mc <-chan draw.Mouse) {
-	r := dragRect(ctxt.cvs, m, mc).Sub(centre(ctxt.item.Bbox()))
+	r := dragRect(ctxt.cvs, m, mc).Add(centre(ctxt.item.Bbox()))
 	ctxt.push(ctxt.f.Zoom(r))
 }
 
@@ -115,7 +116,7 @@ log.Stdoutf("zoom a bit")
 }
 
 func (ctxt *context) julia(p draw.Point) {
-	if f := ctxt.f.Associated(p); f != nil {
+	if f := ctxt.f.Associated(p.Add(ctxt.mouseDelta())); f != nil {
 		ctxt.push(f)
 	}
 }
@@ -131,8 +132,9 @@ func (ctxt *context) interactiveJulia(m draw.Mouse, mc <-chan draw.Mouse){
 		ctxt.cvs.Delete(&i)
 		ctxt.cvs.Flush()
 	}()
+	delta := ctxt.mouseDelta()
 	for  {
-		f := ctxt.f.Associated(m.Point)
+		f := ctxt.f.Associated(m.Point.Add(delta))
 		if f == nil {
 			for m.Buttons != 0 {
 				m = <-mc
@@ -154,7 +156,7 @@ func (ctxt *context) interactiveJulia(m draw.Mouse, mc <-chan draw.Mouse){
 	}
 }
 
-func (ctxt *context) setFractal(f Fractal) {
+func (ctxt *context) setFractal(f Fractal, centre draw.Point) {
 	if ctxt.item != nil {
 		ctxt.tiler.Stop()
 		ctxt.cvs.Delete(ctxt.item)
@@ -162,23 +164,31 @@ func (ctxt *context) setFractal(f Fractal) {
 	ctxt.f = f
 	ctxt.tiler = NewTiler(f, ctxt.cache)
 	ctxt.item = canvas.Draggable(canvas.Moveable(ctxt.tiler))
+	ctxt.item.SetCentre(centre)
 	ctxt.cvs.AddItem(ctxt.item)
 	ctxt.cvs.Flush()
 }
 
+// push pushes a new item onto the zoom stack.
 func (ctxt *context) push(f Fractal) {
-	ctxt.pushed = &stack{ctxt.f, ctxt.pushed}
-	ctxt.setFractal(f)
+	ctxt.pushed = &stack{ctxt.f, centre(ctxt.item.Bbox()), ctxt.pushed}
+	ctxt.setFractal(f, draw.ZP)
 }
 
+// pop pops one level off the current zoom stack
 func (ctxt *context) pop() {
 	if ctxt.pushed == nil {
 		return
 	}
-	ctxt.setFractal(ctxt.pushed.f)
+	ctxt.setFractal(ctxt.pushed.f, ctxt.pushed.centre)
 	ctxt.pushed = ctxt.pushed.next
 }
 
+// mouseDelta returns the vector from mouse coords to coords inside
+// the fractal item.
+func (ctxt *context) mouseDelta() draw.Point {
+	return draw.ZP.Sub(centre(ctxt.item.Bbox()))
+}
 
 
 type ColorRange struct {
@@ -245,9 +255,6 @@ type crect struct {
 // that shows at least the area r within wr.
 //
 func NewMandelbrot(r crect, wr draw.Rectangle, julia bool, jpoint complex128) *Mandelbrot {
-if julia {
-	log.Stdoutf("julia %v\n", jpoint)
-}
 	btall := float64(wr.Dy()) / float64(wr.Dx())
 	atall := (imag(r.min) - imag(r.min)) / (real(r.max) - real(r.min))
 	if btall > atall {
@@ -312,8 +319,7 @@ func (m *Mandelbrot) Associated(pt draw.Point) Fractal {
 	if m.julia {
 		return nil
 	}
-	j := NewMandelbrot(topArea, m.r, true, m.translate(pt))
-	return j
+	return NewMandelbrot(topArea, m.r, true, m.translate(pt))
 }
 
 type Tile struct {
