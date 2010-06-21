@@ -4,7 +4,7 @@ import (
 	"container/vector"
 	"image"
 	"exp/draw"
-	"freetype-go.googlecode.com/hg/freetype/raster"
+	"rog-go.googlecode.com/hg/freetype/raster"
 )
 
 // A ellipse object represents an ellipse centered in cr
