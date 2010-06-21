@@ -29,7 +29,7 @@ func (obj *RasterItem) CalcBbox() {
 
 func (obj *RasterItem) Draw(dst draw.Image, clipr draw.Rectangle) {
 	obj.clipper.Clipr = clipr
-	obj.clipper.Painter = raster.NewPainter(dst, obj.fill, draw.Over)
+	obj.clipper.Painter = NewPainter(dst, obj.fill, draw.Over)
 	obj.rasterizer.Rasterize(&obj.clipper)
 }
 
@@ -237,6 +237,63 @@ func rasterBbox(rasterizer *raster.Rasterizer) (r draw.Rectangle) {
 	var bbox bboxPainter
 	rasterizer.Rasterize(&bbox)
 	return bbox.R
+}
+
+// slow but comprehensive.
+type genericImagePainter struct {
+	image draw.Image
+	src image.Image
+	op draw.Op
+}
+
+func SpanBbox(ss []raster.Span) draw.Rectangle {
+	if len(ss) == 0 {
+		return draw.ZR
+	}
+	r := draw.Rect(1000000, ss[0].Y, -1000000, ss[len(ss)-1].Y + 1)
+	for _, s := range ss {
+		if s.X0 < r.Min.X {
+			r.Min.X = s.X0
+		}
+		if s.X1 > r.Max.X {
+			r.Max.X = s.X1
+		}
+	}
+	return r
+}
+
+
+func (g *genericImagePainter) Paint(ss []raster.Span, done bool) {
+	for _, s := range ss {
+		a := s.A >> 8
+		draw.DrawMask(g.image,
+			draw.Rect(s.X0, s.Y, s.X1, s.Y+1),
+			g.src,
+			draw.Point{s.X0, s.X1},
+			draw.Color(a | a<<8 | a<<16 | a<<24),
+			draw.ZP,
+			g.op)
+	}
+}
+
+// NewPainter returns a Painter that will draw from src onto
+// dst using the Porter-Duff composition operator op.
+func NewPainter(dst draw.Image, src image.Image, op draw.Op) raster.Painter {
+	if src, ok := src.(image.ColorImage); ok {
+		switch dst := dst.(type) {
+		case *image.Alpha:
+			if _, _, _, a := src.RGBA(); a == 0xffff {
+				return &raster.AlphaPainter{dst, op}
+			}
+
+		case *image.RGBA:
+			p := raster.NewRGBAPainter(dst)
+			p.SetColor(src)
+			p.Op = op
+			return p
+		}
+	}
+	return &genericImagePainter{dst, src, op}
 }
 
 func spans2ys(ss []raster.Span) []int {

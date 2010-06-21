@@ -38,7 +38,7 @@ func (d *TextItem) Init() *TextItem {
 
 func (d *TextItem) makePainter() {
 	if d.dst != nil {
-		d.rp = raster.NewPainter(d.dst, d.fill, draw.Over)
+		d.rp = NewPainter(d.dst, d.fill, draw.Over)
 	}else{
 		d.rp = nil
 	}
