@@ -61,12 +61,12 @@ func main() {
 	}
 	screen := ctxt.Screen()
 	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
-	window = canvas.NewCanvas(nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
+	window = canvas.NewCanvas(nil, bg.Rect())
 	bg.SetItem(window)
 	nballs := 0
 	ctxt.FlushImage()
 
-	csz := draw.Pt(window.Width(), window.Height())
+	csz := window.Rect().Max
 
 	// add edges of window
 	addLine(draw.Pt(-1, -1), draw.Pt(csz.X, -1))
@@ -194,7 +194,7 @@ func handleMouse(m draw.Mouse, mc <-chan draw.Mouse, mcc chan (<-chan draw.Mouse
 }
 
 func randBall() ball {
-	csz := draw.Point{window.Width(), window.Height()}
+	csz := window.Rect().Max
 	var b ball
 	b.p = randPoint(csz)
 	b.v.x = rand.Float64() - 0.5
@@ -244,71 +244,6 @@ func lineMaker(m draw.Mouse, mc <-chan draw.Mouse) {
 		lineVersion++
 		window.Flush()
 	}
-}
-
-const ClickDist = 4
-const ClickTime = 0.3e9
-
-type Click struct {
-	done bool       // clicker is done. if m.Buttons!=0, user is still dragging.
-	m    draw.Mouse // mouse event at start of click
-}
-
-// clicker handles possibly multiple click mouse actions.
-// It should be called with the first mouse event that triggered
-// the action (which should have m.Buttons != 0), and the
-// channel from which it will read mouse events.
-// It sends Click values on the channel that it returns
-// for each extra click sent by the user, giving the
-// initial mouse event for that click. For the final
-// Click event only, done==true, and signifies that
-// clicker has finished. If Buttons!=0, the
-// user continues to drag the mouse, and the
-// mouse event holds the first event of the drag;
-// otherwise it holds the most recent mouse event.
-//
-// Note that the first Click event with done==false
-// actually signifies the second click - the caller of
-// clicker should have processed the first.
-//
-func clicker(m0 draw.Mouse, mc <-chan draw.Mouse) <-chan Click {
-	c := make(chan Click)
-	go func() {
-		m := m0
-		for !closed(mc) {
-			// wait for button up or delta or time to move outside limit.
-			for m = range mc {
-				if m.Buttons == 0 {
-					// does a long click with no intervening movement still count as a click?
-					break
-				}
-				d := m.Sub(m0.Point)
-				if m.Nsec-m0.Nsec > ClickTime || d.X*d.X+d.Y*d.Y > ClickDist {
-					c <- Click{true, m0}
-					close(c)
-					return
-				}
-			}
-
-			// wait for button down or delta or time to move outside limit.
-			for m = range mc {
-				d := m.Sub(m0.Point)
-				if m.Nsec-m0.Nsec > ClickTime || d.X*d.X+d.Y*d.Y > ClickDist {
-					c <- Click{true, m}
-					close(c)
-					return
-				}
-				if m.Buttons != 0 {
-					break
-				}
-			}
-			c <- Click{false, m0}
-			m0 = m
-		}
-		c <- Click{true, m}
-		close(c)
-	}()
-	return c
 }
 
 func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<- ball) {
@@ -378,9 +313,9 @@ func opaqueColor(col image.Color) bool {
 
 func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
 	ballcountText := canvas.NewText(
-		draw.Pt(window.Width()-5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30, nil)
+		draw.Pt(window.Rect().Max.X-5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30, nil)
 	window.AddItem(canvas.Draggable(ballcountText))
-	ballcountText.SetColor(image.Red)
+	ballcountText.SetFill(draw.Red)
 	window.Flush()
 	ctl := make(chan (chan<- bool))
 	nballs := 0
@@ -390,6 +325,7 @@ func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
 			go animateBall(ctl, b)
 			nballs++
 			ballcountText.SetText(fmt.Sprintf("%d balls", nballs))
+			window.Flush()
 
 		case <-pause:
 			reply := make(chan bool)
@@ -406,6 +342,7 @@ func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
 				ctl <- nil
 				nballs--
 				ballcountText.SetText(fmt.Sprintf("%d balls", nballs))
+				window.Flush()
 			}
 		}
 	}
@@ -425,8 +362,7 @@ func makeBall(b ball) Ball {
 }
 
 func (obj *Ball) SetCentre(p realPoint) {
-	bp := draw.Point{round(p.x), round(p.y)}.Sub(draw.Pt(ballSize/2, ballSize/2))
-	obj.item.SetMinPoint(bp)
+	obj.item.SetCentre(draw.Point{round(p.x), round(p.y)})
 }
 
 const large = 1000000

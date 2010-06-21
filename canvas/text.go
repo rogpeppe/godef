@@ -19,17 +19,30 @@ type TextItem struct {
 	Text string
 	Pt   raster.Point
 	bbox draw.Rectangle
-	rp   *raster.RGBAPainter
+	dst draw.Image
+	fill image.Image
+
+	// these three painters are arranged in a stack, with the
+	// first at the bottom and the last at the top.
+	rp   raster.Painter
 	gp   *raster.GammaCorrectionPainter
 	cp   clippedPainter
 }
 
 func (d *TextItem) Init() *TextItem {
 	d.Context = freetype.NewContext()
-	d.rp = raster.NewRGBAPainter(nil)
-	d.gp = raster.NewGammaCorrectionPainter(d.rp, gamma)
+	d.gp = raster.NewGammaCorrectionPainter(nil, gamma)
 	d.cp.Painter = d.gp
 	return d
+}
+
+func (d *TextItem) makePainter() {
+	if d.dst != nil {
+		d.rp = raster.NewPainter(d.dst, d.fill, draw.Over)
+	}else{
+		d.rp = nil
+	}
+	d.gp.Painter = d.rp
 }
 
 func (d *TextItem) CalcBbox() {
@@ -38,13 +51,21 @@ func (d *TextItem) CalcBbox() {
 	d.bbox = bbox.R
 }
 
+func (d *TextItem) SetFill(fill image.Image) {
+	d.fill = fill
+	d.makePainter()
+}
+
 func (d *TextItem) Opaque() bool {
 	return false
 }
 
-func (d *TextItem) Draw(dst *image.RGBA, clip draw.Rectangle) {
+func (d *TextItem) Draw(dst draw.Image, clip draw.Rectangle) {
+	if dst != d.dst {
+		d.dst = dst
+		d.makePainter()
+	}
 	d.cp.Clipr = clip
-	d.rp.Image = dst
 	d.DrawText(&d.cp, d.Pt, d.Text)
 }
 
@@ -68,7 +89,7 @@ type Text struct {
 	delta  draw.Point // vector from upper left of bbox to text origin
 	p      draw.Point
 	anchor Anchor
-	canvas Backing
+	backing Backing
 	value values.Value
 }
 
@@ -81,11 +102,12 @@ func NewText(p draw.Point, where Anchor, s string, font *truetype.Font, size flo
 	t.item.Init()
 	t.item.SetFont(font)
 	t.item.SetFontSize(size)
-	t.item.rp.SetColor(image.Black)
+	t.item.fill = image.ColorImage{draw.Black}
 	t.item.Text = s
 	t.p = p
 	t.anchor = where
 	t.recalc(true)
+	t.backing = NullBacking()
 	t.Item = &t.item
 	if val != nil {
 		t.value = val
@@ -97,12 +119,12 @@ func NewText(p draw.Point, where Anchor, s string, font *truetype.Font, size flo
 func (t *Text) listener() {
 	for x := range t.value.Iter() {
 		t.SetText(x.(string))
-		t.canvas.Flush()
+		t.backing.Flush()
 	}
 }
 
 func (t *Text) SetContainer(c Backing) {
-	t.canvas = c
+	t.backing = c
 }
 
 func (t *Text) SetCentre(cp draw.Point) {
@@ -111,7 +133,7 @@ func (t *Text) SetCentre(cp draw.Point) {
 }
 
 func (t *Text) SetPoint(p0 draw.Point) {
-	t.canvas.Atomically(func(flush FlushFunc) {
+	t.backing.Atomically(func(flush FlushFunc) {
 		r := t.item.Bbox()
 		t.p = p0
 		t.recalc(false)
@@ -136,15 +158,15 @@ func (t *Text) recalc(sizechanged bool) {
 	t.item.Pt = pixel2fixPoint(bbox.Min.Add(t.delta))
 }
 
-func (t *Text) SetColor(col image.Color) {
-	t.canvas.Atomically(func(flush FlushFunc) {
-		t.item.rp.SetColor(col)
+func (t *Text) SetFill(fill image.Image) {
+	t.backing.Atomically(func(flush FlushFunc) {
+		t.item.SetFill(fill)
 		flush(t.item.Bbox(), nil)
 	})
 }
 
 func (t *Text) SetText(s string) {
-	t.canvas.Atomically(func(flush FlushFunc) {
+	t.backing.Atomically(func(flush FlushFunc) {
 		r := t.item.Bbox()
 		t.item.Text = s
 		t.recalc(true)
@@ -154,7 +176,7 @@ func (t *Text) SetText(s string) {
 }
 
 func (t *Text) SetFontSize(size float) {
-	t.canvas.Atomically(func(flush FlushFunc) {
+	t.backing.Atomically(func(flush FlushFunc) {
 		r := t.item.Bbox()
 		t.item.SetFontSize(size)
 		t.recalc(true)

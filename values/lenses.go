@@ -4,6 +4,12 @@ import (
 	"os"
 )
 
+// Float2String returns a Lens which maps between float64
+// and string. The given formats are used to effect the conversion;
+// fmt.Sprintf(printf, x) is used to convert the float64 value x to string;
+// fmt.Sscanf(s, scanf, &x) is used to convert the string s to the float64
+// value x.
+//
 func Float2String(printf, scanf string) *Lens {
 	// do early sanity check on format.
 	s := fmt.Sprintf(printf, float64(0))
@@ -24,6 +30,9 @@ func Float2String(printf, scanf string) *Lens {
 	)
 }
 
+// UnitFloat2RangedFloat peforms a linear conversion between a float64
+// value in [0, 1] and a float64 value in [lo, hi].
+//
 func UnitFloat2RangedFloat(lo, hi float64) *Lens {
 	return NewLens(
 		func(uf float64) (float64, os.Error) {
@@ -47,6 +56,9 @@ func UnitFloat2RangedFloat(lo, hi float64) *Lens {
 	)
 }
 
+// FloatMultiply performs a scaling transformation from
+// a float64, f, and f * x.
+//
 func FloatMultiply(x float64) *Lens {
 	return NewLens(
 		func(f float64) (float64, os.Error) {

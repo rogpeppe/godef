@@ -22,38 +22,38 @@ func Box(width, height int, col image.Image, border int, borderCol image.Image) 
 	return img
 }
 
-// An imageItem is an Item that uses an image
+// An ImageItem is an Item that uses an image
 // to draw itself. It is intended to be used as a building
 // block for other Items.
-type imageItem struct {
-	r      draw.Rectangle
-	img    image.Image
-	opaque bool
+type ImageItem struct {
+	R      draw.Rectangle
+	Image    image.Image
+	IsOpaque bool
 }
 
-func (obj *imageItem) Draw(dst *image.RGBA, clip draw.Rectangle) {
-	dr := obj.r.Clip(clip)
-	sp := dr.Min.Sub(obj.r.Min)
+func (obj *ImageItem) Draw(dst draw.Image, clip draw.Rectangle) {
+	dr := obj.R.Clip(clip)
+	sp := dr.Min.Sub(obj.R.Min)
 	op := draw.Over
-	if obj.opaque {
+	if obj.IsOpaque {
 		op = draw.Src
 	}
-	draw.DrawMask(dst, dr, obj.img, sp, nil, draw.ZP, op)
+	draw.DrawMask(dst, dr, obj.Image, sp, nil, draw.ZP, op)
 }
 
-func (obj *imageItem) SetContainer(c Backing) {
+func (obj *ImageItem) SetContainer(c Backing) {
 }
 
-func (obj *imageItem) Opaque() bool {
-	return obj.opaque
+func (obj *ImageItem) Opaque() bool {
+	return obj.IsOpaque
 }
 
-func (obj *imageItem) Bbox() draw.Rectangle {
-	return obj.r
+func (obj *ImageItem) Bbox() draw.Rectangle {
+	return obj.R
 }
 
-func (obj *imageItem) HitTest(p draw.Point) bool {
-	return p.In(obj.r)
+func (obj *ImageItem) HitTest(p draw.Point) bool {
+	return p.In(obj.R)
 }
 
 // An Image represents an rectangular (but possibly
@@ -61,7 +61,7 @@ func (obj *imageItem) HitTest(p draw.Point) bool {
 //
 type Image struct {
 	Item
-	item   imageItem // access to the fields of the imageItem
+	item   ImageItem // access to the fields of the ImageItem
 	backing Backing
 }
 
@@ -71,9 +71,9 @@ type Image struct {
 func NewImage(img image.Image, opaque bool, p draw.Point) *Image {
 	obj := new(Image)
 	obj.Item = &obj.item
-	obj.item.r = draw.Rectangle{p, p.Add(draw.Pt(img.Width(), img.Height()))}
-	obj.item.img = img
-	obj.item.opaque = opaque
+	obj.item.R = draw.Rectangle{p, p.Add(draw.Pt(img.Width(), img.Height()))}
+	obj.item.Image = img
+	obj.item.IsOpaque = opaque
 	return obj
 }
 
@@ -81,22 +81,17 @@ func (obj *Image) SetContainer(c Backing) {
 	obj.backing = c
 }
 
-// SetMinPoint moves the image's upper left corner to p.
-//
-func (obj *Image) SetMinPoint(p draw.Point) {
-	if p.Eq(obj.item.r.Min) {
+func (obj *Image) SetCentre(p draw.Point) {
+	p = p.Sub(centreDist(obj.Bbox()))
+	if p.Eq(obj.item.R.Min) {
 		return
 	}
 	obj.backing.Atomically(func(flush FlushFunc) {
-		r := obj.item.r
-		obj.item.r = r.Add(p.Sub(r.Min))
+		r := obj.item.R
+		obj.item.R = r.Add(p.Sub(r.Min))
 		flush(r, nil)
-		flush(obj.item.r, nil)
+		flush(obj.item.R, nil)
 	})
-}
-
-func (obj *Image) SetCentre(p draw.Point) {
-	obj.SetMinPoint(p.Sub(centreDist(obj.Bbox())))
 }
 
 // A Polygon represents a filled polygon.
@@ -111,13 +106,13 @@ type Polygon struct {
 // Polygon returns a new PolyObject, using col for its fill colour, and
 // using points for its vertices.
 //
-func NewPolygon(col image.Color, points []draw.Point) *Polygon {
+func NewPolygon(fill image.Image, points []draw.Point) *Polygon {
 	obj := new(Polygon)
 	rpoints := make([]raster.Point, len(points))
 	for i, p := range points {
 		rpoints[i] = pixel2fixPoint(p)
 	}
-	obj.raster.SetColor(col)
+	obj.raster.SetFill(fill)
 	obj.points = rpoints
 	obj.Item = &obj.raster
 	return obj
@@ -125,26 +120,8 @@ func NewPolygon(col image.Color, points []draw.Point) *Polygon {
 
 func (obj *Polygon) SetContainer(c Backing) {
 	obj.backing = c
-	if c != nil {
-		obj.raster.SetBounds(c.Width(), c.Height())
-		obj.makeOutline()
-	}
-}
-
-func (obj *Polygon) SetCentre(cp draw.Point) {
-	obj.backing.Atomically(func(flush FlushFunc) {
-		r := obj.raster.Bbox()
-		delta := cp.Sub(centre(r))
-		rdelta := pixel2fixPoint(delta)
-		for i := range obj.points {
-			p := &obj.points[i]
-			p.X += rdelta.X
-			p.Y += rdelta.Y
-		}
-		obj.makeOutline()
-		flush(r, nil)
-		flush(obj.raster.Bbox(), nil)
-	})
+	obj.raster.SetContainer(c)
+	obj.makeOutline()
 }
 
 func (obj *Polygon) makeOutline() {
@@ -171,12 +148,12 @@ type Line struct {
 // Line returns a new Line, coloured with col, from p0 to p1,
 // of the given width.
 //
-func NewLine(col image.Color, p0, p1 draw.Point, width float) *Line {
+func NewLine(fill image.Image, p0, p1 draw.Point, width float) *Line {
 	obj := new(Line)
 	obj.p0 = pixel2fixPoint(p0)
 	obj.p1 = pixel2fixPoint(p1)
 	obj.width = float2fix(width)
-	obj.raster.SetColor(col)
+	obj.raster.SetFill(fill)
 	obj.Item = &obj.raster
 	obj.makeOutline()
 	return obj
@@ -184,10 +161,8 @@ func NewLine(col image.Color, p0, p1 draw.Point, width float) *Line {
 
 func (obj *Line) SetContainer(b Backing) {
 	obj.backing = b
-	if b != nil {
-		obj.raster.SetBounds(b.Width(), b.Height())
-		obj.makeOutline()
-	}
+	obj.raster.SetContainer(b)
+	obj.makeOutline()
 }
 
 func (obj *Line) makeOutline() {
@@ -213,13 +188,6 @@ func (obj *Line) makeOutline() {
 	obj.raster.CalcBbox()
 }
 
-func (obj *Line) SetCentre(cp draw.Point) {
-	delta := cp.Sub(centre(obj.Bbox()))
-	p0 := fix2pixelPoint(obj.p0)
-	p1 := fix2pixelPoint(obj.p1)
-	obj.SetEndPoints(p0.Add(delta), p1.Add(delta))
-}
-
 // SetEndPoints changes the end coordinates of the Line.
 //
 func (obj *Line) SetEndPoints(p0, p1 draw.Point) {
@@ -235,9 +203,9 @@ func (obj *Line) SetEndPoints(p0, p1 draw.Point) {
 
 // SetColor changes the colour of the line
 //
-func (obj *Line) SetColor(col image.Color) {
+func (obj *Line) SetFill(fill image.Image) {
 	obj.backing.Atomically(func(flush FlushFunc) {
-		obj.raster.SetColor(col)
+		obj.raster.SetFill(fill)
 		flush(obj.raster.Bbox(), nil)
 	})
 }
@@ -256,8 +224,8 @@ type Slider struct {
 	Item
 	c      *Canvas
 	val    float64
-	box    imageItem
-	button imageItem
+	box    ImageItem
+	button ImageItem
 }
 
 // A Slider shows a mouse-adjustable slider bar.
@@ -270,14 +238,14 @@ func NewSlider(r draw.Rectangle, fg, bg image.Color, value values.Value) (obj *S
 	obj = new(Slider)
 	obj.value = value
 	obj.c = NewCanvas(nil, r)
-	obj.box.r = r
-	obj.box.img = Box(r.Dx(), r.Dy(), image.ColorImage{bg}, 1, image.Black)
-	obj.box.opaque = opaqueColor(bg)
+	obj.box.R = r
+	obj.box.Image = Box(r.Dx(), r.Dy(), image.ColorImage{bg}, 1, image.Black)
+	obj.box.IsOpaque = opaqueColor(bg)
 
 	br := obj.buttonRect()
-	obj.button.r = br
-	obj.button.img = Box(br.Dx(), br.Dy(), image.ColorImage{fg}, 1, image.Black)
-	obj.button.opaque = opaqueColor(fg)
+	obj.button.R = br
+	obj.button.Image = Box(br.Dx(), br.Dy(), image.ColorImage{fg}, 1, image.Black)
+	obj.button.IsOpaque = opaqueColor(fg)
 	obj.c.AddItem(&obj.box)
 	obj.c.AddItem(&obj.button)
 
@@ -294,10 +262,10 @@ func (obj *Slider) SetContainer(c Backing) {
 }
 
 func (obj *Slider) buttonRect() (r draw.Rectangle) {
-	r.Min.Y = obj.box.r.Min.Y
-	r.Max.Y = obj.box.r.Max.Y
+	r.Min.Y = obj.box.R.Min.Y
+	r.Max.Y = obj.box.R.Max.Y
 	p := obj.val
-	centre := int(p*float64(obj.box.r.Max.X-obj.box.r.Min.X-buttonWidth)+0.5) + obj.box.r.Min.X + buttonWidth/2
+	centre := int(p*float64(obj.box.R.Max.X-obj.box.R.Min.X-buttonWidth)+0.5) + obj.box.R.Min.X + buttonWidth/2
 	r.Min.X = centre - buttonWidth/2
 	r.Max.X = centre + buttonWidth/2
 	return
@@ -314,17 +282,17 @@ func (obj *Slider) listener() {
 				v = 0
 			}
 			obj.val = v
-			r := obj.button.r
-			obj.button.r = obj.buttonRect()
+			r := obj.button.R
+			obj.button.R = obj.buttonRect()
 			flush(r, nil)
-			flush(obj.button.r, nil)
+			flush(obj.button.R, nil)
 		})
 		obj.backing.Flush()
 	}
 }
 
 func (obj *Slider) x2val(x int) float64 {
-	return float64(x-(obj.box.r.Min.X+buttonWidth/2)) / float64(obj.box.r.Dx()-buttonWidth)
+	return float64(x-(obj.box.R.Min.X+buttonWidth/2)) / float64(obj.box.R.Dx()-buttonWidth)
 }
 
 func (obj *Slider) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool {

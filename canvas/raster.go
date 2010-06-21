@@ -15,33 +15,65 @@ import (
 // Otherwise it can be used as a raster.Rasterizer.
 //
 type RasterItem struct {
-	raster.Rasterizer
+	rasterizer raster.Rasterizer
+	fill image.Image
 	bbox draw.Rectangle
-	raster.RGBAPainter
 	clipper clippedPainter
 }
 
 // CalcBbox calculates the current bounding box of
 // all the pixels in the current path.
 func (obj *RasterItem) CalcBbox() {
-	obj.bbox = rasterBbox(&obj.Rasterizer)
+	obj.bbox = rasterBbox(&obj.rasterizer)
 }
 
-func (obj *RasterItem) Draw(dst *image.RGBA, clipr draw.Rectangle) {
+func (obj *RasterItem) Draw(dst draw.Image, clipr draw.Rectangle) {
 	obj.clipper.Clipr = clipr
-	obj.Image = dst
-	obj.clipper.Painter = &obj.RGBAPainter
-	obj.Rasterize(&obj.clipper)
+	obj.clipper.Painter = raster.NewPainter(dst, obj.fill, draw.Over)
+	obj.rasterizer.Rasterize(&obj.clipper)
+}
+
+func (obj *RasterItem) SetFill(fill image.Image) {
+	obj.fill = fill
 }
 
 func (obj *RasterItem) HitTest(p draw.Point) bool {
 	var hit hitTestPainter
 	hit.P = p
-	obj.Rasterize(&hit)
+	obj.rasterizer.Rasterize(&hit)
 	return hit.Hit
 }
 
-func (obj *RasterItem) SetContainer(_ Backing) {
+func (obj *RasterItem) SetContainer(b Backing) {
+	r := b.Rect()
+	obj.rasterizer.Dx = r.Min.X
+	obj.rasterizer.Dy = r.Min.Y
+	obj.rasterizer.SetBounds(r.Dx(), r.Dy())
+	obj.Clear()
+}
+
+func (obj *RasterItem) pt(p raster.Point) raster.Point {
+	return raster.Point{p.X + raster.Fixed(obj.rasterizer.Dx) << fixBits, p.Y + raster.Fixed(obj.rasterizer.Dy) << fixBits}
+}
+
+func (obj *RasterItem) Add1(p raster.Point) {
+	obj.rasterizer.Add1(obj.pt(p))
+}
+
+func (obj *RasterItem) Add2(p0, p1 raster.Point) {
+	obj.rasterizer.Add2(obj.pt(p0), obj.pt(p1))
+}
+
+func (obj *RasterItem) Add3(p0, p1, p2 raster.Point) {
+	obj.rasterizer.Add3(obj.pt(p0), obj.pt(p1), obj.pt(p2))
+}
+
+func (obj *RasterItem) Start(p raster.Point) {
+	obj.rasterizer.Start(p)
+}
+
+func (obj *RasterItem) Clear() {
+	obj.rasterizer.Clear()
 }
 
 func (obj *RasterItem) Bbox() draw.Rectangle {
@@ -62,7 +94,7 @@ func (p *clippedPainter) Paint(ss []raster.Span, last bool) {
 	j := 0
 
 	// quick check that we've at least got some rows that might be painted
-	if len(ss) > 0 && ss[0].Y < r.Max.Y && ss[len(ss)-1].Y > r.Min.Y {
+	if len(ss) > 0 && ss[0].Y < r.Max.Y && ss[len(ss)-1].Y >= r.Min.Y {
 		for i, s := range ss {
 			if s.Y >= r.Min.Y {
 				ss = ss[i:]

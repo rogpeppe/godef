@@ -23,18 +23,31 @@ func main() {
 	screen := ctxt.Screen()
 
 	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
-	cvs = canvas.NewCanvas(nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
+	cvs = canvas.NewCanvas(nil, bg.Rect())
 	bg.SetItem(cvs)
 
-	item := canvas.Draggable(
+	item := canvas.Draggable(canvas.Moveable(
 		canvas.NewText(
-			draw.Pt(cvs.Width()/2, cvs.Height()/3),
+			draw.ZP,
 			0,
 			"Hello, world",
 			defaultFont(),
 			30,
-			nil))
+			nil)))
+	item.SetCentre(draw.Pt(cvs.Rect().Dx()/2, cvs.Rect().Dy()/3))
 	cvs.AddItem(item)
+//	txtitem :=	canvas.NewText(
+//			draw.Pt(100, 100),
+//			0,
+//			"Working?",
+//			defaultFont(),
+//			20,
+//			nil)
+
+
+//	img := canvas.ImageOf(txtitem)
+
+//	cvs.AddItem(canvas.NewImage(img, false, draw.Pt(cvs.Width() / 2, cvs.Height()*2/3)))
 
 	qc := ctxt.QuitChan()
 	kc := ctxt.KeyboardChan()

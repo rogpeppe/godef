@@ -12,7 +12,7 @@ import (
 type Background struct {
 	lock     sync.Mutex
 	r        draw.Rectangle // overall rectangle (always origin 0, 0)
-	img      *image.RGBA
+	img      draw.Image
 	bg       image.Image
 	item     Drawer
 	imgflush func(r draw.Rectangle)
@@ -22,12 +22,16 @@ type Background struct {
 }
 
 // NewBackground creates a new Background object that
-// draws to img, and uses bg (which should be opaque)
-// as an eraser. The flush function, if non-nil, will be called to
+// draws to img, and draws the actual background with bg.
+// The flush function, if non-nil, will be called to
 // whenever changes are to be made visible externally
 // (for example when Flush() is called.
 //
-func NewBackground(img *image.RGBA, bg image.Image, flush func(r draw.Rectangle)) *Background {
+// Note that bg is drawn with the draw.Src operation,
+// so it is possible to create images with a transparent
+// background.
+//
+func NewBackground(img draw.Image, bg image.Image, flush func(r draw.Rectangle)) *Background {
 	r := draw.Rect(0, 0, img.Width(), img.Height())
 	return &Background{
 		img:      img,
@@ -45,18 +49,14 @@ func (b *Background) SetItem(item Drawer) {
 	b.item = item
 	b.flushrect = b.r
 	b.waste = 0
-	b.lock.Unlock()
 	if item != nil {
 		b.item.SetContainer(b)
 	}
+	b.lock.Unlock()
 }
 
-func (b *Background) Width() int {
-	return b.img.Width()
-}
-
-func (b *Background) Height() int {
-	return b.img.Height()
+func (b *Background) Rect() draw.Rectangle {
+	return draw.Rect(0, 0, b.img.Width(), b.img.Height())
 }
 
 func (b *Background) Atomically(f func(FlushFunc)) {
@@ -146,4 +146,28 @@ func (b *Background) Flush() {
 	b.lock.Lock()
 	b.flush()
 	b.lock.Unlock()
+}
+
+type nullBacking bool
+
+// NullBacking returns an object that satisfies the
+// Backing interface but has no actual image associated
+// with it.
+//
+func NullBacking() Backing {
+	return nullBacking(false)
+}
+
+var globalLock sync.Mutex
+
+func (_ nullBacking) Flush() { }
+
+func (_ nullBacking) Atomically(f func(f FlushFunc)) {
+	globalLock.Lock()
+	defer globalLock.Unlock()
+	f(func(_ draw.Rectangle, _ Drawer) {})
+}
+
+func (b nullBacking) Rect() draw.Rectangle {
+	return draw.ZR
 }

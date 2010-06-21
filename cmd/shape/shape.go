@@ -20,7 +20,7 @@ func main() {
 	screen := ctxt.Screen()
 
 	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
-	cvs = canvas.NewCanvas(nil, draw.Rect(0, 0, bg.Width(), bg.Height()))
+	cvs = canvas.NewCanvas(nil, bg.Rect())
 	bg.SetItem(cvs)
 	qc := ctxt.QuitChan()
 	kc := ctxt.KeyboardChan()
@@ -165,7 +165,7 @@ func (cp *ControlPoint) SetContainer(b canvas.Backing) {
 	cp.backing = b
 }
 
-func (cp *ControlPoint) Draw(dst *image.RGBA, clipr draw.Rectangle) {
+func (cp *ControlPoint) Draw(dst draw.Image, clipr draw.Rectangle) {
 	r := clipr.Clip(cp.Bbox())
 	draw.Draw(dst, r, cp.col, draw.ZP)
 }
@@ -236,7 +236,8 @@ func (obj *rasterPlay) listener() {
 
 func (obj *rasterPlay) SetContainer(b canvas.Backing) {
 	if b != nil {
-		obj.raster.SetBounds(b.Width(), b.Height())
+		size := b.Rect().Max
+		obj.raster.SetBounds(size.X, size.Y)
 		obj.makeOutline()
 	}
 	obj.HandlerItem.SetContainer(b)
@@ -250,7 +251,7 @@ func newRasterPlay() *rasterPlay {
 	obj := new(rasterPlay)
 	obj.points = make([]rpoint, 0, 100) // expansion later
 	obj.moved = make(chan moveEvent)
-	obj.raster.SetColor(draw.Color(0x808080ff).SetAlpha(0x80))
+	obj.raster.SetFill(image.ColorImage{draw.Color(0x808080ff).SetAlpha(0x80)})
 	obj.c = canvas.NewCanvas(nil, cvs.Bbox())
 	obj.colValue = values.NewValue(draw.Black)
 	obj.HandlerItem = obj.c

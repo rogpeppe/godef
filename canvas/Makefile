@@ -4,6 +4,7 @@ TARG=rog-go.googlecode.com/hg/canvas
 GOFILES=\
 	background.go\
 	canvas.go\
+	ellipse.go\
 	objects.go\
 	raster.go\
 	text.go\

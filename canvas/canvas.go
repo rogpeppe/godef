@@ -19,7 +19,6 @@ import (
 	"exp/draw"
 	"image"
 	"log"
-	"sync"
 )
 
 // The Flush method is used to flush any pending changes
@@ -37,12 +36,13 @@ type Flusher interface {
 // The function will be passed a FlushFunc that
 // can be used to inform the Backer of any changes
 // that are made.
+// Rect should return the rectangle that is available
+// for items within the Backing to draw into.
 //
 type Backing interface {
 	Flusher
 	Atomically(func(f FlushFunc))
-	Width() int
-	Height() int
+	Rect() draw.Rectangle
 }
 
 // A FlushFunc can be used to inform a Backing object
@@ -75,7 +75,7 @@ type FlushFunc func(r draw.Rectangle, drawn Drawer)
 // the appearance of another object using the same Backer)
 //
 type Drawer interface {
-	Draw(dst *image.RGBA, clipr draw.Rectangle)
+	Draw(dst draw.Image, clipr draw.Rectangle)
 	SetContainer(b Backing)
 }
 
@@ -116,9 +116,10 @@ var _ HandlerItem = (*Canvas)(nil)
 // A Canvas represents a z-ordered set of drawable Items.
 // As a Canvas itself implements Item and Backing, Canvas's can
 // be nested indefinitely.
+//
 type Canvas struct {
 	r          draw.Rectangle // the bounding rectangle of the canvas.
-	img        *image.RGBA    // image we were last drawn onto
+	img        draw.Image    // image we were last drawn onto
 	backing    Backing
 	opaque     bool
 	background image.Image
@@ -139,6 +140,7 @@ func NewCanvas(background image.Color, r draw.Rectangle) *Canvas {
 		c.opaque = opaqueColor(background)
 		c.background = image.ColorImage{background}
 	}
+	c.backing = NullBacking()
 	c.r = r
 	return c
 }
@@ -149,18 +151,11 @@ func (c *Canvas) Opaque() bool {
 	return c.opaque
 }
 
-// Width returns the width of the canvas, which is
-// the width of its underlying image.
+// Rect returns the rectangle that is available
+// for items to draw into.
 //
-func (c *Canvas) Width() int {
-	return c.r.Dx()
-}
-
-// Width returns the height of the canvas, which is
-// the height of its underlying image.
-//
-func (c *Canvas) Height() int {
-	return c.r.Dy()
+func (c *Canvas) Rect() draw.Rectangle {
+	return c.r
 }
 
 func (c *Canvas) SetContainer(b Backing) {
@@ -211,7 +206,7 @@ func (c *Canvas) HitTest(p draw.Point) (hit bool) {
 	return false
 }
 
-func (c *Canvas) Draw(dst *image.RGBA, clipr draw.Rectangle) {
+func (c *Canvas) Draw(dst draw.Image, clipr draw.Rectangle) {
 	clipr = clipr.Clip(c.r)
 	c.img = dst
 	if c.background != nil {
@@ -289,9 +284,6 @@ panic("nil value - can't happen?")
 // DeleteItem deletes a single item from the canvas.
 //
 func (c *Canvas) Delete(it Item) {
-	if c == nil {
-		return
-	}
 	removed := false
 	c.Atomically(func(flush FlushFunc) {
 		var next *list.Element
@@ -304,12 +296,12 @@ func (c *Canvas) Delete(it Item) {
 				break
 			}
 		}
+		if removed {
+			it.SetContainer(NullBacking())
+		}else{
+			log.Stderrf("item %T not removed", it)
+		}
 	})
-	if removed {
-		it.SetContainer(nil)
-	}else{
-		log.Stderrf("item %T not removed", it)
-	}
 }
 
 func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
@@ -330,20 +322,11 @@ func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
 	return
 }
 
-var globalLock sync.Mutex
 // Atomically calls f, which can then make changes to
 // the appearance of items in the canvas.
 // See the Backing interface for details
 //
 func (c *Canvas) Atomically(f func(FlushFunc)) {
-	if c == nil || c.backing == nil {
-		// if an object isn't inside a canvas, then
-		// perform the action with the global lock.
-		globalLock.Lock()
-		defer globalLock.Unlock()
-		f(func(_ draw.Rectangle, _ Drawer) {})
-		return
-	}
 	c.backing.Atomically(func(bflush FlushFunc) {
 		f(func(r draw.Rectangle, drawn Drawer) {
 			if drawn != nil {
@@ -361,8 +344,8 @@ func (c *Canvas) Atomically(f func(FlushFunc)) {
 }
 
 func (c *Canvas) AddItem(item Item) {
-	item.SetContainer(c)
 	c.Atomically(func(flush FlushFunc) {
+		item.SetContainer(c)
 		c.items.PushBack(item)
 		r := item.Bbox()
 		if item.Opaque() && c.img != nil {
@@ -376,13 +359,4 @@ func (c *Canvas) AddItem(item Item) {
 
 func debugp(f string, a ...interface{}) {
 	log.Stdoutf(f, a)
-}
-
-type sizer interface {
-	Width() int
-	Height() int
-}
-
-func size(x sizer) draw.Point {
-	return draw.Point{x.Width(), x.Height()}
 }
