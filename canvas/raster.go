@@ -2,6 +2,7 @@ package canvas
 
 import (
 	"rog-go.googlecode.com/hg/draw"
+	originalDraw "exp/draw"		// for Op cast only
 	"image"
 	"freetype-go.googlecode.com/hg/freetype/raster"
 )
@@ -283,13 +284,13 @@ func NewPainter(dst draw.Image, src image.Image, op draw.Op) raster.Painter {
 		switch dst := dst.(type) {
 		case *image.Alpha:
 			if _, _, _, a := src.RGBA(); a == 0xffff {
-				return &raster.AlphaPainter{dst, op}
+				return &raster.AlphaPainter{dst, originalDraw.Op(op)}
 			}
 
 		case *image.RGBA:
 			p := raster.NewRGBAPainter(dst)
 			p.SetColor(src)
-			p.Op = op
+			p.Op = originalDraw.Op(op)
 			return p
 		}
 	}
