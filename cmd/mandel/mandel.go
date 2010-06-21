@@ -105,7 +105,7 @@ func main() {
 }
 
 func (ctxt *context) zoomRect(m draw.Mouse, mc <-chan draw.Mouse) {
-	r := dragRect(ctxt.cvs, m, mc).Add(centre(ctxt.item.Bbox()))
+	r := dragRect(ctxt.cvs, m, mc).Add(ctxt.mouseDelta())
 	ctxt.push(ctxt.f.Zoom(r))
 }
 
