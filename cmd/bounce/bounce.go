@@ -2,7 +2,7 @@ package main
 
 import (
 	"rog-go.googlecode.com/hg/x11"
-	"exp/draw"
+	"rog-go.googlecode.com/hg/draw"
 	"image"
 	"io/ioutil"
 	"fmt"

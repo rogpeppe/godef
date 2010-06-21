@@ -1,6 +1,6 @@
 package main
 import (
-	"exp/draw"
+	"rog-go.googlecode.com/hg/draw"
 	"image"
 	"rog-go.googlecode.com/hg/canvas"
 	"rog-go.googlecode.com/hg/x11"
