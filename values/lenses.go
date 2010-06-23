@@ -30,6 +30,17 @@ func Float2String(printf, scanf string) *Lens {
 	)
 }
 
+func Float2Int() *Lens {
+	return NewLens(
+		func(f float64) (int, os.Error) {
+			return int(f + 0.5), nil
+		},
+		func(i int) (float64, os.Error) {
+			return float64(i), nil
+		},
+	)
+}
+
 // UnitFloat2RangedFloat peforms a linear conversion between a float64
 // value in [0, 1] and a float64 value in [lo, hi].
 //

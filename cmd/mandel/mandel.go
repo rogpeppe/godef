@@ -1,15 +1,18 @@
 package main
 import (
-	"rog-go.googlecode.com/hg/draw"
+	"flag"
 	"image"
-	"rog-go.googlecode.com/hg/canvas"
-	"rog-go.googlecode.com/hg/x11"
 	"log"
+	"rog-go.googlecode.com/hg/canvas"
+	"rog-go.googlecode.com/hg/draw"
+	"rog-go.googlecode.com/hg/x11"
 	"time"
 )
+
 type stack struct {
 	f Fractal
 	centre draw.Point
+	iterations int
 	next *stack
 }
 
@@ -19,6 +22,8 @@ type context struct {
 	pushed *stack
 	tiler *Tiler
 	item canvas.MoveableItem
+	tileSize int
+	iterations int
 	cache tileTable
 }
 
@@ -30,8 +35,10 @@ type Fractal interface {
 }
 
 var topArea = crect{cmplx(-2.0, -1.5), cmplx(1.0, 1.5)}
-const TileSize = 100
+var iterations = flag.Int("iter", 300, "max number of iterations per point")
+var tileSize = flag.Int("tile", 40, "tile size in pixels")
 func main() {
+	flag.Parse()
 	wctxt, err := x11.NewWindow()
 	if wctxt == nil {
 		log.Exitf("no window: %v", err)
@@ -39,13 +46,14 @@ func main() {
 	screen := wctxt.Screen()
 
 	ctxt := &context{}
+	ctxt.iterations = *iterations
 
 	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(wctxt))
 	ctxt.cvs = canvas.NewCanvas(nil, bg.Rect())
 	bg.SetItem(ctxt.cvs)
 	
 	ctxt.cache = NewTileTable()
-	ctxt.setFractal(NewMandelbrot(topArea, ctxt.cvs.Rect(), false, 0), draw.ZP)
+	ctxt.setFractal(NewMandelbrot(topArea, ctxt.cvs.Rect(), false, 0, ctxt.iterations), draw.ZP)
 
 	qc := wctxt.QuitChan()
 	kc := wctxt.KeyboardChan()
@@ -162,7 +170,7 @@ func (ctxt *context) setFractal(f Fractal, centre draw.Point) {
 		ctxt.cvs.Delete(ctxt.item)
 	}
 	ctxt.f = f
-	ctxt.tiler = NewTiler(f, ctxt.cache)
+	ctxt.tiler = NewTiler(f, ctxt.cache, *tileSize)
 	ctxt.item = canvas.Draggable(canvas.Moveable(ctxt.tiler))
 	ctxt.item.SetCentre(centre)
 	ctxt.cvs.AddItem(ctxt.item)
@@ -171,7 +179,7 @@ func (ctxt *context) setFractal(f Fractal, centre draw.Point) {
 
 // push pushes a new item onto the zoom stack.
 func (ctxt *context) push(f Fractal) {
-	ctxt.pushed = &stack{ctxt.f, centre(ctxt.item.Bbox()), ctxt.pushed}
+	ctxt.pushed = &stack{ctxt.f, centre(ctxt.item.Bbox()), ctxt.iterations, ctxt.pushed}
 	ctxt.setFractal(f, draw.ZP)
 }
 
@@ -181,6 +189,7 @@ func (ctxt *context) pop() {
 		return
 	}
 	ctxt.setFractal(ctxt.pushed.f, ctxt.pushed.centre)
+	ctxt.iterations = ctxt.pushed.iterations
 	ctxt.pushed = ctxt.pushed.next
 }
 
@@ -254,7 +263,7 @@ type crect struct {
 // NewMandelbrot returns a mandelbrot-set calculator
 // that shows at least the area r within wr.
 //
-func NewMandelbrot(r crect, wr draw.Rectangle, julia bool, jpoint complex128) *Mandelbrot {
+func NewMandelbrot(r crect, wr draw.Rectangle, julia bool, jpoint complex128, iterations int) *Mandelbrot {
 	btall := float64(wr.Dy()) / float64(wr.Dx())
 	atall := (imag(r.min) - imag(r.min)) / (real(r.max) - real(r.min))
 	if btall > atall {
@@ -269,8 +278,8 @@ func NewMandelbrot(r crect, wr draw.Rectangle, julia bool, jpoint complex128) *M
 		r.max += cmplx(excess/2.0, 0)
 	}
 	var m Mandelbrot
-	m.iterations = 1024
-	m.palette = makePalette(range0, 1024)
+	m.iterations = iterations
+	m.palette = makePalette(range0, iterations)
 	m.origin = r.min
 	m.julia = julia
 	m.jpoint = jpoint
@@ -288,11 +297,11 @@ func (m *Mandelbrot) translate(p draw.Point) complex128 {
 }
 
 func (m *Mandelbrot) Zoom(r draw.Rectangle) Fractal {
-	return NewMandelbrot(crect{m.translate(r.Min), m.translate(r.Max)}, m.r, m.julia, m.jpoint)
+	return NewMandelbrot(crect{m.translate(r.Min), m.translate(r.Max)}, m.r, m.julia, m.jpoint, m.iterations)
 }
 
 func (m *Mandelbrot) Resize(r draw.Rectangle) Fractal {
-	return NewMandelbrot(m.cr, r, m.julia, m.jpoint)
+	return NewMandelbrot(m.cr, r, m.julia, m.jpoint, m.iterations)
 }
 
 func (m *Mandelbrot) At(pt draw.Point) (col image.RGBAColor) {
@@ -319,7 +328,7 @@ func (m *Mandelbrot) Associated(pt draw.Point) Fractal {
 	if m.julia {
 		return nil
 	}
-	return NewMandelbrot(topArea, m.r, true, m.translate(pt))
+	return NewMandelbrot(topArea, m.r, true, m.translate(pt), m.iterations)
 }
 
 type Tile struct {
@@ -439,6 +448,7 @@ type Tiler struct {
 	backing canvas.Backing
 	all tileTable
 	current map[*Tile]bool
+	tileSize int
 	calc Fractal
 	updatec chan draw.Rectangle
 	drawerDone chan bool
@@ -449,11 +459,12 @@ type Tiler struct {
 // space. The centre of its bounding box is always
 // (0, 0).
 //
-func NewTiler(calc Fractal, cache tileTable) *Tiler {
+func NewTiler(calc Fractal, cache tileTable, tileSize int) *Tiler {
 	t := &Tiler{}
 	t.all = cache
 	t.current = make(map[*Tile]bool)
 	t.calc = calc
+	t.tileSize = tileSize
 	t.updatec = make(chan draw.Rectangle, 50)
 	t.drawerDone = make(chan bool)
 	go t.drawer()
@@ -529,16 +540,16 @@ func (t *Tiler) Draw(dst draw.Image, clipr draw.Rectangle) {
 		panic("no current")
 	}
 	min := draw.Point{
-		roundDown(clipr.Min.X, TileSize),
-		roundDown(clipr.Min.Y, TileSize),
+		roundDown(clipr.Min.X, t.tileSize),
+		roundDown(clipr.Min.Y, t.tileSize),
 	}
 	var p draw.Point
-	for p.Y = min.Y; p.Y < clipr.Max.Y; p.Y += TileSize {
-		for p.X = min.X; p.X < clipr.Max.X; p.X += TileSize {
+	for p.Y = min.Y; p.Y < clipr.Max.Y; p.Y += t.tileSize {
+		for p.X = min.X; p.X < clipr.Max.X; p.X += t.tileSize {
 			tile := t.all.Get(p.X, p.Y, t.calc)
 			if tile == nil {
 				tile = NewTile(
-					draw.Rect(p.X, p.Y, p.X + TileSize, p.Y + TileSize),
+					draw.Rect(p.X, p.Y, p.X + t.tileSize, p.Y + t.tileSize),
 					t.calc,
 					nil,
 					false,

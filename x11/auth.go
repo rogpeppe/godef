@@ -48,42 +48,42 @@ func readAuth(displayStr string) (name, data string, err os.Error) {
 	if fn == "" {
 		home := os.Getenv("HOME")
 		if home == "" {
-			err = os.NewError("Xauthority not found: $XAUTHORITY, $HOME not set")
-			return
+			return "", "", os.NewError("Xauthority not found: $XAUTHORITY, $HOME not set")
+
 		}
 		fn = home + "/.Xauthority"
 	}
 	r, err := os.Open(fn, os.O_RDONLY, 0444)
 	if err != nil {
-		return
+		return "", "", err
 	}
 	defer r.Close()
 	br := bufio.NewReader(r)
 
 	hostname, err := os.Hostname()
 	if err != nil {
-		return
+		return "", "", err
 	}
 	for {
 		family, err := readU16BE(br, b[0:2])
 		if err != nil {
-			return
+			return "", "", err
 		}
 		addr, err := readStr(br, b[0:])
 		if err != nil {
-			return
+			return "", "", err
 		}
 		disp, err := readStr(br, b[0:])
 		if err != nil {
-			return
+			return "", "", err
 		}
 		name0, err := readStr(br, b[0:])
 		if err != nil {
-			return
+			return "", "", err
 		}
 		data0, err := readStr(br, b[0:])
 		if err != nil {
-			return
+			return "", "", err
 		}
 		if family == familyLocal && addr == hostname && disp == displayStr {
 			return name0, data0, nil
