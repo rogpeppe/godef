@@ -24,73 +24,22 @@ type memRanges struct {
 	l *memRangeList
 }
 
-func DeepCopy(obj interface{}) interface{} {
+// Copy makes a recursive deep copy of obj and returns the result.
+//
+// Pointer equality between items within obj is preserved,
+// as are slices that point to the same underlying data,
+// although the data itself will be copied.
+// a := Copy(b) implies reflect.DeepEqual(a, b).
+// Map keys are not copied, as reflect.DeepEqual does not
+// recurse into map keys.
+// Due to restrictions in the reflect package, only
+// types with all public members may be copied.
+//
+func Copy(obj interface{}) interface{} {
 	var m memRanges
 	v := reflect.NewValue(obj)
 	ranges(v, &m)
 	return deepCopy(nil, v, &m).Interface()
-}
-
-func (l *memRangeList) String() string {
-	s := "["
-	for ; l != nil; l = l.next {
-		s += fmt.Sprintf("(%x-%x: %v), ", l.m0, l.m1, l.t)
-	}
-	s += "]"
-	return s
-}
-
-// add tries to add the provided range to the list of known memory allocations.
-// If the range is within an existing range, it return false.
-// If the range subsumes existing ranges, they are deleted and replaced
-// with the new range.
-// mk is a function to be called to allocate space for a copy of the memory,
-// which will be called with t and r (to avoid a closure allocation)
-//
-func (m *memRanges) add(r memRange, t reflect.Type, mk func(r memRange, t reflect.Type) (reflect.Value, uintptr)) (added bool) {
-	prev := &m.l
-	var s *memRangeList
-	for s = *prev; s != nil; s = s.next {
-		if r.m1 <= s.m0 {
-			// not found: add a new range
-			break
-		}
-		if r.m0 >= s.m0 && r.m1 <= s.m1 {
-			// r is within s
-			return false
-		}
-		if r.m0 <= s.m0 {
-			// r contains s (and possibly following ranges too),
-			// so delete s
-			if r.m1 < s.m1 {
-				panic("overlapping range")
-			}
-			*prev = s.next
-			continue
-		}
-		prev = &s.next
-	}
-	*prev = &memRangeList{r, t, nil, 0, false, mk, s}
-	return true
-}
-
-// get looks for a memory range that contains m0.
-//
-func (m *memRanges) get(m0 uintptr) *memRangeList {
-	for l := m.l; l != nil; l = l.next {
-		if m0 < l.m0 {
-			break
-		}
-		if m0 < l.m1 {
-			return l
-		}
-	}
-	return nil
-}
-
-
-func (r memRange) String() string {
-	return fmt.Sprintf("[%x %x]", r.m0, r.m1)
 }
 
 // ranges recursively adds all the memory allocations
@@ -160,9 +109,13 @@ func deepCopy(dst, obj reflect.Value, m *memRanges) reflect.Value {
 	switch obj := obj.(type) {
 	case *reflect.ArrayValue:
 		dst := dst.(*reflect.ArrayValue)
-		// could use reflect.ArrayCopy when no pointers in elem type
-		for i := 0; i < obj.Len(); i++ {
-			deepCopy(dst.Elem(i), obj.Elem(i), m)
+		t := obj.Type().(*reflect.ArrayType).Elem()
+		if hasPointers(t) {
+			for i := 0; i < obj.Len(); i++ {
+				deepCopy(dst.Elem(i), obj.Elem(i), m)
+			}
+		}else{
+			reflect.ArrayCopy(dst, obj)
 		}
 
 	case *reflect.InterfaceValue:
@@ -282,4 +235,66 @@ func makeSlice(r memRange, t0 reflect.Type) (v reflect.Value, allocAddr uintptr)
 func makeZero(_ memRange, t reflect.Type) (v reflect.Value, allocAddr uintptr) {
 	v = reflect.MakeZero(t)
 	return v, v.Addr()
+}
+
+func (l *memRangeList) String() string {
+	s := "["
+	for ; l != nil; l = l.next {
+		s += fmt.Sprintf("(%x-%x: %v), ", l.m0, l.m1, l.t)
+	}
+	s += "]"
+	return s
+}
+
+// add tries to add the provided range to the list of known memory allocations.
+// If the range is within an existing range, it return false.
+// If the range subsumes existing ranges, they are deleted and replaced
+// with the new range.
+// mk is a function to be called to allocate space for a copy of the memory,
+// which will be called with t and r (to avoid a closure allocation)
+//
+func (m *memRanges) add(r memRange, t reflect.Type, mk func(r memRange, t reflect.Type) (reflect.Value, uintptr)) (added bool) {
+	prev := &m.l
+	var s *memRangeList
+	for s = *prev; s != nil; s = s.next {
+		if r.m1 <= s.m0 {
+			// not found: add a new range
+			break
+		}
+		if r.m0 >= s.m0 && r.m1 <= s.m1 {
+			// r is within s
+			return false
+		}
+		if r.m0 <= s.m0 {
+			// r contains s (and possibly following ranges too),
+			// so delete s
+			if r.m1 < s.m1 {
+				panic("overlapping range")
+			}
+			*prev = s.next
+			continue
+		}
+		prev = &s.next
+	}
+	*prev = &memRangeList{r, t, nil, 0, false, mk, s}
+	return true
+}
+
+// get looks for a memory range that contains m0.
+//
+func (m *memRanges) get(m0 uintptr) *memRangeList {
+	for l := m.l; l != nil; l = l.next {
+		if m0 < l.m0 {
+			break
+		}
+		if m0 < l.m1 {
+			return l
+		}
+	}
+	return nil
+}
+
+
+func (r memRange) String() string {
+	return fmt.Sprintf("[%x %x]", r.m0, r.m1)
 }

@@ -192,7 +192,7 @@ func TestDeepCopy(t *testing.T) {
 		},
 	}
 	for i, test := range tests {
-		v1 := DeepCopy(test.v)
+		v1 := Copy(test.v)
 		if !test.eq(test.v, v1) {
 			t.Errorf("failure at %d on %v -> %v\n", i, test.v, v1)
 		}
