@@ -54,7 +54,7 @@ func (obj *RasterItem) SetContainer(b Backing) {
 }
 
 func (obj *RasterItem) pt(p raster.Point) raster.Point {
-	return raster.Point{p.X + raster.Fixed(obj.rasterizer.Dx) << fixBits, p.Y + raster.Fixed(obj.rasterizer.Dy) << fixBits}
+	return raster.Point{p.X + raster.Fix32(obj.rasterizer.Dx) << fixBits, p.Y + raster.Fix32(obj.rasterizer.Dy) << fixBits}
 }
 
 func (obj *RasterItem) Add1(p raster.Point) {
@@ -307,36 +307,36 @@ func spans2ys(ss []raster.Span) []int {
 
 const (
 	fixBits  = 8
-	fixScale = 1 << fixBits // matches raster.Fixed
+	fixScale = 1 << fixBits // matches raster.Fix32
 )
 
-func float2fix(f float) raster.Fixed {
-	return raster.Fixed(f*fixScale + 0.5)
+func float2fix(f float) raster.Fix32 {
+	return raster.Fix32(f*fixScale + 0.5)
 }
 
-func int2fix(i int) raster.Fixed {
-	return raster.Fixed(i << fixBits)
+func int2fix(i int) raster.Fix32 {
+	return raster.Fix32(i << fixBits)
 }
 
-func fix2int(i raster.Fixed) int {
+func fix2int(i raster.Fix32) int {
 	return int((i + fixScale/2) >> fixBits)
 }
 
 func pixel2fixPoint(p draw.Point) raster.Point {
-	return raster.Point{raster.Fixed(p.X << fixBits), raster.Fixed(p.Y << fixBits)}
+	return raster.Point{raster.Fix32(p.X << fixBits), raster.Fix32(p.Y << fixBits)}
 }
 
 func fix2pixelPoint(p raster.Point) draw.Point {
 	return draw.Point{int((p.X + fixScale/2) >> fixBits), int((p.Y + fixScale/2) >> fixBits)}
 }
 
-func float2fixed(f float64) raster.Fixed {
+func float2fixed(f float64) raster.Fix32 {
 	if f < 0 {
-		return raster.Fixed(f*256 + 0.5)
+		return raster.Fix32(f*256 + 0.5)
 	}
-	return raster.Fixed(f*256 - 0.5)
+	return raster.Fix32(f*256 - 0.5)
 }
 
-func fixed2float(f raster.Fixed) float64 {
+func fixed2float(f raster.Fix32) float64 {
 	return float64(f) / 256
 }

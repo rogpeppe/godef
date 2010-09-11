@@ -142,7 +142,7 @@ type Line struct {
 	raster RasterItem
 	backing Backing
 	p0, p1 raster.Point
-	width  raster.Fixed
+	width  raster.Fix32
 }
 
 // Line returns a new Line, coloured with col, from p0 to p1,
@@ -211,7 +211,7 @@ func (obj *Line) SetFill(fill image.Image) {
 }
 
 // could do it in fixed point, but what's 0.5us between friends?
-func isincos2(x, y raster.Fixed) (isin, icos raster.Fixed) {
+func isincos2(x, y raster.Fix32) (isin, icos raster.Fix32) {
 	sin, cos := math.Sincos(math.Atan2(fixed2float(x), fixed2float(y)))
 	isin = float2fixed(sin)
 	icos = float2fixed(cos)

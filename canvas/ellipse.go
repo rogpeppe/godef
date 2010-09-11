@@ -14,8 +14,8 @@ type Ellipse struct {
 	raster RasterItem
 	backing Backing
 	cr raster.Point
-	ra, rb raster.Fixed
-	width  raster.Fixed
+	ra, rb raster.Fix32
+	width  raster.Fix32
 	pts *vector.Vector
 }
 
@@ -104,7 +104,7 @@ func (obj *Ellipse) makeOutline() {
 	
 		obj.pts = pts
 	} else {	
-		totnq = len(pts.Data())
+		totnq = len(*pts)
 	}
 	pt = pts.At(0).(raster.Point)
 	pt0 := raster.Point{obj.cr.X+pt.X, obj.cr.Y+pt.Y}
