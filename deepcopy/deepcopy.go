@@ -12,12 +12,12 @@ type memRange struct {
 
 type memRangeList struct {
 	memRange
-	t      reflect.Type
-	v      reflect.Value
-	allocAddr uintptr
-	copied bool
-	make func(r memRange, t reflect.Type) (v reflect.Value, allocAddr uintptr)
-	next   *memRangeList
+	t         reflect.Type                                                          // type to be passed to make.
+	v         reflect.Value                                                         // newly allocated value.
+	allocAddr uintptr                                                               // address of newly allocated value.
+	copied    bool                                                                  // has this range been copied yet?
+	make      func(r memRange, t reflect.Type) (v reflect.Value, allocAddr uintptr) // allocate space for this range.
+	next      *memRangeList
 }
 
 type memRanges struct {
@@ -114,7 +114,7 @@ func deepCopy(dst, obj reflect.Value, m *memRanges) reflect.Value {
 			for i := 0; i < obj.Len(); i++ {
 				deepCopy(dst.Elem(i), obj.Elem(i), m)
 			}
-		}else{
+		} else {
 			reflect.ArrayCopy(dst, obj)
 		}
 
@@ -137,7 +137,7 @@ func deepCopy(dst, obj reflect.Value, m *memRanges) reflect.Value {
 			for _, k := range obj.Keys() {
 				dst.SetElem(k, deepCopy(nil, obj.Elem(k), m))
 			}
-		}else{
+		} else {
 			dst.SetValue(e.v)
 		}
 
@@ -229,7 +229,7 @@ func makeSlice(r memRange, t0 reflect.Type) (v reflect.Value, allocAddr uintptr)
 	esize := t.Elem().Size()
 	n := (r.m1 - r.m0) / esize
 	s := reflect.MakeSlice(t, int(n), int(n))
-	return s, s.Get() - n * esize
+	return s, s.Get() - n*esize
 }
 
 func makeZero(_ memRange, t reflect.Type) (v reflect.Value, allocAddr uintptr) {

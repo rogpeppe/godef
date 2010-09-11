@@ -7,19 +7,19 @@ import (
 
 func TestRangeAmalgamation(t *testing.T) {
 	inputs := []memRange{
-			memRange{2, 4},
-			memRange{6, 8},
-			memRange{0, 2},
-			memRange{0, 4},
-			memRange{10, 20},
-			memRange{0, 8},
-		}
+		memRange{2, 4},
+		memRange{6, 8},
+		memRange{0, 2},
+		memRange{0, 4},
+		memRange{10, 20},
+		memRange{0, 8},
+	}
 	outputs := [][]memRange{
 		[]memRange{
 			memRange{2, 4},
 		},
 		[]memRange{
-			memRange{2,4}, memRange{6, 8},
+			memRange{2, 4}, memRange{6, 8},
 		},
 		[]memRange{
 			memRange{0, 2}, memRange{2, 4}, memRange{6, 8},
@@ -51,7 +51,7 @@ func TestRangeAmalgamation(t *testing.T) {
 }
 
 type copyTest struct {
-	v interface{}
+	v  interface{}
 	eq func(v1, v2 interface{}) bool
 }
 
@@ -59,7 +59,7 @@ func simpleEq(v0, v1 interface{}) bool {
 	return reflect.DeepEqual(v0, v1)
 }
 
-var slice = []int{0,1,2,3,4,5,6}
+var slice = []int{0, 1, 2, 3, 4, 5, 6}
 
 type uintPtrGetter interface {
 	Get() uintptr
@@ -71,8 +71,9 @@ func eqPtr(x, y interface{}) bool {
 
 	return v.Get() == w.Get()
 }
+
 type T1 struct {
-	A *int
+	A    *int
 	B, C []int
 }
 type T2 struct {
@@ -81,7 +82,7 @@ type T2 struct {
 	C *T2
 }
 type T3 struct {
-	A, B map[string] int
+	A, B map[string]int
 }
 type T4 struct {
 	A *[]int
@@ -123,8 +124,8 @@ func TestDeepCopy(t *testing.T) {
 		copyTest{
 			T1{
 				&slice[1],
-				slice[2 : 5],
-				slice[0 : 4],
+				slice[2:5],
+				slice[0:4],
 			},
 			func(x, y interface{}) bool {
 				y1 := y.(T1)
@@ -161,7 +162,7 @@ func TestDeepCopy(t *testing.T) {
 			},
 		},
 		copyTest{
-			map[*T2]map[string]int {
+			map[*T2]map[string]int{
 				t2: m,
 			},
 			func(x, y interface{}) bool {
