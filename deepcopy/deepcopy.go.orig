@@ -1,0 +1,307 @@
+// An earlier, slower but simpler version of the deepcopy package.
+// It does more work because it has to inspect each type every time.
+package deepcopy
+
+import (
+	"fmt"
+	"reflect"
+	"unsafe"
+)
+
+type memRange struct {
+	m0, m1 uintptr
+}
+
+type memRangeList struct {
+	memRange
+	t         reflect.Type                                                          // type to be passed to make.
+	v         reflect.Value                                                         // newly allocated value.
+	allocAddr uintptr                                                               // address of newly allocated value.
+	copied    bool                                                                  // has this range been copied yet?
+	make      func(r memRange, t reflect.Type) (v reflect.Value, allocAddr uintptr) // allocate space for this range.
+	next      *memRangeList
+}
+
+type memRanges struct {
+	l *memRangeList
+}
+
+// Copy makes a recursive deep copy of obj and returns the result.
+//
+// Pointer equality between items within obj is preserved,
+// as are slices that point to the same underlying data,
+// although the data itself will be copied.
+// a := Copy(b) implies reflect.DeepEqual(a, b).
+// Map keys are not copied, as reflect.DeepEqual does not
+// recurse into map keys.
+// Due to restrictions in the reflect package, only
+// types with all public members may be copied.
+//
+func Copy(obj interface{}) interface{} {
+	var m memRanges
+	v := reflect.NewValue(obj)
+	ranges(v, &m)
+	dst := reflect.MakeZero(v.Type())
+	deepCopy(dst, v, &m)
+	return dst.Interface()
+}
+
+// ranges recursively adds all the memory allocations
+// pointed to by obj to m.
+func ranges(obj reflect.Value, m *memRanges) {
+	t := obj.Type()
+	switch obj := obj.(type) {
+	case *reflect.PtrValue:
+		t := t.(*reflect.PtrType)
+		if !obj.IsNil() {
+			m0 := obj.Get()
+			if m.add(memRange{m0, m0 + t.Elem().Size()}, t.Elem(), makeZero) {
+				ranges(obj.Elem(), m)
+			}
+		}
+
+	case *reflect.SliceValue:
+		if !obj.IsNil() {
+			elemt := t.(*reflect.SliceType).Elem()
+			esize := elemt.Size()
+			n := obj.Cap()
+			m1 := obj.Get()
+			m0 := m1 - uintptr(n)*esize
+			if m.add(memRange{m0, m1}, obj.Type(), makeSlice) {
+				if hasPointers(elemt) {
+					obj = obj.Slice(0, n)
+					for i := 0; i < n; i++ {
+						ranges(obj.Elem(i), m)
+					}
+				}
+			}
+		}
+
+	case *reflect.InterfaceValue:
+		ranges(obj.Elem(), m)
+
+	case *reflect.MapValue:
+		t := t.(*reflect.MapType)
+		m0 := obj.Get()
+		if m.add(memRange{m0, m0 + 1}, t, nil) {
+			if hasPointers(t.Elem()) {
+				for _, k := range obj.Keys() {
+					ranges(obj.Elem(k), m)
+				}
+			}
+		}
+
+	case *reflect.ArrayValue:
+		n := obj.Len()
+		for i := 0; i < n; i++ {
+			ranges(obj.Elem(i), m)
+		}
+
+	case *reflect.StructValue:
+		if hasPointers(t) {
+			for i := 0; i < obj.NumField(); i++ {
+				ranges(obj.Field(i), m)
+			}
+		}
+	}
+}
+
+func deepCopy(dst, obj reflect.Value, m *memRanges) {
+	switch obj := obj.(type) {
+	case *reflect.ArrayValue:
+		dst := dst.(*reflect.ArrayValue)
+		t := obj.Type().(*reflect.ArrayType).Elem()
+		if hasPointers(t) {
+			for i := 0; i < obj.Len(); i++ {
+				deepCopy(dst.Elem(i), obj.Elem(i), m)
+			}
+		} else {
+			reflect.ArrayCopy(dst, obj)
+		}
+
+	case *reflect.InterfaceValue:
+		deepCopy(dst, obj.Elem(), m)
+
+	case *reflect.MapValue:
+		dst := dst.(*reflect.MapValue)
+		m0 := obj.Get()
+		e := m.get(m0)
+		if e == nil {
+			panic("map range not found")
+		}
+		if !e.copied {
+			// we don't copy the map keys because reflect.deepEqual
+			// doesn't do deep equality on map keys.
+			e.copied = true
+			t := obj.Type().(*reflect.MapType)
+			e.v = reflect.MakeMap(t)
+			dst.SetValue(e.v)
+			kv := reflect.MakeZero(t.Elem())
+			for _, k := range obj.Keys() {
+				deepCopy(kv, obj.Elem(k), m)
+				dst.SetElem(k, kv)
+			}
+		} else {
+			dst.SetValue(e.v)
+		}
+
+	case *reflect.PtrValue:
+		if obj.IsNil() {
+			break
+		}
+		t := obj.Type().(*reflect.PtrType)
+		m0 := obj.Get()
+		m1 := m0 + t.Elem().Size()
+		e := m.get(m0)
+		if e == nil {
+			panic("range not found")
+		}
+		if e.v == nil {
+			e.v, e.allocAddr = e.make(e.memRange, e.t)
+		}
+		ptr := m0 - e.m0 + e.allocAddr
+		v := reflect.NewValue(unsafe.Unreflect(t, unsafe.Pointer(&ptr))).(*reflect.PtrValue)
+		// make a copy only if we're pointing to the entire
+		// allocated object; otherwise the copy will be made
+		// later when we get to the pointer that does point
+		// to it.
+		if m0 == e.m0 && m1 == e.m1 && !e.copied {
+			e.copied = true
+			deepCopy(v.Elem(), obj.Elem(), m)
+		}
+		dst.SetValue(v)
+
+	case *reflect.SliceValue:
+		if obj.IsNil() {
+			break
+		}
+		t := obj.Type().(*reflect.SliceType)
+		dst := dst.(*reflect.SliceValue)
+		esize := t.Elem().Size()
+		m1 := obj.Get()
+		m0 := m1 - uintptr(obj.Cap())*esize
+		e := m.get(m0)
+		if e == nil {
+			panic(fmt.Sprintf("slice range [%x %x] not found", m0, m1))
+		}
+		// allocate whole array, even if obj represents just a part of it
+		if e.v == nil {
+			e.v, e.allocAddr = e.make(e.memRange, e.t)
+		}
+		// we must fabricate the slice, as we may be pointing
+		// to a slice of an in-struct array.
+		h := reflect.SliceHeader{m0 - e.m0 + e.allocAddr, obj.Len(), obj.Cap()}
+		dst.SetValue(reflect.NewValue(unsafe.Unreflect(t, unsafe.Pointer(&h))))
+		if e.m0 == m0 && e.m1 == m1 && !e.copied {
+			e.copied = true
+			cap := obj.Cap()
+			obj := obj.Slice(0, cap)
+			dst := dst.Slice(0, cap)
+			for i := 0; i < cap; i++ {
+				deepCopy(dst.Elem(i), obj.Elem(i), m)
+			}
+		}
+
+	case *reflect.StructValue:
+		dst := dst.(*reflect.StructValue)
+		for i := 0; i < obj.NumField(); i++ {
+			deepCopy(dst.Field(i), obj.Field(i), m)
+		}
+
+	default:
+		dst.SetValue(obj)
+	}
+}
+
+// return true if t contains one or more reference types.
+func hasPointers(t reflect.Type) bool {
+	// could memoise the results in a type->bool map.
+	switch t := t.(type) {
+	case *reflect.PtrType, *reflect.SliceType, *reflect.MapType, *reflect.InterfaceType:
+		return true
+	case *reflect.ArrayType:
+		return hasPointers(t.Elem())
+	case *reflect.StructType:
+		for i := 0; i < t.NumField(); i++ {
+			if hasPointers(t.Field(i).Type) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func makeSlice(r memRange, t0 reflect.Type) (v reflect.Value, allocAddr uintptr) {
+	t := t0.(*reflect.SliceType)
+	esize := t.Elem().Size()
+	n := (r.m1 - r.m0) / esize
+	s := reflect.MakeSlice(t, int(n), int(n))
+	return s, s.Get() - n*esize
+}
+
+func makeZero(_ memRange, t reflect.Type) (v reflect.Value, allocAddr uintptr) {
+	v = reflect.MakeZero(t)
+	return v, v.Addr()
+}
+
+func (l *memRangeList) String() string {
+	s := "["
+	for ; l != nil; l = l.next {
+		s += fmt.Sprintf("(%x-%x: %v), ", l.m0, l.m1, l.t)
+	}
+	s += "]"
+	return s
+}
+
+// add tries to add the provided range to the list of known memory allocations.
+// If the range is within an existing range, it return false.
+// If the range subsumes existing ranges, they are deleted and replaced
+// with the new range.
+// mk is a function to be called to allocate space for a copy of the memory,
+// which will be called with t and r (to avoid a closure allocation)
+//
+func (m *memRanges) add(r memRange, t reflect.Type, mk func(r memRange, t reflect.Type) (reflect.Value, uintptr)) (added bool) {
+	prev := &m.l
+	var s *memRangeList
+	for s = *prev; s != nil; s = s.next {
+		if r.m1 <= s.m0 {
+			// not found: add a new range
+			break
+		}
+		if r.m0 >= s.m0 && r.m1 <= s.m1 {
+			// r is within s
+			return false
+		}
+		if r.m0 <= s.m0 {
+			// r contains s (and possibly following ranges too),
+			// so delete s
+			if r.m1 < s.m1 {
+				panic("overlapping range")
+			}
+			*prev = s.next
+			continue
+		}
+		prev = &s.next
+	}
+	*prev = &memRangeList{r, t, nil, 0, false, mk, s}
+	return true
+}
+
+// get looks for a memory range that contains m0.
+//
+func (m *memRanges) get(m0 uintptr) *memRangeList {
+	for l := m.l; l != nil; l = l.next {
+		if m0 < l.m0 {
+			break
+		}
+		if m0 < l.m1 {
+			return l
+		}
+	}
+	return nil
+}
+
+
+func (r memRange) String() string {
+	return fmt.Sprintf("[%x %x]", r.m0, r.m1)
+}

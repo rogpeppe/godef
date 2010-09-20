@@ -89,14 +89,25 @@ type T4 struct {
 	B []int
 	C [4]int
 }
+type T5 struct {
+	A interface{}
+	B interface{}
+}
 
 type Tree struct {
 	L, R *Tree
 }
 
+var root *Tree
+var t1 T1
+var t2 *T2
+var t3 T3
+var t4 *T4
+var t5 *T5
+var m = map[string]int{"one": 1, "two": 2}
 
-func TestDeepCopy(t *testing.T) {
-	root := &Tree{}
+func init() {
+	root = &Tree{}
 	*root = Tree{
 		&Tree{
 			root,
@@ -107,11 +118,23 @@ func TestDeepCopy(t *testing.T) {
 			root,
 		},
 	}
-	t2 := &T2{99, nil, nil}
-	t4 := &T4{nil, nil, [...]int{0, 1, 2, 3}}
+	t1 = T1{
+		&slice[1],
+		slice[2:5],
+		slice[0:4],
+	}
+	t2 = &T2{99, nil, nil}
+	t2 = &T2{88, &t2.A, t2}
+	t3 = T3{m, m}
+	t4 = &T4{nil, nil, [...]int{0, 1, 2, 3}}
 	t4.A = &t4.B
 	t4.B = t4.C[1:]
-	m := map[string]int{"one": 1, "two": 2}
+	t5 = &T5{}
+	t5.A = t2
+	t5.B = t5
+}
+
+func TestDeepCopy(t *testing.T) {
 	var tests = []copyTest{
 		copyTest{
 			5,
@@ -122,22 +145,17 @@ func TestDeepCopy(t *testing.T) {
 			simpleEq,
 		},
 		copyTest{
-			T1{
-				&slice[1],
-				slice[2:5],
-				slice[0:4],
-			},
+			t1,
 			func(x, y interface{}) bool {
 				y1 := y.(T1)
-				return simpleEq(x, y) && eqPtr(y1.B, y1.C) && y1.A == &y1.C[1]
+				return eqPtr(y1.B, y1.C) && y1.A == &y1.C[1]
 			},
 		},
 		copyTest{
 			root,
 			func(x, y interface{}) bool {
 				y1 := y.(*Tree)
-				return simpleEq(x, y) &&
-					y1.L.L == y1 &&
+				return y1.L.L == y1 &&
 					y1.L.R == y1 &&
 					y1.R.L == y1 &&
 					y1.R.R == y1 &&
@@ -145,20 +163,18 @@ func TestDeepCopy(t *testing.T) {
 			},
 		},
 		copyTest{
-			&T2{88, &t2.A, t2},
+			t2,
 			func(x, y interface{}) bool {
 				y1 := y.(*T2)
-				return simpleEq(x, y) &&
-					y1.B == &y1.C.A &&
+				return y1.B == &y1.C.A &&
 					y1.C.A == 99
 			},
 		},
 		copyTest{
-			T3{m, m},
+			t3,
 			func(x, y interface{}) bool {
 				y1 := y.(T3)
-				return simpleEq(x, y) &&
-					y1.A == y1.B
+				return y1.A == y1.B
 			},
 		},
 		copyTest{
@@ -167,9 +183,6 @@ func TestDeepCopy(t *testing.T) {
 			},
 			func(x, y interface{}) bool {
 				y1 := y.(map[*T2]map[string]int)
-				if !simpleEq(x, y) {
-					return false
-				}
 				for _, v := range y1 {
 					if v == m {
 						return false
@@ -185,17 +198,57 @@ func TestDeepCopy(t *testing.T) {
 			t4,
 			func(x, y interface{}) bool {
 				y1 := y.(*T4)
-				return simpleEq(x, y) &&
-					x != y &&
+				return x != y &&
 					y1.A == &y1.B &&
 					&y1.B[0] == &y1.C[1]
+			},
+		},
+		copyTest{
+			t5,
+			func(x, y interface{}) bool {
+				y1 := y.(*T5)
+				return y1.A.(*T2).A == 88 &&
+					y1.B.(*T5) == y1
 			},
 		},
 	}
 	for i, test := range tests {
 		v1 := Copy(test.v)
+		if !simpleEq(test.v, v1) {
+			t.Errorf("simpleEq failure at %d on %v -> %v\n", i, test.v, v1)
+		}
 		if !test.eq(test.v, v1) {
 			t.Errorf("failure at %d on %v -> %v\n", i, test.v, v1)
 		}
+	}
+}
+
+func BenchmarkCopyT1(b *testing.B) {
+	for i := b.N; i >= 0; i-- {
+		Copy(t1)
+	}
+}
+
+func BenchmarkCopyT2(b *testing.B) {
+	for i := b.N; i >= 0; i-- {
+		Copy(t2)
+	}
+}
+
+func BenchmarkCopyT3(b *testing.B) {
+	for i := b.N; i >= 0; i-- {
+		Copy(t3)
+	}
+}
+
+func BenchmarkCopyT4(b *testing.B) {
+	for i := b.N; i >= 0; i-- {
+		Copy(t4)
+	}
+}
+
+func BenchmarkCopyT5(b *testing.B) {
+	for i := b.N; i >= 0; i-- {
+		Copy(t5)
 	}
 }

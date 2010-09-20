@@ -123,6 +123,7 @@ type transformedValue struct {
 
 // XXX there must be a simpler way to do this!
 var osErrorType = reflect.Typeof(func(os.Error) {}).(*reflect.FuncType).In(0)
+var interfaceType = reflect.Typeof(func(interface{}){}).(*reflect.FuncType).In(0)
 
 // Transform returns a Value, v1, that mirrors an existing Value, v,
 // by running m.Transform(x) on each value received from

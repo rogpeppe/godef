@@ -55,7 +55,8 @@ type reader struct {
 
 // NewValue creates a new Value with its
 // initial value and type given by initial. If initial
-// is nil, any type is allowed, and the initial value is
+// is nil, the type is taken to be interface{},
+// and the initial value is
 // not set.
 //
 func NewValue(initial interface{}) Value {
@@ -66,6 +67,8 @@ func NewValue(initial interface{}) Value {
 	if initial != nil {
 		v.vtype = reflect.Typeof(initial)
 		version++
+	}else{
+		v.vtype = interfaceType
 	}
 	v.closed = make(chan bool, 1)
 	v.closed <- false
@@ -76,8 +79,9 @@ func NewValue(initial interface{}) Value {
 func (v *value) Type() reflect.Type {
 	return v.vtype
 }
+
 func (v *value) Set(val interface{}) os.Error {
-	if v.vtype != nil && reflect.Typeof(val) != v.vtype {
+	if v.vtype != interfaceType && reflect.Typeof(val) != v.vtype {
 		panic(fmt.Sprintf("wrong type set on Value[%v]: %T", v.vtype, val))
 	}
 	v.setc <- val
@@ -107,6 +111,19 @@ func (v *value) Iter() <-chan interface{} {
 	return out
 }
 
+func (r *reader) sender(readyc chan<- *reader) {
+	for {
+		v := <-r.in
+		if closed(r.in) {
+			close(r.out)
+			break
+		}
+		r.out <- v
+		readyc <- r
+	}
+}
+
+
 func (v *value) receiver(val interface{}, version int) {
 	ready := make([]*reader, 0, 2)
 
@@ -117,7 +134,7 @@ func (v *value) receiver(val interface{}, version int) {
 				// to close, we first notify all known readers,
 				// then we set closed to true, acknowledging
 				// new readers at the same time, to guard
-				// against race between Close and Get.
+				// against race between Close and Iter.
 				for _, r := range ready {
 					close(r.in)
 				}
@@ -156,16 +173,3 @@ func (v *value) receiver(val interface{}, version int) {
 		}
 	}
 }
-
-func (r *reader) sender(readyc chan<- *reader) {
-	for {
-		v := <-r.in
-		if closed(r.in) {
-			close(r.out)
-			break
-		}
-		r.out <- v
-		readyc <- r
-	}
-}
-
