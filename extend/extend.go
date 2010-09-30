@@ -48,7 +48,7 @@ func Pusher(ap interface{}) func(interface{}) {
 	//
 	// We know that the size of the type fits in a pointer,
 	// so the value is held directly inside the interface value.
-	// We copy each element to icopy, so that we can take
+	// We copy each element to xcopy, so that we can take
 	// the address of it without triggering the allocator.
 	// We set up e1 as a []byte alias to the data,
 	// and do the actual copy by setting up e0 as a []byte
@@ -62,8 +62,8 @@ func Pusher(ap interface{}) func(interface{}) {
 	he0 := (*reflect.SliceHeader)(unsafe.Pointer(&e0))
 	he1 := (*reflect.SliceHeader)(unsafe.Pointer(&e1))
 
-	var icopy interface{}
-	ih := (*interfaceHeader)(unsafe.Pointer(&icopy))
+	var xcopy interface{}
+	ih := (*interfaceHeader)(unsafe.Pointer(&xcopy))
 	if valueInsideInterface {
 		he1.Data = uintptr(unsafe.Pointer(&ih.data))
 		he1.Len = int(esize)
@@ -87,7 +87,7 @@ func Pusher(ap interface{}) func(interface{}) {
 			reflect.ArrayCopy(b, v)
 			v.SetValue(b)
 		}
-		icopy = x
+		xcopy = x
 		he0.Data = h.Data + esize * uintptr(len)
 		he0.Len = int(esize)
 		he0.Cap = int(esize)
