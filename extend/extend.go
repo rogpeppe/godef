@@ -18,7 +18,8 @@ func Pusher(ap interface{}) func(interface{}) {
 	v := reflect.NewValue(ap).(*reflect.PtrValue).Elem().(*reflect.SliceValue)
 	h := (*reflect.SliceHeader)(unsafe.Pointer(v.Addr()))
 	t := v.Type().(*reflect.SliceType)
-	esize := t.Elem().Size()
+	elemType := t.Elem()
+	esize := elemType.Size()
 	_, isInterface := t.Elem().(*reflect.InterfaceType)
 	unsafeCopy := !isInterface && esize <= uintptr(unsafe.Sizeof(uintptr(0)))
 	if !unsafeCopy {
@@ -59,6 +60,9 @@ func Pusher(ap interface{}) func(interface{}) {
 	he1.Cap = int(esize)
 
 	return func(x interface{}) {
+		if reflect.Typeof(x) != elemType {
+			panic("wrong type pushed")
+		}
 		len, cap := h.Len, h.Cap
 		if len < cap {
 			h.Len++
