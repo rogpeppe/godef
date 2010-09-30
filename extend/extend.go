@@ -1,4 +1,5 @@
 package extend
+
 import (
 	"reflect"
 	"unsafe"
@@ -8,13 +9,18 @@ const initialSize = 4
 
 // This type mirrors the actual runtime interface type.
 type interfaceHeader struct {
-	t uintptr
+	t    uintptr
 	data uintptr
 }
 
 // Pusher must be passed a pointer to a slice. It returns
 // a function that pushes a new value onto the end of the
 // slice, reallocating the slice if necessary.
+// e.g.
+//	var a []int
+//	push := extend.Pusher(&a)
+//	push(99)
+//
 func Pusher(ap interface{}) func(interface{}) {
 	v := reflect.NewValue(ap).(*reflect.PtrValue).Elem().(*reflect.SliceValue)
 	h := (*reflect.SliceHeader)(unsafe.Pointer(v.Addr()))
@@ -31,10 +37,10 @@ func Pusher(ap interface{}) func(interface{}) {
 			len, cap := h.Len, h.Cap
 			if len < cap {
 				h.Len++
-			}else{
+			} else {
 				if cap == 0 {
 					cap = initialSize
-				}else{
+				} else {
 					cap *= 2
 				}
 				b := reflect.MakeSlice(t, len+1, cap)
@@ -70,15 +76,18 @@ func Pusher(ap interface{}) func(interface{}) {
 
 	return func(x interface{}) {
 		if reflect.Typeof(x) != elemType {
-			panic("wrong type pushed")
+			panic("pushed element of type " +
+				reflect.Typeof(x).String() +
+				"; expected " +
+				elemType.String())
 		}
 		len, cap := h.Len, h.Cap
 		if len < cap {
 			h.Len++
-		}else{
+		} else {
 			if cap == 0 {
 				cap = initialSize
-			}else{
+			} else {
 				cap *= 2
 			}
 			b := reflect.MakeSlice(t, len+1, cap)
@@ -86,12 +95,12 @@ func Pusher(ap interface{}) func(interface{}) {
 			v.SetValue(b)
 		}
 		xcopy = x
-		he0.Data = h.Data + esize * uintptr(len)
+		he0.Data = h.Data + esize*uintptr(len)
 		he0.Len = int(esize)
 		he0.Cap = int(esize)
 		if valueInsideInterface {
 			copy(e0, e1)
-		}else{
+		} else {
 			he1.Data = ih.data
 			he1.Len = int(esize)
 			he1.Cap = int(esize)
