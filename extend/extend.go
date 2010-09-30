@@ -6,6 +6,7 @@ import (
 
 const initialSize = 4
 
+// This type mirrors the actual runtime interface type.
 type interfaceHeader struct {
 	t uintptr
 	data uintptr
@@ -19,10 +20,13 @@ func Pusher(ap interface{}) func(interface{}) {
 	h := (*reflect.SliceHeader)(unsafe.Pointer(v.Addr()))
 	t := v.Type().(*reflect.SliceType)
 	elemType := t.Elem()
-	esize := elemType.Size()
-	_, isInterface := t.Elem().(*reflect.InterfaceType)
-	unsafeCopy := !isInterface && esize <= uintptr(unsafe.Sizeof(uintptr(0)))
-	if !unsafeCopy {
+
+	if _, ok := elemType.(*reflect.InterfaceType); ok {
+		// If the array's element type is an interface,
+		// then we must go the slow route, because
+		// the type being pushed will not be identical
+		// the type in the array, so we rely on reflect
+		// to do the value->interface conversion.
 		return func(x interface{}) {
 			len, cap := h.Len, h.Cap
 			if len < cap {
@@ -50,14 +54,21 @@ func Pusher(ap interface{}) func(interface{}) {
 	// and do the actual copy by setting up e0 as a []byte
 	// alias to the array element and invoking copy().
 	// TODO: enable this code for type with size > sizeof(uintptr).
+	esize := elemType.Size()
+	valueInsideInterface := esize <= uintptr(unsafe.Sizeof(uintptr(0)))
+
 	var e0 []byte
 	var e1 []byte
 	he0 := (*reflect.SliceHeader)(unsafe.Pointer(&e0))
 	he1 := (*reflect.SliceHeader)(unsafe.Pointer(&e1))
+
 	var icopy interface{}
-	he1.Data = uintptr(unsafe.Pointer(&icopy)) + uintptr(unsafe.Offsetof(interfaceHeader{}.data))
-	he1.Len = int(esize)
-	he1.Cap = int(esize)
+	ih := (*interfaceHeader)(unsafe.Pointer(&icopy))
+	if valueInsideInterface {
+		he1.Data = uintptr(unsafe.Pointer(&ih.data))
+		he1.Len = int(esize)
+		he1.Cap = int(esize)
+	}
 
 	return func(x interface{}) {
 		if reflect.Typeof(x) != elemType {
@@ -80,7 +91,15 @@ func Pusher(ap interface{}) func(interface{}) {
 		he0.Data = h.Data + esize * uintptr(len)
 		he0.Len = int(esize)
 		he0.Cap = int(esize)
-		copy(e0, e1)
+		if valueInsideInterface {
+			copy(e0, e1)
+		}else{
+			he1.Data = ih.data
+			he1.Len = int(esize)
+			he1.Cap = int(esize)
+			copy(e0, e1)
+			e1 = nil
+		}
 		e0 = nil
 	}
 }
