@@ -46,8 +46,6 @@ func Pusher(ap interface{}) func(interface{}) {
 	}
 	// Nasty unsafe hackery:
 	//
-	// We know that the size of the type fits in a pointer,
-	// so the value is held directly inside the interface value.
 	// We copy each element to xcopy, so that we can take
 	// the address of it without triggering the allocator.
 	// We set up e1 as a []byte alias to the data,
