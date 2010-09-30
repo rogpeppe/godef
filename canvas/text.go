@@ -1,7 +1,7 @@
 package canvas
 
 import (
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"image"
 	"freetype-go.googlecode.com/hg/freetype"
 	"freetype-go.googlecode.com/hg/freetype/raster"
@@ -18,7 +18,7 @@ type TextItem struct {
 	*freetype.Context
 	Text string
 	Pt   raster.Point
-	bbox draw.Rectangle
+	bbox image.Rectangle
 	dst draw.Image
 	fill image.Image
 
@@ -47,7 +47,7 @@ func (d *TextItem) makePainter() {
 
 func (d *TextItem) CalcBbox() {
 	var bbox bboxPainter
-	d.DrawText(&bbox, d.Pt, d.Text)
+//	d.DrawText(&bbox, d.Pt, d.Text)
 	d.bbox = bbox.R
 }
 
@@ -60,23 +60,23 @@ func (d *TextItem) Opaque() bool {
 	return false
 }
 
-func (d *TextItem) Draw(dst draw.Image, clip draw.Rectangle) {
+func (d *TextItem) Draw(dst draw.Image, clip image.Rectangle) {
 	if dst != d.dst {
 		d.dst = dst
 		d.makePainter()
 	}
 	d.cp.Clipr = clip
-	d.DrawText(&d.cp, d.Pt, d.Text)
+//	d.DrawText(&d.cp, d.Pt, d.Text)
 }
 
-func (d *TextItem) HitTest(p draw.Point) bool {
+func (d *TextItem) HitTest(p image.Point) bool {
 	var hit hitTestPainter
 	hit.P = p
-	d.DrawText(&hit, d.Pt, d.Text)
+//	d.DrawText(&hit, d.Pt, d.Text)
 	return hit.Hit
 }
 
-func (d *TextItem) Bbox() draw.Rectangle {
+func (d *TextItem) Bbox() image.Rectangle {
 	return d.bbox
 }
 
@@ -86,8 +86,8 @@ func (d *TextItem) SetContainer(_ Backing) {
 type Text struct {
 	Item
 	item   TextItem
-	delta  draw.Point // vector from upper left of bbox to text origin
-	p      draw.Point
+	delta  image.Point // vector from upper left of bbox to text origin
+	p      image.Point
 	anchor Anchor
 	backing Backing
 	value values.Value
@@ -97,12 +97,12 @@ type Text struct {
 // If val is non-nil, it should be a string-typed Value,
 // and the Value's text will be displayed instead of s.
 //
-func NewText(p draw.Point, where Anchor, s string, font *truetype.Font, size float, val values.Value) *Text {
+func NewText(p image.Point, where Anchor, s string, font *truetype.Font, size float, val values.Value) *Text {
 	t := new(Text)
 	t.item.Init()
 	t.item.SetFont(font)
 	t.item.SetFontSize(size)
-	t.item.fill = image.ColorImage{draw.Black}
+	t.item.fill = image.Black
 	t.item.Text = s
 	t.p = p
 	t.anchor = where
@@ -127,12 +127,12 @@ func (t *Text) SetContainer(c Backing) {
 	t.backing = c
 }
 
-func (t *Text) SetCentre(cp draw.Point) {
+func (t *Text) SetCentre(cp image.Point) {
 	delta := cp.Sub(centre(t.Bbox()))
 	t.SetPoint(t.p.Add(delta))
 }
 
-func (t *Text) SetPoint(p0 draw.Point) {
+func (t *Text) SetPoint(p0 image.Point) {
 	t.backing.Atomically(func(flush FlushFunc) {
 		r := t.item.Bbox()
 		t.p = p0
@@ -144,12 +144,12 @@ func (t *Text) SetPoint(p0 draw.Point) {
 
 // calculate bounding box and text origin.
 func (t *Text) recalc(sizechanged bool) {
-	var bbox draw.Rectangle
+	var bbox image.Rectangle
 	if sizechanged {
 		t.item.Pt = raster.Point{0, 0}
 		t.item.CalcBbox()
 		bbox = t.item.Bbox()
-		t.delta = draw.Point{0, 0}.Sub(bbox.Min)
+		t.delta = image.Point{0, 0}.Sub(bbox.Min)
 	} else {
 		bbox = t.item.Bbox()
 	}
@@ -195,8 +195,8 @@ const (
 	Baseline
 )
 
-func anchor(r draw.Rectangle, flags Anchor, p draw.Point) draw.Rectangle {
-	var dp draw.Point
+func anchor(r image.Rectangle, flags Anchor, p image.Point) image.Rectangle {
+	var dp image.Point
 	switch flags & (E | W) {
 	case E:
 		dp.X = r.Dx()

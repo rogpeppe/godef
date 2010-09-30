@@ -16,7 +16,7 @@ package canvas
 
 import (
 	"container/list"
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"image"
 	"log"
 )
@@ -42,7 +42,7 @@ type Flusher interface {
 type Backing interface {
 	Flusher
 	Atomically(func(f FlushFunc))
-	Rect() draw.Rectangle
+	Rect() image.Rectangle
 }
 
 // A FlushFunc can be used to inform a Backing object
@@ -53,7 +53,7 @@ type Backing interface {
 // its value gives the item that has changed,
 // which must be a direct child of the Backing object.
 //
-type FlushFunc func(r draw.Rectangle, drawn Drawer)
+type FlushFunc func(r image.Rectangle, drawn Drawer)
 
 // The Drawer interface represents the basic level
 // of functionality for a drawn object.
@@ -75,7 +75,7 @@ type FlushFunc func(r draw.Rectangle, drawn Drawer)
 // the appearance of another object using the same Backer)
 //
 type Drawer interface {
-	Draw(dst draw.Image, clipr draw.Rectangle)
+	Draw(dst draw.Image, clipr image.Rectangle)
 	SetContainer(b Backing)
 }
 
@@ -88,20 +88,20 @@ type Drawer interface {
 //
 type Item interface {
 	Drawer
-	Bbox() draw.Rectangle
-	HitTest(p draw.Point) bool
+	Bbox() image.Rectangle
+	HitTest(p image.Point) bool
 	Opaque() bool
 }
 
 // HandleMouse can be implemented by any object
 // that might wish to handle mouse events. It is
 // called with an initial mouse event, and a channel
-// from which further mouse events can be read.
+// from which further events can be read.
 // It returns true if the initial mouse event was absorbed.
 // mc should not be used after HandleMouse returns.
 //
 type HandleMouser interface {
-	HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool
+	HandleMouse(f Flusher, m draw.MouseEvent, ec <-chan interface{}) bool
 }
 
 type HandlerItem interface {
@@ -118,7 +118,7 @@ var _ HandlerItem = (*Canvas)(nil)
 // be nested indefinitely.
 //
 type Canvas struct {
-	r          draw.Rectangle // the bounding rectangle of the canvas.
+	r          image.Rectangle // the bounding rectangle of the canvas.
 	img        draw.Image    // image we were last drawn onto
 	backing    Backing
 	opaque     bool
@@ -131,7 +131,7 @@ type Canvas struct {
 // be opaque, and will used to draw the background.
 // r gives the extent of the canvas.
 //
-func NewCanvas(background image.Color, r draw.Rectangle) *Canvas {
+func NewCanvas(background image.Color, r image.Rectangle) *Canvas {
 	// TODO: if background==nil, then
 	// r is irrelevant, and we can just calculate our bbox
 	// from the items we hold
@@ -154,7 +154,7 @@ func (c *Canvas) Opaque() bool {
 // Rect returns the rectangle that is available
 // for items to draw into.
 //
-func (c *Canvas) Rect() draw.Rectangle {
+func (c *Canvas) Rect() image.Rectangle {
 	return c.r
 }
 
@@ -166,7 +166,7 @@ func (c *Canvas) SetContainer(b Backing) {
 	}
 }
 
-func (c *Canvas) Bbox() draw.Rectangle {
+func (c *Canvas) Bbox() image.Rectangle {
 	return c.r
 }
 
@@ -179,12 +179,12 @@ func (c *Canvas) Flush() {
 // HandleMouse delivers the mouse events to the top-most
 // item that that is hit by the mouse point.
 //
-func (c *Canvas) HandleMouse(_ Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool {
+func (c *Canvas) HandleMouse(_ Flusher, m draw.MouseEvent, ec <-chan interface{}) bool {
 	var chosen HandlerItem
 	c.Atomically(func(_ FlushFunc) {
 		for e := c.items.Back(); e != nil; e = e.Prev() {
 			if h, ok := e.Value.(HandlerItem); ok {
-				if h.HitTest(m.Point) {
+				if h.HitTest(m.Loc) {
 					chosen = h
 					break
 				}
@@ -192,12 +192,12 @@ func (c *Canvas) HandleMouse(_ Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool
 		}
 	})
 	if chosen != nil {
-		return chosen.HandleMouse(c, m, mc)
+		return chosen.HandleMouse(c, m, ec)
 	}
 	return false
 }
 
-func (c *Canvas) HitTest(p draw.Point) (hit bool) {
+func (c *Canvas) HitTest(p image.Point) (hit bool) {
 	for e := c.items.Back(); e != nil; e = e.Prev() {
 		if e.Value.(Item).HitTest(p) {
 			return true
@@ -206,13 +206,13 @@ func (c *Canvas) HitTest(p draw.Point) (hit bool) {
 	return false
 }
 
-func (c *Canvas) Draw(dst draw.Image, clipr draw.Rectangle) {
-	clipr = clipr.Clip(c.r)
+func (c *Canvas) Draw(dst draw.Image, clipr image.Rectangle) {
+	clipr = clipr.Intersect(c.r)
 	c.img = dst
 	if c.background != nil {
 		draw.Draw(dst, clipr, c.background, clipr.Min)
 	}
-	clipr = clipr.Clip(c.r)
+	clipr = clipr.Intersect(c.r)
 	for e := c.items.Front(); e != nil; e = e.Next() {
 		it := e.Value.(Item)
 		if it.Bbox().Overlaps(clipr) {
@@ -264,8 +264,8 @@ func (c *Canvas) Raise(it, nextto Item, above bool) {
 
 // drawAbove draws only those items above it.
 //
-func (c *Canvas) drawAbove(it Item, clipr draw.Rectangle) {
-	clipr = clipr.Clip(c.r)
+func (c *Canvas) drawAbove(it Item, clipr image.Rectangle) {
+	clipr = clipr.Intersect(c.r)
 	drawing := false
 	for e := c.items.Front(); e != nil; e = e.Next() {
 		if e.Value == nil {
@@ -328,7 +328,7 @@ func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
 //
 func (c *Canvas) Atomically(f func(FlushFunc)) {
 	c.backing.Atomically(func(bflush FlushFunc) {
-		f(func(r draw.Rectangle, drawn Drawer) {
+		f(func(r image.Rectangle, drawn Drawer) {
 			if drawn != nil {
 				c.drawAbove(drawn.(Item), r)
 				drawn = c
@@ -349,7 +349,7 @@ func (c *Canvas) AddItem(item Item) {
 		c.items.PushBack(item)
 		r := item.Bbox()
 		if item.Opaque() && c.img != nil {
-			item.Draw(c.img, r.Clip(c.r))
+			item.Draw(c.img, r.Intersect(c.r))
 			flush(r, item)
 		} else {
 			flush(r, nil)
@@ -358,5 +358,5 @@ func (c *Canvas) AddItem(item Item) {
 }
 
 func debugp(f string, a ...interface{}) {
-	log.Stdoutf(f, a)
+	log.Stdoutf(f, a...)
 }

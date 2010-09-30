@@ -67,8 +67,7 @@ func UnitFloat2RangedFloat(lo, hi float64) *Lens {
 	)
 }
 
-// FloatMultiply performs a scaling transformation from
-// a float64, f, and f * x.
+// FloatMultiply multiplies by x.
 //
 func FloatMultiply(x float64) *Lens {
 	return NewLens(

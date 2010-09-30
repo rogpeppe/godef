@@ -1,13 +1,14 @@
 package main
 
 import (
-	"rog-go.googlecode.com/hg/x11"
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw/x11"
+	"exp/draw"
 	"log"
 	"image"
 	"rog-go.googlecode.com/hg/canvas"
 	"rog-go.googlecode.com/hg/values"
 	"freetype-go.googlecode.com/hg/freetype/raster"
+"fmt"
 )
 
 var cvs *canvas.Canvas
@@ -19,58 +20,82 @@ func main() {
 	}
 	screen := ctxt.Screen()
 
-	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
+	bg := canvas.NewBackground(screen.(*image.RGBA), image.White, flushFunc(ctxt))
 	cvs = canvas.NewCanvas(nil, bg.Rect())
 	bg.SetItem(cvs)
-	qc := ctxt.QuitChan()
-	kc := ctxt.KeyboardChan()
-	mc := ctxt.MouseChan()
+	ec := ctxt.EventChan()
 	cvs.Flush()
 
 	for {
 		select {
-		case <-qc:
-			log.Exit("quitting")
-			return
-		case m := <-mc:
-			if m.Buttons == 0 {
-				break
+		case e := <-ec:
+			switch e := e.(type) {
+			case nil:
+				if closed(ec) {
+					log.Exit("quitting")
+					return
+				}
+			case draw.MouseEvent:
+				if e.Buttons == 0 {
+					break
+				}
+				if cvs.HandleMouse(cvs, e, ec) {
+fmt.Printf("handled mouse\n")
+					break
+				}
+fmt.Printf("raster maker\n")
+				rasterMaker(e, ec)
 			}
-			if cvs.HandleMouse(cvs, m, mc) {
-				break
-			}
-			rasterMaker(m, mc)
-		case <-kc:
 		}
 	}
+}
+
+func nextMouse(ec <-chan interface{}) (m draw.MouseEvent) {
+	for {
+		e := <-ec
+		switch e := (e).(type) {
+		case draw.MouseEvent:
+			return e
+		case nil:
+			if closed(ec) {
+				return
+			}
+		}
+	}
+	return
+}
+
+func color(r, g, b, a uint8) image.ColorImage {
+	return image.ColorImage{image.RGBAColor{r, g, b, a}}
 }
 
 // click anywhere to create a new raster item.
 // then but-2 to add another point (twice for Add2, thrice for Add3)
 // but-3 to finish.
-func rasterMaker(m draw.Mouse, mc <-chan draw.Mouse) {
+func rasterMaker(m draw.MouseEvent, ec <-chan interface{}) {
 	obj := newRasterPlay()
-	defer obj.SetControlPointColor(0x808080ff)
-	obj.AddPoint(true, m.Point)
+	defer obj.SetControlPointColor(color(0x80,0x80, 0x80, 0xff))
+	obj.AddPoint(true, m.Loc)
 	cvs.AddItem(obj)
 	cvs.Flush()
 
 	for {
 		// wait for button press to be released, if the user was dragging
 		for m.Buttons != 0 {
-			m = <-mc
+			m = nextMouse(ec)
 		}
 		// wait for button press
 		for m.Buttons == 0 {
-			if closed(mc) {
+			if closed(ec) {
 				return
 			}
-			m = <-mc
+			m = nextMouse(ec)
 		}
 		if m.Buttons&4 != 0 {
 			return
 		}
-		obj.AddPoint(m.Buttons&2 == 0, m.Point)
+fmt.Printf("add point %v\n", m.Loc)
+		obj.AddPoint(m.Buttons&2 == 0, m.Loc)
 		cvs.Flush()
 	}
 }
@@ -80,15 +105,15 @@ const size = 4
 
 type ControlPoint struct {
 	backing  canvas.Backing
-	p        draw.Point
-	col      draw.Color
+	p        image.Point
+	col      image.ColorImage
 	value    values.Value // Point Value
 	colValue values.Value // draw.Color Value
 }
 
 type moveEvent struct {
 	i int        // index of control point that's moved
-	p draw.Point // where it's moved to
+	p image.Point // where it's moved to
 }
 
 type rpoint struct {
@@ -108,13 +133,14 @@ type rasterPlay struct {
 func NewControlPoint(value, colValue values.Value) canvas.Item {
 	cp := new(ControlPoint)
 	cp.value = value
+	cp.col = image.Black
 	cp.colValue = colValue
 	cp.backing = (*canvas.Canvas)(nil)
 	go cp.listener()
 	return canvas.Draggable(cp)
 }
 
-func (cp *ControlPoint) SetCentre(p draw.Point) {
+func (cp *ControlPoint) SetCentre(p image.Point) {
 	cp.value.Set(p)
 }
 
@@ -130,7 +156,7 @@ func (cp *ControlPoint) listener() {
 			}
 			cp.backing.Atomically(func(flush canvas.FlushFunc) {
 				r := cp.Bbox()
-				cp.p = p.(draw.Point)
+				cp.p = p.(image.Point)
 				flush(r, nil)
 				flush(cp.Bbox(), nil)
 			})
@@ -140,7 +166,7 @@ func (cp *ControlPoint) listener() {
 				break
 			}
 			cp.backing.Atomically(func(flush canvas.FlushFunc) {
-				cp.col = col.(draw.Color)
+				cp.col = col.(image.ColorImage)
 				flush(cp.Bbox(), nil)
 			})
 		}
@@ -148,12 +174,12 @@ func (cp *ControlPoint) listener() {
 	}
 }
 
-func (cp *ControlPoint) Bbox() draw.Rectangle {
-	return draw.Rectangle{cp.p, cp.p}.Inset(-size)
+func (cp *ControlPoint) Bbox() image.Rectangle {
+	return image.Rectangle{cp.p, cp.p}.Inset(-size)
 }
 
-func (cp *ControlPoint) HitTest(p draw.Point) bool {
-	return p.In(cp.Bbox())
+func (cp *ControlPoint) HitTest(p image.Point) bool {
+	return cp.Bbox().Contains(p)
 }
 
 func (cp *ControlPoint) Opaque() bool {
@@ -165,12 +191,12 @@ func (cp *ControlPoint) SetContainer(b canvas.Backing) {
 	cp.backing = b
 }
 
-func (cp *ControlPoint) Draw(dst draw.Image, clipr draw.Rectangle) {
-	r := clipr.Clip(cp.Bbox())
-	draw.Draw(dst, r, cp.col, draw.ZP)
+func (cp *ControlPoint) Draw(dst draw.Image, clipr image.Rectangle) {
+	r := clipr.Intersect(cp.Bbox())
+	draw.Draw(dst, r, cp.col, image.ZP)
 }
 
-func (obj *rasterPlay) AddPoint(new bool, p draw.Point) {
+func (obj *rasterPlay) AddPoint(new bool, p image.Point) {
 	value := values.NewValue(p)
 	cp := NewControlPoint(value, obj.colValue)
 	n := len(obj.points)
@@ -178,7 +204,7 @@ func (obj *rasterPlay) AddPoint(new bool, p draw.Point) {
 	obj.points[n] = rpoint{new, pixel2fixPoint(p)}
 	go func() {
 		for xp := range value.Iter() {
-			obj.moved <- moveEvent{n, xp.(draw.Point)}
+			obj.moved <- moveEvent{n, xp.(image.Point)}
 		}
 	}()
 	obj.c.Atomically(func(flush canvas.FlushFunc) {
@@ -235,25 +261,27 @@ func (obj *rasterPlay) listener() {
 }
 
 func (obj *rasterPlay) SetContainer(b canvas.Backing) {
+	obj.raster.SetContainer(b)
 	if b != nil {
-		size := b.Rect().Max
-		obj.raster.SetBounds(size.X, size.Y)
 		obj.makeOutline()
 	}
 	obj.HandlerItem.SetContainer(b)
 }
 
-func (obj *rasterPlay) SetControlPointColor(col draw.Color) {
+func (obj *rasterPlay) SetControlPointColor(col image.ColorImage) {
 	obj.colValue.Set(col)
 }
+
+var blue = image.ColorImage{image.RGBAColor{0, 0, 0xff, 0xff}}
 
 func newRasterPlay() *rasterPlay {
 	obj := new(rasterPlay)
 	obj.points = make([]rpoint, 0, 100) // expansion later
 	obj.moved = make(chan moveEvent)
-	obj.raster.SetFill(image.ColorImage{draw.Color(0x808080ff).SetAlpha(0x80)})
+	obj.raster.SetFill(image.ColorImage{image.AlphaMultiply(blue, 0x8000)})
 	obj.c = canvas.NewCanvas(nil, cvs.Bbox())
-	obj.colValue = values.NewValue(draw.Black)
+	obj.colValue = values.NewValue(nil)
+	obj.colValue.Set(image.Black)
 	obj.HandlerItem = obj.c
 	obj.c.AddItem(&obj.raster)
 	go obj.listener()
@@ -265,23 +293,23 @@ const (
 	fixScale = 1 << fixBits // matches raster.Fixed
 )
 
-func pixel2fixPoint(p draw.Point) raster.Point {
-	return raster.Point{raster.Fixed(p.X << fixBits), raster.Fixed(p.Y << fixBits)}
+func pixel2fixPoint(p image.Point) raster.Point {
+	return raster.Point{raster.Fix32(p.X << fixBits), raster.Fix32(p.Y << fixBits)}
 }
 
 // this will go.
-type RectFlusherContext interface {
-	draw.Context
-	FlushImageRect(r draw.Rectangle)
+type RectFlusherWindow interface {
+	draw.Window
+	FlushImageRect(r image.Rectangle)
 }
 
-func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
-	if fctxt, ok := ctxt.(RectFlusherContext); ok {
-		return func(r draw.Rectangle) {
+func flushFunc(ctxt draw.Window) func(r image.Rectangle) {
+	if fctxt, ok := ctxt.(RectFlusherWindow); ok {
+		return func(r image.Rectangle) {
 			fctxt.FlushImageRect(r)
 		}
 	}
-	return func(_ draw.Rectangle) {
+	return func(_ image.Rectangle) {
 		ctxt.FlushImage()
 	}
 }

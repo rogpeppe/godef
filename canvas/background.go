@@ -1,7 +1,7 @@
 package canvas
 
 import (
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"image"
 	"sync"
 )
@@ -11,13 +11,13 @@ import (
 // interface and displays a single object only.
 type Background struct {
 	lock     sync.Mutex
-	r        draw.Rectangle // overall rectangle (always origin 0, 0)
+	r        image.Rectangle // overall rectangle (always origin 0, 0)
 	img      draw.Image
 	bg       image.Image
 	item     Drawer
-	imgflush func(r draw.Rectangle)
+	imgflush func(r image.Rectangle)
 
-	flushrect draw.Rectangle
+	flushrect image.Rectangle
 	waste     int
 }
 
@@ -31,8 +31,8 @@ type Background struct {
 // so it is possible to create images with a transparent
 // background.
 //
-func NewBackground(img draw.Image, bg image.Image, flush func(r draw.Rectangle)) *Background {
-	r := draw.Rect(0, 0, img.Width(), img.Height())
+func NewBackground(img draw.Image, bg image.Image, flush func(r image.Rectangle)) *Background {
+	r := img.Bounds()
 	return &Background{
 		img:      img,
 		bg:       bg,
@@ -55,13 +55,13 @@ func (b *Background) SetItem(item Drawer) {
 	b.lock.Unlock()
 }
 
-func (b *Background) Rect() draw.Rectangle {
-	return draw.Rect(0, 0, b.img.Width(), b.img.Height())
+func (b *Background) Rect() image.Rectangle {
+	return b.img.Bounds()
 }
 
 func (b *Background) Atomically(f func(FlushFunc)) {
 	// could pre-allocate inside b if we cared.
-	flush := func(r draw.Rectangle, drawn Drawer) {
+	flush := func(r image.Rectangle, drawn Drawer) {
 		if drawn != nil && drawn != b.item {
 			panic("flushed object not directly inside Background")
 		}
@@ -77,8 +77,8 @@ func (b *Background) Atomically(f func(FlushFunc)) {
 }
 
 // stolen from inferno's devdraw
-func (b *Background) addFlush(r draw.Rectangle, drawn bool) {
-	r = r.Clip(b.r)
+func (b *Background) addFlush(r image.Rectangle, drawn bool) {
+	r = r.Intersect(b.r)
 	if b.flushrect.Empty() {
 		if drawn {
 			if b.imgflush != nil {
@@ -101,7 +101,7 @@ func (b *Background) addFlush(r draw.Rectangle, drawn bool) {
 		}
 		return
 	}
-	nbb := b.flushrect.Combine(r)
+	nbb := b.flushrect.Union(r)
 	ar := r.Dx() * r.Dy()
 	abb := b.flushrect.Dx() * b.flushrect.Dy()
 	anbb := nbb.Dx() * nbb.Dy()
@@ -131,12 +131,12 @@ func (b *Background) addFlush(r draw.Rectangle, drawn bool) {
 
 func (b *Background) flush() {
 	if !b.flushrect.Empty() {
-		draw.DrawMask(b.img, b.flushrect, b.bg, b.flushrect.Min, nil, draw.ZP, draw.Src)
+		draw.DrawMask(b.img, b.flushrect, b.bg, b.flushrect.Min, nil, image.ZP, draw.Src)
 		b.item.Draw(b.img, b.flushrect)
 		if b.imgflush != nil {
 			b.imgflush(b.flushrect)
 		}
-		b.flushrect = draw.ZR
+		b.flushrect = image.ZR
 	}
 }
 
@@ -165,9 +165,9 @@ func (_ nullBacking) Flush() { }
 func (_ nullBacking) Atomically(f func(f FlushFunc)) {
 	globalLock.Lock()
 	defer globalLock.Unlock()
-	f(func(_ draw.Rectangle, _ Drawer) {})
+	f(func(_ image.Rectangle, _ Drawer) {})
 }
 
-func (b nullBacking) Rect() draw.Rectangle {
-	return draw.ZR
+func (b nullBacking) Rect() image.Rectangle {
+	return image.ZR
 }

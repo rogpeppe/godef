@@ -4,8 +4,8 @@ import (
 	"image"
 	"log"
 	"rog-go.googlecode.com/hg/canvas"
-	"rog-go.googlecode.com/hg/draw"
-	"rog-go.googlecode.com/hg/x11"
+	"exp/draw"
+	"exp/draw/x11"
 	"time"
 )
 

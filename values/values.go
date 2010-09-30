@@ -51,6 +51,16 @@ type reader struct {
 	version int
 	in      chan interface{}
 	out     chan<- interface{}
+	closed chan bool
+}
+
+func (r *reader) Close() {
+	if r != nil {
+		select {
+		case r.closed <- true:
+		default:
+		}
+	}
 }
 
 // NewValue creates a new Value with its
@@ -92,13 +102,14 @@ func (v *value) Close() {
 	close(v.setc)
 }
 
-func (v *value) Iter() <-chan interface{} {
+func (v *value) Iter() <-chan interface{}  {
 	out := make(chan interface{})
 	closed := <-v.closed
+	var r *reader
 	if closed {
 		close(out)
 	} else {
-		r := &reader{0, make(chan interface{}), out}
+		r = &reader{0, make(chan interface{}, 1), out, make(chan bool, 1)}
 		go r.sender(v.readyc)
 
 		// send the first ready signal synchronously,
@@ -112,17 +123,22 @@ func (v *value) Iter() <-chan interface{} {
 }
 
 func (r *reader) sender(readyc chan<- *reader) {
+loop:
 	for {
 		v := <-r.in
 		if closed(r.in) {
-			close(r.out)
-			break
+			break loop
 		}
-		r.out <- v
+		select{
+		case r.out <- v:
+
+		case <-r.closed:
+			break loop
+		}
 		readyc <- r
 	}
+	close(r.out)
 }
-
 
 func (v *value) receiver(val interface{}, version int) {
 	ready := make([]*reader, 0, 2)

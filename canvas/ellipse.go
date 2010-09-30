@@ -3,7 +3,6 @@ package canvas
 import (
 	"container/vector"
 	"image"
-	"rog-go.googlecode.com/hg/draw"
 	"freetype-go.googlecode.com/hg/freetype/raster"
 )
 
@@ -20,7 +19,7 @@ type Ellipse struct {
 }
 
 //color, center, radius a radius b and width
-func NewEllipse(col image.Image, cr draw.Point, ra, rb int, width float) *Ellipse {
+func NewEllipse(col image.Image, cr image.Point, ra, rb int, width float) *Ellipse {
 	obj := new(Ellipse)
 	obj.cr = pixel2fixPoint(cr)
 	obj.ra = int2fix(ra)
@@ -139,14 +138,14 @@ func (obj *Ellipse) makeOutline() {
 	obj.raster.CalcBbox()
 }
 
-func (obj *Ellipse) Move(delta draw.Point) {
+func (obj *Ellipse) Move(delta image.Point) {
 	cr := fix2pixelPoint(obj.cr)
 	obj.SetCentre(cr.Add(delta))
 }
 
 // SetEndPoints changes the center of the ellipse
 //
-func (obj *Ellipse) SetCentre(p draw.Point) {
+func (obj *Ellipse) SetCentre(p image.Point) {
 	obj.backing.Atomically(func(flush FlushFunc) {
 		r := obj.raster.Bbox()
 		obj.cr = pixel2fixPoint(p)

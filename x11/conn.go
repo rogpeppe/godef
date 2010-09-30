@@ -12,7 +12,7 @@ package x11
 
 import (
 	"bufio"
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"image"
 	"io"
 	"net"
@@ -43,13 +43,13 @@ type conn struct {
 
 	img        *image.RGBA
 	bufimg     *image.RGBA    // coherent image, as of last FlushImage.
-	dirty      draw.Rectangle // of bufimg that needs to be flushed to server.
+	dirty      image.Rectangle // of bufimg that needs to be flushed to server.
 	flushLock  sync.Mutex
 	kbd        chan int
-	mouse      <-chan draw.Mouse
+	mouse      <-chan draw.MouseEvent
 	resize     chan bool
 	quit       chan bool
-	mouseState draw.Mouse
+	mouseState draw.MouseEvent
 
 	buf [256]byte // General purpose scratch buffer.
 
@@ -61,7 +61,7 @@ type conn struct {
 // flusher runs in its own goroutine, serving both FlushImage calls directly from the exp/draw client
 // and indirectly from X expose events. It paints c.img to the X server via PutImage requests.
 func (c *conn) flusher() {
-	imgr := draw.Rect(0, 0, c.img.Width(), c.img.Height())
+	imgr := c.img.Bounds()
 	for {
 		_ = <-c.flush
 		if closed(c.flush) {
@@ -69,10 +69,10 @@ func (c *conn) flusher() {
 		}
 		c.flushLock.Lock()
 		dirty := c.dirty
-		c.dirty = draw.ZR
+		c.dirty = image.ZR
 
 		// sanity check against dubious flush rectangles
-		if dirty = dirty.Clip(imgr); dirty.Empty() {
+		if dirty = dirty.Intersect(imgr); dirty.Empty() {
 			c.flushLock.Unlock()
 			continue
 		}

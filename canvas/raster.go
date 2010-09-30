@@ -1,10 +1,11 @@
 package canvas
 
 import (
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	originalDraw "exp/draw"		// for Op cast only
 	"image"
 	"freetype-go.googlecode.com/hg/freetype/raster"
+"fmt"
 )
 
 
@@ -18,7 +19,7 @@ import (
 type RasterItem struct {
 	rasterizer raster.Rasterizer
 	fill image.Image
-	bbox draw.Rectangle
+	bbox image.Rectangle
 	clipper clippedPainter
 }
 
@@ -28,9 +29,13 @@ func (obj *RasterItem) CalcBbox() {
 	obj.bbox = rasterBbox(&obj.rasterizer)
 }
 
-func (obj *RasterItem) Draw(dst draw.Image, clipr draw.Rectangle) {
+var yellow = image.ColorImage{image.RGBAColor{0xff, 0xdd, 0xdd, 0xff}}
+
+func (obj *RasterItem) Draw(dst draw.Image, clipr image.Rectangle) {
 	obj.clipper.Clipr = clipr
 	obj.clipper.Painter = NewPainter(dst, obj.fill, draw.Over)
+//fmt.Printf("drawing, bbox %v, clipped to %v\n", obj.bbox, clipr)
+//draw.Draw(dst, clipr, yellow, clipr.Min)
 	obj.rasterizer.Rasterize(&obj.clipper)
 }
 
@@ -38,7 +43,7 @@ func (obj *RasterItem) SetFill(fill image.Image) {
 	obj.fill = fill
 }
 
-func (obj *RasterItem) HitTest(p draw.Point) bool {
+func (obj *RasterItem) HitTest(p image.Point) bool {
 	var hit hitTestPainter
 	hit.P = p
 	obj.rasterizer.Rasterize(&hit)
@@ -77,7 +82,8 @@ func (obj *RasterItem) Clear() {
 	obj.rasterizer.Clear()
 }
 
-func (obj *RasterItem) Bbox() draw.Rectangle {
+func (obj *RasterItem) Bbox() image.Rectangle {
+fmt.Printf("raster bbox %v\n", obj.bbox)
 	return obj.bbox
 }
 
@@ -87,7 +93,7 @@ func (obj *RasterItem) Opaque() bool {
 
 type clippedPainter struct {
 	Painter raster.Painter
-	Clipr   draw.Rectangle
+	Clipr   image.Rectangle
 }
 
 func (p *clippedPainter) Paint(ss []raster.Span, last bool) {
@@ -127,7 +133,7 @@ func (p *clippedPainter) Paint(ss []raster.Span, last bool) {
 }
 
 type hitTestPainter struct {
-	P   draw.Point
+	P   image.Point
 	Hit bool
 }
 
@@ -158,17 +164,18 @@ func (h *hitTestPainter) Paint(ss []raster.Span, _ bool) {
 
 type checkPainter struct {
 	Painter   *raster.RGBAPainter
-	PreCheck  func(c image.RGBAColor, p draw.Point) bool
-	PostCheck func(c image.RGBAColor, p draw.Point) bool
+	PreCheck  func(c image.RGBAColor, p image.Point) bool
+	PostCheck func(c image.RGBAColor, p image.Point) bool
 	Ok        bool
 }
 
 func (p *checkPainter) Paint(ss []raster.Span, last bool) {
+	img := p.Painter.Image
 	for _, s := range ss {
-		row := p.Painter.Image.Pixel[s.Y]
+		row := img.Pix[s.Y * img.Stride :]
 		if p.PreCheck != nil {
 			for x := s.X0; x < s.X1; x++ {
-				if !p.PreCheck(row[x], draw.Point{x, s.Y}) {
+				if !p.PreCheck(row[x], image.Point{x, s.Y}) {
 					p.Ok = false
 				}
 			}
@@ -176,10 +183,10 @@ func (p *checkPainter) Paint(ss []raster.Span, last bool) {
 	}
 	p.Painter.Paint(ss, last)
 	for _, s := range ss {
-		row := p.Painter.Image.Pixel[s.Y]
+		row := img.Pix[s.Y * img.Stride :]
 		if p.PostCheck != nil {
 			for x := s.X0; x < s.X1; x++ {
-				if !p.PostCheck(row[x], draw.Point{x, s.Y}) {
+				if !p.PostCheck(row[x], image.Point{x, s.Y}) {
 					p.Ok = false
 				}
 			}
@@ -193,7 +200,7 @@ func (p *checkPainter) Paint(ss []raster.Span, last bool) {
 // Each Paint request will be forwarded
 // to Painter if it is non-nil.
 type bboxPainter struct {
-	R       draw.Rectangle
+	R       image.Rectangle
 	Painter raster.Painter
 }
 
@@ -228,13 +235,13 @@ func (p *bboxPainter) Paint(ss []raster.Span, last bool) {
 		p.Painter.Paint(ss, last)
 	}
 	if r.Min.X > r.Max.X || r.Min.Y > r.Max.Y {
-		p.R = draw.ZR
+		p.R = image.ZR
 	} else {
 		p.R = r
 	}
 }
 
-func rasterBbox(rasterizer *raster.Rasterizer) (r draw.Rectangle) {
+func rasterBbox(rasterizer *raster.Rasterizer) (r image.Rectangle) {
 	var bbox bboxPainter
 	rasterizer.Rasterize(&bbox)
 	return bbox.R
@@ -247,11 +254,11 @@ type genericImagePainter struct {
 	op draw.Op
 }
 
-func SpanBbox(ss []raster.Span) draw.Rectangle {
+func SpanBbox(ss []raster.Span) image.Rectangle {
 	if len(ss) == 0 {
-		return draw.ZR
+		return image.ZR
 	}
-	r := draw.Rect(1000000, ss[0].Y, -1000000, ss[len(ss)-1].Y + 1)
+	r := image.Rect(1000000, ss[0].Y, -1000000, ss[len(ss)-1].Y + 1)
 	for _, s := range ss {
 		if s.X0 < r.Min.X {
 			r.Min.X = s.X0
@@ -263,28 +270,36 @@ func SpanBbox(ss []raster.Span) draw.Rectangle {
 	return r
 }
 
+func alphaColorImage(alpha uint16) image.ColorImage {
+	return image.ColorImage{image.Alpha16Color{uint16(alpha)}}
+}
 
 func (g *genericImagePainter) Paint(ss []raster.Span, done bool) {
 	for _, s := range ss {
-		a := s.A >> 8
 		draw.DrawMask(g.image,
-			draw.Rect(s.X0, s.Y, s.X1, s.Y+1),
+			image.Rect(s.X0, s.Y, s.X1, s.Y+1),
 			g.src,
-			draw.Point{s.X0, s.X1},
-			draw.Color(a | a<<8 | a<<16 | a<<24),
-			draw.ZP,
+			image.Point{s.X0, s.X1},
+			alphaColorImage(uint16(s.A)),
+			image.ZP,
 			g.op)
 	}
 }
 
 // NewPainter returns a Painter that will draw from src onto
 // dst using the Porter-Duff composition operator op.
-func NewPainter(dst draw.Image, src image.Image, op draw.Op) raster.Painter {
+func NewPainter(dst draw.Image, src image.Image, op draw.Op) (p raster.Painter) {
+defer func(){fmt.Printf("newpainter %T\n", p)}()
 	if src, ok := src.(image.ColorImage); ok {
 		switch dst := dst.(type) {
 		case *image.Alpha:
 			if _, _, _, a := src.RGBA(); a == 0xffff {
-				return &raster.AlphaPainter{dst, originalDraw.Op(op)}
+				switch op {
+				case originalDraw.Src:
+					return &raster.AlphaSrcPainter{dst}
+				case originalDraw.Over:
+					return &raster.AlphaOverPainter{dst}
+				}
 			}
 
 		case *image.RGBA:
@@ -322,12 +337,12 @@ func fix2int(i raster.Fix32) int {
 	return int((i + fixScale/2) >> fixBits)
 }
 
-func pixel2fixPoint(p draw.Point) raster.Point {
+func pixel2fixPoint(p image.Point) raster.Point {
 	return raster.Point{raster.Fix32(p.X << fixBits), raster.Fix32(p.Y << fixBits)}
 }
 
-func fix2pixelPoint(p raster.Point) draw.Point {
-	return draw.Point{int((p.X + fixScale/2) >> fixBits), int((p.Y + fixScale/2) >> fixBits)}
+func fix2pixelPoint(p raster.Point) image.Point {
+	return image.Point{int((p.X + fixScale/2) >> fixBits), int((p.Y + fixScale/2) >> fixBits)}
 }
 
 func float2fixed(f float64) raster.Fix32 {

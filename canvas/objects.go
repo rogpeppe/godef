@@ -1,7 +1,7 @@
 package canvas
 
 import (
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"image"
 	"math"
 	"freetype-go.googlecode.com/hg/freetype/raster"
@@ -16,9 +16,9 @@ func Box(width, height int, col image.Image, border int, borderCol image.Image) 
 	if border < 0 {
 		border = 0
 	}
-	r := draw.Rect(0, 0, width, height)
-	draw.DrawMask(img, r.Inset(border), col, draw.ZP, nil, draw.ZP, draw.Src)
-	BorderOp(img, r, border, borderCol, draw.ZP, draw.Src)
+	r := image.Rect(0, 0, width, height)
+	draw.DrawMask(img, r.Inset(border), col, image.ZP, nil, image.ZP, draw.Src)
+	BorderOp(img, r, border, borderCol, image.ZP, draw.Src)
 	return img
 }
 
@@ -26,19 +26,19 @@ func Box(width, height int, col image.Image, border int, borderCol image.Image) 
 // to draw itself. It is intended to be used as a building
 // block for other Items.
 type ImageItem struct {
-	R      draw.Rectangle
+	R      image.Rectangle
 	Image    image.Image
 	IsOpaque bool
 }
 
-func (obj *ImageItem) Draw(dst draw.Image, clip draw.Rectangle) {
-	dr := obj.R.Clip(clip)
+func (obj *ImageItem) Draw(dst draw.Image, clip image.Rectangle) {
+	dr := obj.R.Intersect(clip)
 	sp := dr.Min.Sub(obj.R.Min)
 	op := draw.Over
 	if obj.IsOpaque {
 		op = draw.Src
 	}
-	draw.DrawMask(dst, dr, obj.Image, sp, nil, draw.ZP, op)
+	draw.DrawMask(dst, dr, obj.Image, sp, nil, image.ZP, op)
 }
 
 func (obj *ImageItem) SetContainer(c Backing) {
@@ -48,12 +48,12 @@ func (obj *ImageItem) Opaque() bool {
 	return obj.IsOpaque
 }
 
-func (obj *ImageItem) Bbox() draw.Rectangle {
+func (obj *ImageItem) Bbox() image.Rectangle {
 	return obj.R
 }
 
-func (obj *ImageItem) HitTest(p draw.Point) bool {
-	return p.In(obj.R)
+func (obj *ImageItem) HitTest(p image.Point) bool {
+	return obj.R.Contains(p)
 }
 
 // An Image represents an rectangular (but possibly
@@ -68,10 +68,11 @@ type Image struct {
 // Image returns a new Image which will be drawn using img,
 // with p giving the coordinate of the image's top left corner.
 //
-func NewImage(img image.Image, opaque bool, p draw.Point) *Image {
+func NewImage(img image.Image, opaque bool, p image.Point) *Image {
 	obj := new(Image)
 	obj.Item = &obj.item
-	obj.item.R = draw.Rectangle{p, p.Add(draw.Pt(img.Width(), img.Height()))}
+	r := img.Bounds()
+	obj.item.R = image.Rectangle{p, p.Add(image.Pt(r.Dx(), r.Dy()))}
 	obj.item.Image = img
 	obj.item.IsOpaque = opaque
 	return obj
@@ -81,7 +82,7 @@ func (obj *Image) SetContainer(c Backing) {
 	obj.backing = c
 }
 
-func (obj *Image) SetCentre(p draw.Point) {
+func (obj *Image) SetCentre(p image.Point) {
 	p = p.Sub(centreDist(obj.Bbox()))
 	if p.Eq(obj.item.R.Min) {
 		return
@@ -106,7 +107,7 @@ type Polygon struct {
 // Polygon returns a new PolyObject, using col for its fill colour, and
 // using points for its vertices.
 //
-func NewPolygon(fill image.Image, points []draw.Point) *Polygon {
+func NewPolygon(fill image.Image, points []image.Point) *Polygon {
 	obj := new(Polygon)
 	rpoints := make([]raster.Point, len(points))
 	for i, p := range points {
@@ -148,7 +149,7 @@ type Line struct {
 // Line returns a new Line, coloured with col, from p0 to p1,
 // of the given width.
 //
-func NewLine(fill image.Image, p0, p1 draw.Point, width float) *Line {
+func NewLine(fill image.Image, p0, p1 image.Point, width float) *Line {
 	obj := new(Line)
 	obj.p0 = pixel2fixPoint(p0)
 	obj.p1 = pixel2fixPoint(p1)
@@ -190,7 +191,7 @@ func (obj *Line) makeOutline() {
 
 // SetEndPoints changes the end coordinates of the Line.
 //
-func (obj *Line) SetEndPoints(p0, p1 draw.Point) {
+func (obj *Line) SetEndPoints(p0, p1 image.Point) {
 	obj.backing.Atomically(func(flush FlushFunc) {
 		r := obj.raster.Bbox()
 		obj.p0 = pixel2fixPoint(p0)
@@ -234,7 +235,7 @@ type Slider struct {
 // its Type() should be float64; the slider's value is in the
 // range [0, 1].
 //
-func NewSlider(r draw.Rectangle, fg, bg image.Color, value values.Value) (obj *Slider) {
+func NewSlider(r image.Rectangle, fg, bg image.Color, value values.Value) (obj *Slider) {
 	obj = new(Slider)
 	obj.value = value
 	obj.c = NewCanvas(nil, r)
@@ -261,7 +262,7 @@ func (obj *Slider) SetContainer(c Backing) {
 	obj.backing = c
 }
 
-func (obj *Slider) buttonRect() (r draw.Rectangle) {
+func (obj *Slider) buttonRect() (r image.Rectangle) {
 	r.Min.Y = obj.box.R.Min.Y
 	r.Max.Y = obj.box.R.Max.Y
 	p := obj.val
@@ -295,24 +296,25 @@ func (obj *Slider) x2val(x int) float64 {
 	return float64(x-(obj.box.R.Min.X+buttonWidth/2)) / float64(obj.box.R.Dx()-buttonWidth)
 }
 
-func (obj *Slider) HandleMouse(f Flusher, m draw.Mouse, mc <-chan draw.Mouse) bool {
+func (obj *Slider) HandleMouse(f Flusher, m draw.MouseEvent, ec <-chan interface{}) bool {
 	if m.Buttons&1 == 0 {
 		return false
 	}
 	offset := 0
 	br := obj.buttonRect()
-	if !m.In(br) {
-		obj.value.Set(obj.x2val(m.X))
+	if !br.Contains(m.Loc) {
+		obj.value.Set(obj.x2val(m.Loc.X))
 	} else {
-		offset = m.X - (br.Min.X+br.Max.X)/2
+		offset = m.Loc.X - (br.Min.X+br.Max.X)/2
 	}
 
 	but := m.Buttons
 	for {
-		m = <-mc
-		obj.value.Set(obj.x2val(m.X - offset))
-		if (m.Buttons & but) != but {
-			break
+		if m, ok := (<-ec).(*draw.MouseEvent); ok {
+			obj.value.Set(obj.x2val(m.Loc.X - offset))
+			if (m.Buttons & but) != but {
+				break
+			}
 		}
 	}
 	return true
@@ -323,37 +325,37 @@ func opaqueColor(col image.Color) bool {
 	return a == 0xffff
 }
 
-func DrawOp(dst draw.Image, r draw.Rectangle, src image.Image, sp draw.Point, op draw.Op) {
-	draw.DrawMask(dst, r, src, sp, nil, draw.ZP, op)
+func DrawOp(dst draw.Image, r image.Rectangle, src image.Image, sp image.Point, op draw.Op) {
+	draw.DrawMask(dst, r, src, sp, nil, image.ZP, op)
 }
 
 // Border aligns r.Min in dst with sp in src and then replaces pixels
 // in a w-pixel border around r in dst with the result of the Porter-Duff compositing
 // operation ``src over dst.''  If w is positive, the border extends w pixels inside r.
 // If w is negative, the border extends w pixels outside r.
-func BorderOp(dst draw.Image, r draw.Rectangle, w int, src image.Image, sp draw.Point, op draw.Op) {
+func BorderOp(dst draw.Image, r image.Rectangle, w int, src image.Image, sp image.Point, op draw.Op) {
 	i := w
 	if i > 0 {
 		// inside r
-		DrawOp(dst, draw.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+i), src, sp, op)                          // top
-		DrawOp(dst, draw.Rect(r.Min.X, r.Min.Y+i, r.Min.X+i, r.Max.Y-i), src, sp.Add(draw.Pt(0, i)), op)        // left
-		DrawOp(dst, draw.Rect(r.Max.X-i, r.Min.Y+i, r.Max.X, r.Max.Y-i), src, sp.Add(draw.Pt(r.Dx()-i, i)), op) // right
-		DrawOp(dst, draw.Rect(r.Min.X, r.Max.Y-i, r.Max.X, r.Max.Y), src, sp.Add(draw.Pt(0, r.Dy()-i)), op)     // bottom
+		DrawOp(dst, image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+i), src, sp, op)                          // top
+		DrawOp(dst, image.Rect(r.Min.X, r.Min.Y+i, r.Min.X+i, r.Max.Y-i), src, sp.Add(image.Pt(0, i)), op)        // left
+		DrawOp(dst, image.Rect(r.Max.X-i, r.Min.Y+i, r.Max.X, r.Max.Y-i), src, sp.Add(image.Pt(r.Dx()-i, i)), op) // right
+		DrawOp(dst, image.Rect(r.Min.X, r.Max.Y-i, r.Max.X, r.Max.Y), src, sp.Add(image.Pt(0, r.Dy()-i)), op)     // bottom
 		return
 	}
 
 	// outside r;
 	i = -i
-	DrawOp(dst, draw.Rect(r.Min.X-i, r.Min.Y-i, r.Max.X+i, r.Min.Y), src, sp.Add(draw.Pt(-i, -i)), op) // top
-	DrawOp(dst, draw.Rect(r.Min.X-i, r.Min.Y, r.Min.X, r.Max.Y), src, sp.Add(draw.Pt(-i, 0)), op)      // left
-	DrawOp(dst, draw.Rect(r.Max.X, r.Min.Y, r.Max.X+i, r.Max.Y), src, sp.Add(draw.Pt(r.Dx(), 0)), op)  // right
-	DrawOp(dst, draw.Rect(r.Min.X-i, r.Max.Y, r.Max.X+i, r.Max.Y+i), src, sp.Add(draw.Pt(-i, 0)), op)  // bottom
+	DrawOp(dst, image.Rect(r.Min.X-i, r.Min.Y-i, r.Max.X+i, r.Min.Y), src, sp.Add(image.Pt(-i, -i)), op) // top
+	DrawOp(dst, image.Rect(r.Min.X-i, r.Min.Y, r.Min.X, r.Max.Y), src, sp.Add(image.Pt(-i, 0)), op)      // left
+	DrawOp(dst, image.Rect(r.Max.X, r.Min.Y, r.Max.X+i, r.Max.Y), src, sp.Add(image.Pt(r.Dx(), 0)), op)  // right
+	DrawOp(dst, image.Rect(r.Min.X-i, r.Max.Y, r.Max.X+i, r.Max.Y+i), src, sp.Add(image.Pt(-i, 0)), op)  // bottom
 }
 
-func centreDist(r draw.Rectangle) draw.Point {
-	return draw.Pt(r.Dx() / 2, r.Dy() / 2)
+func centreDist(r image.Rectangle) image.Point {
+	return image.Pt(r.Dx() / 2, r.Dy() / 2)
 }
 
-func centre(r draw.Rectangle) draw.Point {
-	return draw.Pt((r.Min.X + r.Max.X) / 2, (r.Min.Y + r.Max.Y) / 2)
+func centre(r image.Rectangle) image.Point {
+	return image.Pt((r.Min.X + r.Max.X) / 2, (r.Min.Y + r.Max.Y) / 2)
 }
