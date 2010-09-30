@@ -2,6 +2,7 @@ package extend
 
 import (
 	"testing"
+	"runtime"
 )
 
 const N = 200
@@ -70,4 +71,18 @@ func TestTypeChecking(t *testing.T) {
 		}
 	}()
 	push("hello")
+}
+
+// this benchmark mirrors BenchmarkVectorNums in container/vector
+// for comparison purposes.
+func BenchmarkPush(b *testing.B) {
+	c := int(0)
+	var a []int
+	b.StopTimer()
+	runtime.GC()
+	b.StartTimer()
+	push := Pusher(&a)
+	for i := 0; i < b.N; i++ {
+		push(c)
+	}
 }
