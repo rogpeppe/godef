@@ -57,7 +57,6 @@ func Pusher(ap interface{}) func(interface{}) {
 	// We set up e1 as a []byte alias to the data,
 	// and do the actual copy by setting up e0 as a []byte
 	// alias to the array element and invoking copy().
-	// TODO: enable this code for type with size > sizeof(uintptr).
 	esize := elemType.Size()
 	valueInsideInterface := esize <= uintptr(unsafe.Sizeof(uintptr(0)))
 
