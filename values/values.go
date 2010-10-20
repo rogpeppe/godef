@@ -28,6 +28,7 @@ import (
 //
 type Value interface {
 	Set(val interface{}) os.Error
+//	CloseIter(c <-chan interface{})
 	Iter() <-chan interface{}
 	Close()
 	Type() reflect.Type
