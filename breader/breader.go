@@ -16,7 +16,7 @@ const ioUnit = 16*1024
 
 // NewReader continually reads from in and buffers the data
 // inside a temporary file (created with ioutil.TempFile(dir, prefix)).
-// It returns a ReadCloser that can be used to read the data.
+// It returns a Reader that can be used to read the data.
 func NewReader(in io.Reader, dir, prefix string) (io.Reader, os.Error) {
 	br := new(bufferedReader)
 	br.error = os.EOF
