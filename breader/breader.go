@@ -53,6 +53,7 @@ func (br *bufferedReader) reader(r io.Reader, nread chan<- int) {
 			nread <- n
 			off += int64(n)
 		}
+		// TODO if r.Read returns >0, err!=nil, then we'll miss the error and read again,
 		if err != nil {
 			br.error = err
 			close(nread)
