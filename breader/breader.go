@@ -90,7 +90,6 @@ func (br *bufferedReader) buffer(nread <-chan int) {
 			roff += int64(n)
 		case n := <-nread:
 			if closed(nread) {
-				close(br.reply)
 				nread = nil
 			}
 			woff += int64(n)
