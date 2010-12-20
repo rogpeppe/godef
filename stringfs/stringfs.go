@@ -1,72 +1,33 @@
-package main
+// The stringfs package provides a way to recursively encode the
+// data in a directory as a string, and to extract the contents later.
+package stringfs
 
 import (
 	"bytes"
-	"gob"
 	"encoding/binary"
+	"gob"
 	"os"
 	"strings"
-	"fmt"
-	"log"
-	"io"
 	"sync"
 )
 
-func main() {
-	s, err := Encode(os.Args[1])
-	if err != nil {
-		fmt.Printf("error: %v\n", err)
-		return
-	}
-	fmt.Printf("encoded: %d bytes\n", len(s))
-
-	fs, err := Decode(s)
-	if err != nil {
-		log.Exitf("decode: %v\n", err)
-		return
-	}
-	fmt.Printf("all:\n")
-	show(fs, "/")
-}
-
-func show(fs *FS, path string) {
-	f, err := fs.Open(path)
-	if err != nil {
-		log.Printf("cannot open %s: %v\n", path, err)
-		return
-	}
-	if f.IsDirectory() {
-		fmt.Printf("d %s\n", path)
-		names, err := f.Readdirnames()
-		if err != nil {
-			log.Printf("cannot get contents of %s: %v\n", path, err)
-			return
-		}
-		for _, name := range names {
-			show(fs, path+"/"+name)
-		}
-	}else{
-		fmt.Printf("- %s\n", path)
-		n, err := io.Copy(nullWriter{}, f)
-		if err != nil {
-			log.Printf("cannot read %s: %v\n", err)
-			return
-		}
-		fmt.Printf("	%d bytes\n", n)
-	}
-}
-
-type nullWriter struct {}
-func (nullWriter) Write(data []byte) (int, os.Error) {
-	return len(data), nil
-}
-
-// fsWriter represents file system while it's being encoded.
-// The gob Encoder writes to the the bytes.Buffer.
-type fsWriter struct {
-	buf bytes.Buffer
-	enc *gob.Encoder
-}
+// The file system encoding uses gob to encode the
+// metadata.
+// It takes advantage of the fact that gob encodes all
+// its types up front, which means we can decode gob
+// package out of order as long as we know that the
+// relevant types have been received first.
+//
+// The first item in the file system is a dummy type
+// representing an array of directory entries.
+// The final four bytes hold the offset of the start
+// of the root directory (note that this uses regular
+// non-variable-width encoding, so that we know
+// exactly where it is).
+// Each file entry is directly encoded as the bytes
+// of the file, not using gob.
+// Each directory entry is encoded as an array of
+// entry types.
 
 // entry is the basic file system structure - it holds
 // information on one directory entry.
@@ -77,12 +38,19 @@ type entry struct {
 	len int			// length of file (only if it's a file)
 }
 
+// fsWriter represents file system while it's being encoded.
+// The gob Encoder writes to the the bytes.Buffer.
+type fsWriter struct {
+	buf bytes.Buffer
+	enc *gob.Encoder
+}
+
 // FS represents the file system and all its data.
 type FS struct {
 	mu sync.Mutex
 	s string
-	root uint32
-	dec *gob.Decoder
+	root uint32			// offset of root directory.
+	dec *gob.Decoder		// primed decoder, reading from &rd.
 	rd strings.Reader
 }
 
