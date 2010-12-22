@@ -216,7 +216,7 @@ func (fs *FS) contents(e *entry) (entries []entry, err os.Error) {
 // Readdirnames returns the names of all the files in
 // the File, which must be a directory.
 func (f *File) Readdirnames() ([]string, os.Error) {
-	f.fs.mu.Unlock()
+	f.fs.mu.Lock()
 	defer f.fs.mu.Unlock()
 	entries, err := f.fs.contents(f.entry)
 	if err != nil {
