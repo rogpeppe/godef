@@ -47,10 +47,10 @@ func (m *Mapping) Key(mkey Hasher) Key {
 	return k
 }
 
-// Value returns the value for a given Key,
+// Value returns the original key value for a given Key,
 // if it was created with the Key function;
 // otherwise it returns nil.
-func (m *Mapping) Value(k Key) Hasher {
+func (m *Mapping) Original(k Key) Hasher {
 	if k, ok := k.(*customKey); ok {
 		return k.key
 	}
