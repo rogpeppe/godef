@@ -39,6 +39,9 @@ func (w *Waiter) Add(n int) {
 func (w *Waiter) Done() {
 	w.lock.Lock()
 	w.n--
+	if w.n < 0 {
+		panic("waiter: mismatched add/done")
+	}
 	if w.n == 0 && w.done != nil {
 		w.done <- true
 		w.done = nil
