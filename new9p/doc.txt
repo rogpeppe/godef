@@ -15,11 +15,10 @@ client immediately responds with Rseq (or Rerror if it does not
 support sequence queues, in which case all the subsequent operations
 on the tag will be discarded, as per the rules below).
 
-[Tseq tag=t start=1] starts a sequence of requests.  After this, a
-client may send any number of T messages with tag t.  The server will
-process each message in turn (including the initial Tseq), replying
-when it is done.  The server will stop processing requests in a
-sequence when either
+After the initial Tseq request, a client may send any number of T
+messages with tag t.  The server will process each message in turn
+(including the initial Tseq), replying when it is done.  The server
+will stop processing requests in a sequence when either
 
 1) a request results in an error or is flushed; or
 2) it receives the sequence termination message [Tseq tag=t start=0].
