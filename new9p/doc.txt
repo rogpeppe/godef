@@ -1,0 +1,107 @@
+Summary
+--------
+
+This 9p protocol addendum adds two new 9p requests: Tseq and Tnonseq.
+It remains backwardly compatible with 9p2000 for the time being.
+
+size[4] Tseq tag[2] start[1]
+size[4] Rseq tag[2]
+
+size[4] Tnonseq tag[2] fid[4]
+size[4] Rnonseq tag[2]
+
+[Tseq tag=t start=1] begins a sequence of operations on tag t.  The
+client immediately responds with Rseq (or Rerror if it does not
+support sequence queues, in which case all the subsequent operations
+on the tag will be discarded, as per the rules below).
+
+[Tseq tag=t start=1] starts a sequence of requests.  After this, a
+client may send any number of T messages with tag t.  The server will
+process each message in turn (including the initial Tseq), replying
+when it is done.  The server will stop processing requests in a
+sequence when either
+
+1) a request results in an error or is flushed; or
+2) it receives the sequence termination message [Tseq tag=t start=0].
+
+Sequence requests received after an error or a flush are simply
+discarded.
+
+Thus a sequence always begins with [Tseq tag=t start=0] and ends with
+either [Rerror tag=t ...] or [Rseq tag=t].
+
+The client must send the sequence termination message [Tseq tag=t
+start=0] even when the server has replied with an error.
+
+The client can re-use the tag t when it has received one of the above
+R messages *and* it has sent the sequence termination message.
+
+If a request results in an unexpected result, then the next request in
+the sequence will yield the error "sequence terminated".  Read and
+write requests are defined to yield an unexpected result if the file
+is "regular" and less than the requested number of bytes are read or
+written.  I currently define a regular file to be any non-directory
+with qid.version!=0
+
+Fids
+---
+
+Fids created as part of a sequence are treated specially.  These fids
+cannot be used by an operation outside the sequence it was created in
+until the sequence has terminated.  If the sequence fails, then its
+fids are automatically clunked.
+
+The nonseq request:
+
+size[4] Tnonseq tag[2] fid[4]
+size[4] Rnonseq tag[2]
+
+can be used to avoid this behaviour - if a fid is the subject of this
+message, then it will not be clunked if the sequence fails.  It can be
+used by other operations after the Rnonseq reply is received.
+
+Flushing
+-------
+
+Flushing a sequence tag is similar to flushing any other tag.  The
+server should reply to the Tflush immediately, terminating the
+sequence with an error, and replying with an Rflush.  Messages
+arriving at the client before the Rflush must be processed as usual.
+Even though a sequence has been flushed, the sequence termination
+message [Tseq tag=t start=0] must still be sent before the tag t can
+be reused.
+
+It is an error to send a flush message within a sequence to flush
+the sequence itself. As a consequence, this can be used to deliberately
+terminate a sequence with an error, e.g. (T messages only)
+
+	1 Tseq start=1
+	1 Twalk fid=1 newfid=2 name="foo"
+	1 Twalk fid=1 newfid=3 name="bar"
+	1 Twrite fid=2 offset=0 data="hello"
+	1 Twrite fid=3 offset=0 data="hello"
+	1 Tflush oldtag=1
+	1 Tseq start=0
+
+In the example above, fids 2 and 3 are guaranteed to be clunked
+when the sequence has been terminated.
+
+Here's a sample sequence (tags precede messages):
+
+1 Tseq start=1
+1 Twalk fid=10 nfid=11
+1 Twalk fid=11 nfid=11 name="foo.txt"
+1 Topen fid=11 mode=OREAD
+    1 Rseq
+    1 Rwalk qid=...
+    1 Rwalk qid=...
+1 Tread fid=11 offset=0 n=8192
+    1 Ropen qid=...
+1 Tread fid=11 offset=8192 n=8192
+1 Tread fid=11 offset=16384 n=8192
+1 Tread fid=11 offset=24576 n=8192
+    1 Rread data=[...8192 bytes]
+    1 Rread data=[...8192 bytes]
+    1 Rread data=[...1234 bytes]
+    1 Rerror "sequence terminated"
+1 Tseq start=0
