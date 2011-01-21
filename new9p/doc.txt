@@ -18,22 +18,23 @@ on the tag will be discarded, as per the rules below).
 After the initial Tseq request, a client may send any number of T
 messages with tag t.  The server will process each message in turn
 (including the initial Tseq), replying when it is done.  The server
-will stop processing requests in a sequence when either
+will stop processing requests in a sequence on any of the following
+conditions:
 
-1) a request results in an error or is flushed; or
+1) a request results in an error;
+2) the sequence is flushed;
 2) it receives the sequence termination message [Tseq tag=t start=0].
 
 Sequence requests received after an error or a flush are simply
 discarded.
 
-Thus a sequence always begins with [Tseq tag=t start=0] and ends with
-either [Rerror tag=t ...] or [Rseq tag=t].
+Thus a sequence always begins with [Tseq tag=t start=1] and ends with
+either [Rerror tag=t ...] or [Rseq tag=t], or Rflush if it has been flushed.
 
-The client must send the sequence termination message [Tseq tag=t
-start=0] even when the server has replied with an error.
-
+The client must send the sequence termination message [Tseq tag=t start=0]
+even when the server has stopped processing requests for the sequence.
 The client can re-use the tag t when it has received one of the above
-R messages *and* it has sent the sequence termination message.
+R messages *and* sent the sequence termination message.
 
 If a request results in an unexpected result, then the next request in
 the sequence will yield the error "sequence terminated".  Read and
@@ -46,9 +47,16 @@ Fids
 ---
 
 Fids created as part of a sequence are treated specially.  These fids
-cannot be used by an operation outside the sequence it was created in
-until the sequence has terminated.  If the sequence fails, then its
-fids are automatically clunked.
+cannot be used by an operation outside that sequence
+until it has terminated.  If the sequence fails, then its
+fids are automatically clunked. Within the sequence,
+a new fid (as created by Twalk for example) may
+be used immediately by outgoing requests, but if
+a fid is clunked as part of the sequence (by Tclunk or Tremove),
+the fid may only be re-used when the reply to
+that request arrives. [This rule means that a intermediate
+server or multiplexer need only maintain a one-to-one
+mapping from client fid to server fid]
 
 The nonseq request:
 
