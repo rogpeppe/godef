@@ -27,7 +27,7 @@ func makeGraph(status *abc.Status, args map[string]interface{}) Widget {
 func (w *GraphWidget) Init(inputs map[string]Widget) {
 	stdout := bufio.NewWriter(os.Stdout)
 	printf := func(f string, args ... interface{}) {
-		fmt.Fprintf(stdout, f, args)
+		fmt.Fprintf(stdout, f, args...)
 	}
 	w.input = inputs["1"]
 	w.Format = w.input.GetFormat("out")

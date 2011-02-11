@@ -1,6 +1,6 @@
 package basic
 import (
-	"abc"
+	"rog-go.googlecode.com/hg/exp/abc"
 	"os"
 )
 
@@ -10,7 +10,7 @@ func init() {
 		}, makeStdout)
 }
 
-func makeStdout(args map[string] interface{}) abc.Widget {
+func makeStdout(_ *abc.Status, args map[string] interface{}) abc.Widget {
 	in := args["1"].(Fd)
 	in.PutWriter(os.Stdout)
 	return nil

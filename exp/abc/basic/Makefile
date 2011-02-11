@@ -2,9 +2,9 @@
 # Use of this source code is governed by a BSD-style
 # license that can be found in the LICENSE file.
 
-include ../../../Make.$(GOARCH)
+include $(GOROOT)/src/Make.inc
 
-TARG=abc/basic
+TARG=rog-go.googlecode.com/hg/exp/abc/basic
 GOFILES=\
 	basic.go\
 	echo.go\
@@ -14,4 +14,4 @@ GOFILES=\
 	stdout.go\
 	write.go\
 
-include ../../../Make.pkg
+include $(GOROOT)/src/Make.pkg

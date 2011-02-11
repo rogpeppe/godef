@@ -1,6 +1,6 @@
 package basic
 import (
-	"abc"
+	"rog-go.googlecode.com/hg/exp/abc"
 	"strings"
 )
 
@@ -10,8 +10,7 @@ func init() {
 			"out": abc.Socket{FdT, abc.Male},
 		}, makeEcho)
 }
-
-func makeEcho(args map[string] interface{}) abc.Widget {
+func makeEcho(_ *abc.Status, args map[string] interface{}) abc.Widget {
 	s := args["1"].(string) + "\n"
 	out := NewFd()
 	args["out"].(chan interface{}) <- out

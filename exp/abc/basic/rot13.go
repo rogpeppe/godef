@@ -1,6 +1,6 @@
 package basic
 import (
-	"abc"
+	"rog-go.googlecode.com/hg/exp/abc"
 )
 
 func init() {
@@ -9,7 +9,7 @@ func init() {
 			"1": abc.Socket{FdT, abc.Female},
 		}, makeRot13)
 }
-func makeRot13(args map[string] interface{}) abc.Widget {
+func makeRot13(_ *abc.Status, args map[string] interface{}) abc.Widget {
 	in := args["1"].(Fd)
 	out := NewFd()
 	args["out"].(chan interface{}) <- out

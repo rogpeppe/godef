@@ -1,6 +1,6 @@
 package basic
 import (
-	"abc"
+	"rog-go.googlecode.com/hg/exp/abc"
 	"os"
 )
 
@@ -11,7 +11,7 @@ func init() {
 		}, makeWrite)
 }
 
-func makeWrite(args map[string] interface{}) abc.Widget {
+func makeWrite(_ *abc.Status, args map[string] interface{}) abc.Widget {
 	in := args["1"].(Fd)
 	f := args["2"].(string)
 

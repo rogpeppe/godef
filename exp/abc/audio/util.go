@@ -14,7 +14,7 @@ func un(_ bool, rets ... interface{}) {
 	if Debug {
 		s := ""
 		if len(rets) > 0 {
-			s = " -> " + fmt.Sprint(rets)
+			s = " -> " + fmt.Sprint(rets...)
 		}
 		fmt.Printf("%s}%s\n", indent(), s)
 	}
@@ -25,7 +25,7 @@ func log(f string, args ... interface{}) bool {
 		if len(f) > 0 && f[len(f) - 1] == '\n' {
 			f = f[0:len(f) - 1]
 		}
-		fmt.Printf("%s%s {\n", indent(), fmt.Sprintf(f, args))
+		fmt.Printf("%s%s {\n", indent(), fmt.Sprintf(f, args...))
 	}
 	indentLevel++
 	return true
@@ -45,6 +45,6 @@ func debugp(f string, a ... interface{}) {
 		if len(f) > 0 && f[len(f) - 1] == '\n' {
 			f = f[0:len(f) - 1]
 		}
-		fmt.Printf("%s%s\n", indent(), fmt.Sprintf(f, a))
+		fmt.Printf("%s%s\n", indent(), fmt.Sprintf(f, a...))
 	}
 }

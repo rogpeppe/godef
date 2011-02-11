@@ -1,6 +1,6 @@
 package basic
 import (
-	"abc"
+	"rog-go.googlecode.com/hg/exp/abc"
 	"io"
 	"os"
 )
@@ -11,7 +11,7 @@ func init() {
 		}, makeStdin)
 }
 
-func makeStdin(args map[string] interface{}) abc.Widget {
+func makeStdin(_ *abc.Status, args map[string] interface{}) abc.Widget {
 	out := NewFd()
 	args["out"].(chan interface{}) <- out
 	if w := out.GetWriter(os.Stdin); w != nil {

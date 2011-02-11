@@ -1,7 +1,7 @@
 package basic
 
 import (
-	"abc"
+	"rog-go.googlecode.com/hg/exp/abc"
 	"io"
 )
 

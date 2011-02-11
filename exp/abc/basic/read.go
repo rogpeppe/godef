@@ -1,6 +1,6 @@
 package basic
 import (
-	"abc"
+	"rog-go.googlecode.com/hg/exp/abc"
 	"io"
 	"os"
 )
@@ -12,7 +12,7 @@ func init() {
 		}, makeRead)
 }
 
-func makeRead(args map[string] interface{}) abc.Widget {
+func makeRead(_ *abc.Status, args map[string] interface{}) abc.Widget {
 	f := args["1"].(string)
 	out := NewFd()
 	args["out"].(chan interface{}) <- out
