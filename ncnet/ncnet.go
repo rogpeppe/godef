@@ -26,7 +26,15 @@ func (a netchanAddr) Network() string {
 	return "netchan"
 }
 
-type netchanConn struct {
+// Conn represents a netchan connection.
+// R and W hold the channels used by the connection.
+// The Read and Write methods use them to receive
+// and send data. The W channel should not be
+// closed - it will be closed when Close is called
+// on the connection itself.
+type Conn struct {
+	R <-chan []byte
+	W chan<- []byte
 	*chanReader
 	*chanWriter
 	clientName string
@@ -35,27 +43,27 @@ type netchanConn struct {
 	nc hanguper
 }
 
-func (c *netchanConn) LocalAddr() net.Addr {
+func (c *Conn) LocalAddr() net.Addr {
 	return c.localAddr
 }
 
-func (c *netchanConn) RemoteAddr() net.Addr {
+func (c *Conn) RemoteAddr() net.Addr {
 	return c.remoteAddr
 }
 
-func (c *netchanConn) SetReadTimeout(nsec int64) os.Error {
+func (c *Conn) SetReadTimeout(nsec int64) os.Error {
 	return os.ErrorString("cannot set timeout")
 }
 
-func (c *netchanConn) SetWriteTimeout(nsec int64) os.Error {
+func (c *Conn) SetWriteTimeout(nsec int64) os.Error {
 	return os.ErrorString("cannot set timeout")
 }
 
-func (c *netchanConn) SetTimeout(nsec int64) os.Error {
+func (c *Conn) SetTimeout(nsec int64) os.Error {
 	return os.ErrorString("cannot set timeout")
 }
 
-func (c *netchanConn) Close() os.Error {
+func (c *Conn) Close() os.Error {
 	c.nc.Hangup(c.clientName + ".req")
 	c.nc.Hangup(c.clientName + ".reply")
 	return nil
@@ -71,6 +79,8 @@ type netchanListener struct {
 
 // Listen uses the given Exporter to listen on the given service name.
 // It uses a set of netchan channels, all prefixed with that name.
+// The connections returned by the Listener have underlying type *Conn.
+// This can be used to gain access to the underlying channels.
 func Listen(exp *netchan.Exporter, service string) (net.Listener, os.Error) {
 	r := &netchanListener{
 		exp: exp,
@@ -132,7 +142,9 @@ func (r *netchanListener) exporter(clientName string) {
 	}
 
 	go func() {
-		c := &netchanConn{
+		c := &Conn{
+			R: req,
+			W: reply,
 			chanReader: newChanReader(req),
 			chanWriter: newChanWriter(reply),
 			clientName: clientName,
@@ -184,7 +196,9 @@ func Dial(imp *netchan.Importer, service string) (net.Conn, os.Error) {
 		return nil, err
 	}
 	req <- []byte(initMessage)
-	return &netchanConn{
+	return &Conn{
+		R: reply,
+		W: req,
 		chanReader: &chanReader{c: reply},
 		chanWriter: &chanWriter{c: req},
 		clientName: clientName,
@@ -194,6 +208,9 @@ func Dial(imp *netchan.Importer, service string) (net.Conn, os.Error) {
 	}, nil
 }
 
+// chanReader receives on the channel when its
+// Read method is called. Extra data received is
+// buffered until read.
 type chanReader struct {
 	buf []byte
 	c   <-chan []byte
@@ -215,6 +232,8 @@ func (r *chanReader) Read(buf []byte) (int, os.Error) {
 	return n, nil
 }
 
+// chanWriter writes on the channel when its
+// Write method is called.
 type chanWriter struct {
 	c chan<- []byte
 }
