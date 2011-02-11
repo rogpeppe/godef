@@ -45,10 +45,7 @@ type conn struct {
 	bufimg     *image.RGBA    // coherent image, as of last FlushImage.
 	dirty      image.Rectangle // of bufimg that needs to be flushed to server.
 	flushLock  sync.Mutex
-	kbd        chan int
-	mouse      <-chan draw.MouseEvent
-	resize     chan bool
-	quit       chan bool
+	event	chan interface{}
 	mouseState draw.MouseEvent
 
 	buf [256]byte // General purpose scratch buffer.
@@ -99,6 +96,8 @@ func (c *conn) flusher() {
 		setU32LE(c.flushBuf0[12:16], 1<<16|uint32(w))
 		c.flushBuf0[21] = 0x18 // depth = 24 bits.
 
+ // Pix holds the image's pixels. The pixel at (x, y) is Pix[y*Stride+x].
+		stride := c.bufimg.Stride
 		for y := dirty.Min.Y; y < dirty.Max.Y; y++ {
 			setU32LE(c.flushBuf0[16:20], uint32(y<<16|dirty.Min.X))
 			_, err := c.w.Write(c.flushBuf0[0:24])
@@ -106,13 +105,13 @@ func (c *conn) flusher() {
 				c.flushLock.Unlock()
 				return
 			}
-			p := c.bufimg.Pixel[y]
+			row := c.bufimg.Pix[y * stride:]
 			for x := dirty.Min.X; x < dirty.Max.X; {
 				nx := dirty.Max.X - x
 				if nx > len(c.flushBuf1)/4 {
 					nx = len(c.flushBuf1) / 4
 				}
-				for i, rgba := range p[x : x+nx] {
+				for i, rgba := range row[x : x+nx] {
 					c.flushBuf1[4*i+0] = rgba.B
 					c.flushBuf1[4*i+1] = rgba.G
 					c.flushBuf1[4*i+2] = rgba.R
@@ -133,41 +132,45 @@ func (c *conn) flusher() {
 	}
 }
 
+func (c *conn) Close() os.Error {
+	// TODO
+	return nil
+}
+
 func (c *conn) Screen() draw.Image { return c.img }
 
-func (c *conn) FlushImageRect(r draw.Rectangle) {
+func (c *conn) FlushImageRect(r image.Rectangle) {
 	c.flushLock.Lock()
-	draw.DrawMask(c.bufimg, r, c.img, r.Min, nil, draw.ZP, draw.Src)
-	c.dirty = c.dirty.Combine(r)
+	draw.DrawMask(c.bufimg, r, c.img, r.Min, nil, image.ZP, draw.Src)
+	c.dirty = c.dirty.Union(r)
 	// We do the send (the <- operator) in an expression context, rather than in
 	// a statement context, so that it does not block, and fails if the buffered
 	// channel is full (in which case there already is a flush request pending).
 	// We send with the lock held to avoid the flusher picking up our flush
 	// notification after it has actually dealt with it.
-	_ = c.flush <- false
+	select{
+	case c.flush <- false:
+	default:
+	}
 	c.flushLock.Unlock()
 }
 
 func (c *conn) FlushImage() {
-	c.FlushImageRect(draw.Rect(0, 0, c.img.Width(), c.img.Height()))
+	c.FlushImageRect(c.img.Bounds())
 }
 
-func (c *conn) KeyboardChan() <-chan int { return c.kbd }
-
-func (c *conn) MouseChan() <-chan draw.Mouse { return c.mouse }
-
-func (c *conn) ResizeChan() <-chan bool { return c.resize }
-
-func (c *conn) QuitChan() <-chan bool { return c.quit }
+func (c *conn) EventChan() <-chan interface{} {
+	return c.event
+}
 
 // pumper runs in its own goroutine, reading X events and demuxing them over the kbd / mouse / resize / quit chans.
-func (c *conn) pumper(mouse chan<- draw.Mouse) {
+func (c *conn) pumper(mouse chan<- draw.MouseEvent) {
 	var timestamp timeTranslate
 	for {
 		// X events are always 32 bytes long.
 		_, err := io.ReadFull(c.r, c.buf[0:32])
 		if err != nil {
-			// TODO(nigeltao): should draw.Context expose err?
+			// TODO(nigeltao): should draw.Window expose err?
 			// TODO(nigeltao): should we do c.quit<-true? Should c.quit be a buffered channel?
 			// Or is c.quit only for non-exceptional closing (e.g. when the window manager destroys
 			// our window), and not for e.g. an I/O error?
@@ -183,11 +186,11 @@ func (c *conn) pumper(mouse chan<- draw.Mouse) {
 			// TODO(nigeltao): Should we send KeyboardChan ints for Shift/Ctrl/Alt? Should Shift-A send
 			// the same int down the channel as the sent on just the A key?
 			// TODO(nigeltao): How should IME events (e.g. key presses that should generate CJK text) work? Or
-			// is that outside the scope of the draw.Context interface?
+			// is that outside the scope of the draw.Window interface?
 			if c.buf[0] == 0x03 {
 				keysym = -keysym
 			}
-			c.kbd <- keysym
+			c.event <- draw.KeyEvent{keysym}
 		case 0x04, 0x05: // Button press, button release.
 			c.mouseState.Nsec = timestamp.Nanoseconds(getU32LE(c.buf[4:8]))
 			mask := 1 << (c.buf[1] - 1)
@@ -199,8 +202,8 @@ func (c *conn) pumper(mouse chan<- draw.Mouse) {
 			mouse <- c.mouseState
 		case 0x06: // Motion notify.
 			c.mouseState.Nsec = timestamp.Nanoseconds(getU32LE(c.buf[4:8]))
-			c.mouseState.Point.X = int(int16(c.buf[25])<<8 | int16(c.buf[24]))
-			c.mouseState.Point.Y = int(int16(c.buf[27])<<8 | int16(c.buf[26]))
+			c.mouseState.Loc.X = int(int16(c.buf[25])<<8 | int16(c.buf[24]))
+			c.mouseState.Loc.Y = int(int16(c.buf[27])<<8 | int16(c.buf[26]))
 			// TODO(nigeltao): update mouseState's timestamp.
 			mouse <- c.mouseState
 		case 0x0c: // Expose.
@@ -213,18 +216,17 @@ func (c *conn) pumper(mouse chan<- draw.Mouse) {
 			w := int(c.buf[13])<<8 | int(c.buf[12])
 			h := int(c.buf[15])<<8 | int(c.buf[14])
 			c.flushLock.Lock()
-			c.dirty = c.dirty.Combine(draw.Rect(x, y, x+w, x+h))
-			_ = c.flush <- false
+			c.dirty = c.dirty.Union(image.Rect(x, y, x+w, x+h))
+			select{
+			case c.flush <- false:
+			default:
+			}
 			c.flushLock.Unlock()
 			// TODO(nigeltao): Should we listen to DestroyNotify (0x11) and ResizeRequest (0x19) events?
 			// What about EnterNotify (0x07) and LeaveNotify (0x08)?
 		}
 	}
-	close(c.flush)
-	close(c.mouse)
-	close(c.resize)
-	close(c.quit)
-	// TODO(nigeltao): Is this the right place for c.c.Close()?
+	close(c.event)
 }
 
 // connect connects to the X server given by the full X11 display name (e.g.
@@ -540,7 +542,7 @@ func (c *conn) handshake() os.Error {
 }
 
 // NewWindow calls NewWindowDisplay with $DISPLAY.
-func NewWindow() (draw.Context, os.Error) {
+func NewWindow() (draw.Window, os.Error) {
 	display := os.Getenv("DISPLAY")
 	if len(display) == 0 {
 		return nil, os.NewError("$DISPLAY not set")
@@ -551,7 +553,7 @@ func NewWindow() (draw.Context, os.Error) {
 // NewWindowDisplay returns a new draw.Context, backed by a newly created and
 // mapped X11 window. The X server to connect to is specified by the display
 // string, such as ":1".
-func NewWindowDisplay(display string) (draw.Context, os.Error) {
+func NewWindowDisplay(display string) (draw.Window, os.Error) {
 	socket, displayStr, err := connect(display)
 	if err != nil {
 		return nil, err
@@ -604,11 +606,9 @@ func NewWindowDisplay(display string) (draw.Context, os.Error) {
 	c.img = image.NewRGBA(windowWidth, windowHeight)
 	c.bufimg = image.NewRGBA(windowWidth, windowHeight)
 	// TODO(nigeltao): Should these channels be buffered?
-	c.kbd = make(chan int)
-	mouse := make(chan draw.Mouse)
-	c.mouse = bufferMouse(mouse)
-	c.resize = make(chan bool)
-	c.quit = make(chan bool)
+	c.event = make(chan interface{})
+	mouse := make(chan draw.MouseEvent)
+	go bufferMouse(mouse, c.event)
 	c.flush = make(chan bool, 1)
 	go c.flusher()
 	go c.pumper(mouse)
@@ -637,57 +637,53 @@ func (t *timeTranslate) Nanoseconds(ms uint32) int64 {
 	return int64(ms-t.ms0)*1e6 + t.t0
 }
 
-func bufferMouse(mc <-chan draw.Mouse) <-chan draw.Mouse {
-	out := make(chan draw.Mouse)
-	go func() {
-		type mouseQueue struct {
-			m    draw.Mouse
-			next *mouseQueue
-		}
-		actualOut := out
-		q := (*mouseQueue)(nil)
-		eq := &q
-		eof := false
-		var state draw.Mouse
-		for {
-			// Try to send an event if there are any events in the queue
-			if q != nil {
-				state = q.m
-				out = actualOut
-			} else {
-				out = nil
-				if eof {
-					close(out)
-					return
-				}
+func bufferMouse(mc <-chan draw.MouseEvent, out chan<- interface{}) {
+	type mouseQueue struct {
+		m    draw.MouseEvent
+		next *mouseQueue
+	}
+	actualOut := out
+	q := (*mouseQueue)(nil)
+	eq := &q
+	eof := false
+	var state draw.MouseEvent
+	for {
+		// Try to send an event if there are any events in the queue
+		if q != nil {
+			state = q.m
+			out = actualOut
+		} else {
+			out = nil
+			if eof {
+				close(out)
+				return
 			}
-			select {
-			case m := <-mc:
-				if closed(mc) {
-					// When the in channel is closed, make
-					// sure that all events drain from the
-					// queue before closing it.
-					// This may be considered unnecessary.
-					eof = true
-					mc = nil
-					break
-				}
+		}
+		select {
+		case m := <-mc:
+			if closed(mc) {
+				// When the in channel is closed, make
+				// sure that all events drain from the
+				// queue before closing it.
+				// This may be considered unnecessary.
+				eof = true
+				mc = nil
+				break
+			}
 
-				// Only if the queue is empty or the buttons state
-				// has changed do we add a new event to the queue;
-				// otherwise we just update the event at its head.
-				if q == nil || m.Buttons != state.Buttons {
-					*eq = &mouseQueue{m, nil}
-					eq = &(*eq).next
-				} else {
-					q.m = m
-				}
-			case out <- state:
-				if q = q.next; q == nil {
-					eq = &q
-				}
+			// Only if the queue is empty or the buttons state
+			// has changed do we add a new event to the queue;
+			// otherwise we just update the event at its head.
+			if q == nil || m.Buttons != state.Buttons {
+				*eq = &mouseQueue{m, nil}
+				eq = &(*eq).next
+			} else {
+				q.m = m
+			}
+		case out <- state:
+			if q = q.next; q == nil {
+				eq = &q
 			}
 		}
-	}()
-	return out
+	}
 }

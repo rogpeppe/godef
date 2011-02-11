@@ -310,6 +310,18 @@ func (f *NsFile) Open(mode uint8) os.Error {
 	return err
 }
 
+func (f *NsFile) ReadStream(nreqs, iounit int) io.ReadCloser {
+	sq, replies := seq.NewSequencer()
+	go func() {
+		<-replies	// ReadStream
+		<-replies
+		if !closed(replies) {
+			panic("expected eof")
+		}
+	}()
+	return f.SeqReadStream(sq, nreqs, iounit)
+}
+
 func (f *NsFile) Close() {
 	f.f.Do(seq.ClunkReq{})
 }

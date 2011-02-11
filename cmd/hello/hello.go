@@ -4,7 +4,7 @@ package main
 
 import (
 	"rog-go.googlecode.com/hg/x11"
-	"rog-go.googlecode.com/hg/draw"
+	"exp/draw"
 	"log"
 	"image"
 	"io/ioutil"
@@ -16,28 +16,28 @@ import (
 var cvs *canvas.Canvas
 
 func main() {
-	ctxt, err := x11.NewWindow()
-	if ctxt == nil {
-		log.Exitf("no window: %v", err)
+	win, err := x11.NewWindow()
+	if win == nil {
+		log.Fatalf("no window: %v", err)
 	}
-	screen := ctxt.Screen()
+	screen := win.Screen()
 
-	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
+	bg := canvas.NewBackground(screen.(*image.RGBA), image.White, flushFunc(win))
 	cvs = canvas.NewCanvas(nil, bg.Rect())
 	bg.SetItem(cvs)
 
 	item := canvas.Draggable(canvas.Moveable(
 		canvas.NewText(
-			draw.ZP,
+			image.ZP,
 			0,
 			"Hello, world",
 			defaultFont(),
 			30,
 			nil)))
-	item.SetCentre(draw.Pt(cvs.Rect().Dx()/2, cvs.Rect().Dy()/3))
+	item.SetCentre(image.Pt(cvs.Rect().Dx()/2, cvs.Rect().Dy()/3))
 	cvs.AddItem(item)
 //	txtitem :=	canvas.NewText(
-//			draw.Pt(100, 100),
+//			image.Pt(100, 100),
 //			0,
 //			"Working?",
 //			defaultFont(),
@@ -47,24 +47,28 @@ func main() {
 
 //	img := canvas.ImageOf(txtitem)
 
-//	cvs.AddItem(canvas.NewImage(img, false, draw.Pt(cvs.Width() / 2, cvs.Height()*2/3)))
+//	cvs.AddItem(canvas.NewImage(img, false, image.Pt(cvs.Width() / 2, cvs.Height()*2/3)))
 
-	qc := ctxt.QuitChan()
-	kc := ctxt.KeyboardChan()
-	mc := ctxt.MouseChan()
 	cvs.Flush()
-
+	ec := win.EventChan()
 	for {
-		select {
-		case <-qc:
-			log.Exit("quitting")
+		switch e := (<-ec).(type) {
+		case nil:
+			log.Fatal("quitting")
 			return
-		case m := <-mc:
-			if m.Buttons == 0 {
+		case draw.MouseEvent:
+			if e.Buttons == 0 {
 				break
 			}
-			cvs.HandleMouse(cvs, m, mc)
-		case <-kc:
+			cvs.HandleMouse(cvs, e, ec)
+		}
+	}
+}
+
+func filterMouseEvents(ec <-chan interface{}, mc chan<- draw.MouseEvent) {
+	for e := range ec {
+		if e, ok := e.(draw.MouseEvent); ok {
+			mc <- e
 		}
 	}
 }
@@ -72,33 +76,33 @@ func main() {
 func defaultFont() *truetype.Font {
 	goroot := os.Getenv("GOROOT")
 	if goroot == "" {
-		log.Exit("no goroot set")
+		log.Fatal("no goroot set")
 	}
 	path := goroot + "/src/pkg/freetype-go.googlecode.com/hg/luxi-fonts/luxisr.ttf"
 	// Read the font data.
 	fontBytes, err := ioutil.ReadFile(path)
 	if err != nil {
-		log.Exit(err)
+		log.Fatal(err)
 	}
 	font, err := truetype.Parse(fontBytes)
 	if err != nil {
-		log.Exit(err)
+		log.Fatal(err)
 	}
 	return font
 }
 
 // this will go.
 type RectFlusherContext interface {
-	draw.Context
-	FlushImageRect(r draw.Rectangle)
+	draw.Window
+	FlushImageRect(r image.Rectangle)
 }
-func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
+func flushFunc(ctxt draw.Window) func(r image.Rectangle) {
 	if fctxt, ok := ctxt.(RectFlusherContext); ok {
-		return func(r draw.Rectangle) {
+		return func(r image.Rectangle) {
 			fctxt.FlushImageRect(r)
 		}
 	}
-	return func(_ draw.Rectangle) {
+	return func(_ image.Rectangle) {
 		ctxt.FlushImage()
 	}
 }

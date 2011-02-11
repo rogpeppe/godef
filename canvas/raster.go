@@ -270,8 +270,8 @@ func SpanBbox(ss []raster.Span) image.Rectangle {
 	return r
 }
 
-func alphaColorImage(alpha uint16) image.ColorImage {
-	return image.ColorImage{image.Alpha16Color{uint16(alpha)}}
+func alphaColorImage(alpha uint16) *image.ColorImage {
+	return &image.ColorImage{image.Alpha16Color{uint16(alpha)}}
 }
 
 func (g *genericImagePainter) Paint(ss []raster.Span, done bool) {
@@ -290,7 +290,7 @@ func (g *genericImagePainter) Paint(ss []raster.Span, done bool) {
 // dst using the Porter-Duff composition operator op.
 func NewPainter(dst draw.Image, src image.Image, op draw.Op) (p raster.Painter) {
 defer func(){fmt.Printf("newpainter %T\n", p)}()
-	if src, ok := src.(image.ColorImage); ok {
+	if src, ok := src.(*image.ColorImage); ok {
 		switch dst := dst.(type) {
 		case *image.Alpha:
 			if _, _, _, a := src.RGBA(); a == 0xffff {
@@ -325,7 +325,7 @@ const (
 	fixScale = 1 << fixBits // matches raster.Fix32
 )
 
-func float2fix(f float) raster.Fix32 {
+func float2fix(f float64) raster.Fix32 {
 	return raster.Fix32(f*fixScale + 0.5)
 }
 

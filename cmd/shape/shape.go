@@ -16,7 +16,7 @@ var cvs *canvas.Canvas
 func main() {
 	ctxt, err := x11.NewWindow()
 	if ctxt == nil {
-		log.Exitf("no window: %v", err)
+		log.Fatalf("no window: %v", err)
 	}
 	screen := ctxt.Screen()
 
@@ -32,7 +32,7 @@ func main() {
 			switch e := e.(type) {
 			case nil:
 				if closed(ec) {
-					log.Exit("quitting")
+					log.Fatal("quitting")
 					return
 				}
 			case draw.MouseEvent:
@@ -65,8 +65,8 @@ func nextMouse(ec <-chan interface{}) (m draw.MouseEvent) {
 	return
 }
 
-func color(r, g, b, a uint8) image.ColorImage {
-	return image.ColorImage{image.RGBAColor{r, g, b, a}}
+func color(r, g, b, a uint8) *image.ColorImage {
+	return &image.ColorImage{image.RGBAColor{r, g, b, a}}
 }
 
 // click anywhere to create a new raster item.
@@ -106,7 +106,7 @@ const size = 4
 type ControlPoint struct {
 	backing  canvas.Backing
 	p        image.Point
-	col      image.ColorImage
+	col      *image.ColorImage
 	value    values.Value // Point Value
 	colValue values.Value // draw.Color Value
 }
@@ -166,7 +166,7 @@ func (cp *ControlPoint) listener() {
 				break
 			}
 			cp.backing.Atomically(func(flush canvas.FlushFunc) {
-				cp.col = col.(image.ColorImage)
+				cp.col = col.(*image.ColorImage)
 				flush(cp.Bbox(), nil)
 			})
 		}
@@ -268,17 +268,17 @@ func (obj *rasterPlay) SetContainer(b canvas.Backing) {
 	obj.HandlerItem.SetContainer(b)
 }
 
-func (obj *rasterPlay) SetControlPointColor(col image.ColorImage) {
+func (obj *rasterPlay) SetControlPointColor(col *image.ColorImage) {
 	obj.colValue.Set(col)
 }
 
-var blue = image.ColorImage{image.RGBAColor{0, 0, 0xff, 0xff}}
+var blue = &image.ColorImage{image.RGBAColor{0, 0, 0xff, 0xff}}
 
 func newRasterPlay() *rasterPlay {
 	obj := new(rasterPlay)
 	obj.points = make([]rpoint, 0, 100) // expansion later
 	obj.moved = make(chan moveEvent)
-	obj.raster.SetFill(image.ColorImage{image.AlphaMultiply(blue, 0x8000)})
+	obj.raster.SetFill(&image.ColorImage{image.AlphaMultiply(blue, 0x8000)})
 	obj.c = canvas.NewCanvas(nil, cvs.Bbox())
 	obj.colValue = values.NewValue(nil)
 	obj.colValue.Set(image.Black)

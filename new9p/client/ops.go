@@ -2,7 +2,7 @@ package client
 
 import (
 	"fmt"
-//"log"
+"log"
 	"os"
 	"container/list"
 	plan9 "rog-go.googlecode.com/hg/new9p"

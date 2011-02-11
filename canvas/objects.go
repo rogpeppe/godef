@@ -149,7 +149,7 @@ type Line struct {
 // Line returns a new Line, coloured with col, from p0 to p1,
 // of the given width.
 //
-func NewLine(fill image.Image, p0, p1 image.Point, width float) *Line {
+func NewLine(fill image.Image, p0, p1 image.Point, width float64) *Line {
 	obj := new(Line)
 	obj.p0 = pixel2fixPoint(p0)
 	obj.p1 = pixel2fixPoint(p1)
@@ -240,12 +240,12 @@ func NewSlider(r image.Rectangle, fg, bg image.Color, value values.Value) (obj *
 	obj.value = value
 	obj.c = NewCanvas(nil, r)
 	obj.box.R = r
-	obj.box.Image = Box(r.Dx(), r.Dy(), image.ColorImage{bg}, 1, image.Black)
+	obj.box.Image = Box(r.Dx(), r.Dy(), &image.ColorImage{bg}, 1, image.Black)
 	obj.box.IsOpaque = opaqueColor(bg)
 
 	br := obj.buttonRect()
 	obj.button.R = br
-	obj.button.Image = Box(br.Dx(), br.Dy(), image.ColorImage{fg}, 1, image.Black)
+	obj.button.Image = Box(br.Dx(), br.Dy(), &image.ColorImage{fg}, 1, image.Black)
 	obj.button.IsOpaque = opaqueColor(fg)
 	obj.c.AddItem(&obj.box)
 	obj.c.AddItem(&obj.button)

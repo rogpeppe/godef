@@ -19,7 +19,7 @@ type Ellipse struct {
 }
 
 //color, center, radius a radius b and width
-func NewEllipse(col image.Image, cr image.Point, ra, rb int, width float) *Ellipse {
+func NewEllipse(col image.Image, cr image.Point, ra, rb int, width float64) *Ellipse {
 	obj := new(Ellipse)
 	obj.cr = pixel2fixPoint(cr)
 	obj.ra = int2fix(ra)

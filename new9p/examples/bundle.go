@@ -19,13 +19,13 @@ func main() {
 	log.SetOutput(nullWriter{})
 	flag.Parse()
 	if flag.NArg() != 2 {
-		fmt.Fprintf(os.Stderr, "usage: bundle addr dir")
+		fmt.Fprintln(os.Stderr, "usage: bundle addr dir")
 		return
 	}
 	var err os.Error
 	fs, err = g9pc.Mount("tcp", flag.Arg(0), "")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "usage: bundle addr dir")
+		fmt.Fprintln(os.Stderr, "mount failed:", err)
 		return
 	}
 	root := g9pc.NewNsFile(fs.Root.File())

@@ -97,7 +97,7 @@ type Text struct {
 // If val is non-nil, it should be a string-typed Value,
 // and the Value's text will be displayed instead of s.
 //
-func NewText(p image.Point, where Anchor, s string, font *truetype.Font, size float, val values.Value) *Text {
+func NewText(p image.Point, where Anchor, s string, font *truetype.Font, size float64, val values.Value) *Text {
 	t := new(Text)
 	t.item.Init()
 	t.item.SetFont(font)
@@ -175,7 +175,7 @@ func (t *Text) SetText(s string) {
 	})
 }
 
-func (t *Text) SetFontSize(size float) {
+func (t *Text) SetFontSize(size float64) {
 	t.backing.Atomically(func(flush FlushFunc) {
 		r := t.item.Bbox()
 		t.item.SetFontSize(size)

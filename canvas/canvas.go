@@ -138,7 +138,7 @@ func NewCanvas(background image.Color, r image.Rectangle) *Canvas {
 	c := new(Canvas)
 	if background != nil {
 		c.opaque = opaqueColor(background)
-		c.background = image.ColorImage{background}
+		c.background = &image.ColorImage{background}
 	}
 	c.backing = NullBacking()
 	c.r = r
@@ -299,7 +299,7 @@ func (c *Canvas) Delete(it Item) {
 		if removed {
 			it.SetContainer(NullBacking())
 		}else{
-			log.Stderrf("item %T not removed", it)
+			log.Printf("item %T not removed", it)
 		}
 	})
 }
@@ -327,6 +327,9 @@ func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
 // See the Backing interface for details
 //
 func (c *Canvas) Atomically(f func(FlushFunc)) {
+if c == nil || c.backing == nil {
+	panic("nil c or backing")
+}
 	c.backing.Atomically(func(bflush FlushFunc) {
 		f(func(r image.Rectangle, drawn Drawer) {
 			if drawn != nil {
@@ -358,5 +361,5 @@ func (c *Canvas) AddItem(item Item) {
 }
 
 func debugp(f string, a ...interface{}) {
-	log.Stdoutf(f, a...)
+	log.Printf(f, a...)
 }

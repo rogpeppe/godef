@@ -56,15 +56,17 @@ type seqInfo struct {
 	results <-chan Result
 }
 
-type results struct {
+type replier struct {
 	newRequest <-chan seqRequest
+	newFs <-chan FileSys
+	newSeq chan<- Sequence
 	allSeqs map[FileSys] seqInfo
 	subseqs *subseqStack
 	seqhd *subseqCounter
 	seqtl *subseqCounter
 	totalPending int
 	currSeq seqInfo
-	error os.Error
+
 }
 
 // NewSequencer returns a new object that represents a stream
@@ -141,6 +143,7 @@ func (seq *Sequencer) Error() os.Error {
 	return seq.error
 }
 
+// Wait blocks until the root Sequencer has terminated.
 func (seq *Sequencer) Wait() (err os.Error) {
 	err = <-seq.main.done
 	seq.main.done <- err
@@ -193,6 +196,8 @@ func (c *subseqCounter) String() string {
 	return b.String()
 }
 
+// Do adds the given request to the queue of requests
+// on seq. It returns an error if it could not do so.
 func (seq *Sequencer) Do(f File, anyReq Req) (err os.Error) {
 	main := seq.main
 	if main == nil {
@@ -257,58 +262,30 @@ func (seq *Sequencer) Do(f File, anyReq Req) (err os.Error) {
 
 
 func (seq *Sequencer) replier(newFs <-chan FileSys, newSeq chan<- Sequence, newRequest <-chan seqRequest) {
-	r := &results{
+	r := &replier{
 		allSeqs: make(map[FileSys] seqInfo),
 		subseqs: &subseqStack{seq: seq},
 		newRequest: newRequest,
+		newFs: newFs,
+		newSeq: newSeq,
 	}
 	r.seqhd = &subseqCounter{seqs: r.subseqs}
 	r.seqtl = r.seqhd
 
-	// invariant: r.seqhd != r.seqtl => r.seqhd.npending > 0
-	for {
-//log.Printf("replier: loop %v", r.seqhd)
-		newFs := newFs
-		// Don't let Do give us a new Sequence until all the replies
-		// from the old Sequence have arrived.
-		if r.totalPending > 0 {
-			newFs = nil
-		} else if r.newRequest == nil {
-			break
-		}
-
-		select {
-		case fs := <-newFs:
-//log.Printf("replier: new sequence")
-			newSeq <- r.newFs(fs)
-		case p := <-r.newRequest:
-//log.Printf("replier: got request %#v", p)
-			r.request(p)
-		case p := <-r.currSeq.results:
-			if closed(r.currSeq.results) {
-				// result could only have been closed as a result
-				// of an error, as none of the underlying sequences have
-				// been closed yet.
-				r.error = r.currSeq.seq.Error()
-//log.Printf("replier: result closed, error %#v", r.error)
-				if r.error == nil {
-					panic("expected error when sequence ended prematurely")
-				}
-				goto error
-			}
-//log.Printf("replier: result %#v; %#v -> seq %p (phase %d, seq %d, total %d)\n", p, r, r.seqhd.seqs.seq, r.seqhd.npending, r.seqhd.seqs.npending,  r.totalPending)
-//log.Printf("replier: sending result to %p, name %s\n", r.seqhd.seqs.seq.results, r.seqhd.seqs.seq.name)
-			r.seqhd.seqs.seq.results <- p
-			r.totalPending--
-			r.seqhd.npending--
-			r.seqhd.seqs.npending--
-		}
-		// maintain invariant
-		r.closeSubsequences()
+	error := r.run()
+	if error != nil {
+		r.propagateError(error)
+		r.discardRequests()
+		seq.closeSequences(r.currSeq, r.allSeqs, false)
+if seq.error == nil { panic("expected error") }
+		seq.main.done <- seq.error
+//log.Printf("after error propagation, seqhd: %v\n", r.seqhd)
+		return
 	}
+
 //log.Printf("replier: ok termination, stack: %v", r.subseqs)
 	if r.seqhd.next != nil {
-//log.Printf("replier: termination with requests still pending, npend %d, next npend %d, totalPending %d", r.seqhd.npending, r.seqhd.next.npending, r.totalPending)
+		//log.Printf("replier: termination with requests still pending, npend %d, next npend %d, totalPending %d", r.seqhd.npending, r.seqhd.next.npending, r.totalPending)
 		panic("termination with requests still pending")
 
 	}
@@ -319,8 +296,9 @@ func (seq *Sequencer) replier(newFs <-chan FileSys, newSeq chan<- Sequence, newR
 	seq.closeSequences(r.currSeq, r.allSeqs, true)
 	seq.main.done <- nil
 	return
+}
 
-error:
+func (r *replier) propagateError(error os.Error) {
 	// Mark stack at head of queue as final,
 	for seqs := r.seqhd.seqs; seqs != nil; seqs= seqs.parent {
 		seqs.final = true
@@ -342,7 +320,7 @@ log.Printf("replier: closing seq %p", seqs.seq)
 log.Printf("replier: final error propagation, seqhd: %v", r.seqhd)
 	for seqs := r.seqhd.seqs; seqs != nil; seqs = seqs.parent {
 		seq := seqs.seq
-		seq.error = r.error
+		seq.error = error
 log.Printf("replier: closing seq %p", seq)
 		close(seq.results)
 
@@ -354,8 +332,8 @@ log.Printf("replier: closing seq %p", seq)
 			select{
 			case p := <-r.newRequest:
 				r.request(p)
-			case <-newFs:
-				newSeq <- nil
+			case <-r.newFs:
+				r.newSeq <- nil
 			}
 		}
 		parent := seqs.parent
@@ -374,6 +352,9 @@ log.Printf("replier(error): parent %p(%q) results <- %#v", seqs.parent.seq, seqs
 			}
 		}
 	}
+}
+
+func (r *replier) discardRequests() {
 	// discard any subsequent requests.
 	for r.newRequest != nil {
 		select {
@@ -386,17 +367,58 @@ log.Printf("replier(error): parent %p(%q) results <- %#v", seqs.parent.seq, seqs
 				close(p.subseq.results)
 			}
 
-		case <-newFs:
-			newSeq <- nil
+		case <-r.newFs:
+			r.newSeq <- nil
 		}
 	}
-	seq.closeSequences(r.currSeq, r.allSeqs, false)
-if seq.error == nil { panic("expected error") }
-	seq.main.done <- seq.error
-//log.Printf("after error propagation, seqhd: %v\n", r.seqhd)
 }
 
-func (r *results) request(p seqRequest) {
+func (r *replier) run() os.Error {
+	// invariant: r.seqhd != r.seqtl => r.seqhd.npending > 0
+	for {
+//log.Printf("replier: loop %v", r.seqhd)
+		newFs := r.newFs
+		// Don't let Do give us a new Sequence until all the replies
+		// from the old Sequence have arrived.
+		if r.totalPending > 0 {
+			newFs = nil
+		} else if r.newRequest == nil {
+			break
+		}
+
+		select {
+		case fs := <-newFs:
+//log.Printf("replier: new sequence")
+			r.newSeq <- r.newSequence(fs)
+		case p := <-r.newRequest:
+//log.Printf("replier: got request %#v", p)
+			r.request(p)
+		case p := <-r.currSeq.results:
+			if closed(r.currSeq.results) {
+				// result could only have been closed as a result
+				// of an error, as none of the underlying sequences have
+				// been closed yet.
+				error := r.currSeq.seq.Error()
+//log.Printf("replier: result closed, error %#v", error)
+				if error == nil {
+					panic("expected error when sequence ended prematurely")
+				}
+				return error
+			}
+//log.Printf("replier: result %#v; %#v -> seq %p (phase %d, seq %d, total %d)\n", p, r, r.seqhd.seqs.seq, r.seqhd.npending, r.seqhd.seqs.npending,  r.totalPending)
+//log.Printf("replier: sending result to %p, name %s\n", r.seqhd.seqs.seq.results, r.seqhd.seqs.seq.name)
+			r.seqhd.seqs.seq.results <- p
+			r.totalPending--
+			r.seqhd.npending--
+			r.seqhd.seqs.npending--
+		}
+		// maintain invariant
+		r.closeSubsequences()
+	}
+	return nil
+}
+
+func (r *replier) request(p seqRequest) {
 	if closed(r.newRequest) {
 		if r.subseqs.parent != nil {
 			panic("close with outstanding subsequences")
@@ -441,7 +463,7 @@ func (r *results) request(p seqRequest) {
 	}
 }
 
-func (r *results) newFs(fs FileSys) Sequence {
+func (r *replier) newSequence(fs FileSys) Sequence {
 	if r.currSeq = r.allSeqs[fs]; r.currSeq.seq == nil {
 		s, results, err := fs.StartSequence()
 		if err != nil {
@@ -479,7 +501,7 @@ func (seq *Sequencer) closeSequences(currSeq seqInfo, allSeqs map[FileSys]seqInf
 
 // closeSubsequences closes subsequences we're now done with,
 // waiting for their result values and passing them to their parents.
-func (r *results) closeSubsequences() {
+func (r *replier) closeSubsequences() {
 
 //log.Printf("replier: closeSubsequences %v", r.seqhd)
 	for r.seqhd.npending == 0 && r.seqhd.next != nil {
