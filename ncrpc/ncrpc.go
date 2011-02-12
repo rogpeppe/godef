@@ -1,5 +1,5 @@
-// The ncrpc package provides an RPC interface layered onto
-// a netchan connection.
+// The ncrpc package layers client-server and server-client
+// RPC interfaces on top of netchan.
 package ncrpc
 
 import (
@@ -52,7 +52,7 @@ func (srv *Server) ClientNames() (a []string) {
 // incoming client RPC registrations made by Client.Serve.
 //
 // Conventionally Register is called on the rpc.Server
-// to export some server RPC methods, and Accept is
+// to export some server RPC methods, and ListenAndServe is
 // then called on the netchan.Exporter to listen on the network.
 func NewServer(acceptClientRPC bool) (*Server, os.Error) {
 	rpcsrv := rpc.NewServer()
