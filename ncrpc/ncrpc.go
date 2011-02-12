@@ -41,23 +41,21 @@ func (srv *Server) ClientNames() (a []string) {
 	return
 }
 
-// NewServer creates a new RPC-over-netchan
-// server. It returns a new Server instance containing
-// a netchan.Exporter and an rpc.Server which
-// is listening on a channel within it.
-// It reserves the use of netchan channels with the
-// prefix "ncnet".
-//
-// If acceptClientRPC is true, the server will accept
-// incoming client RPC registrations made by Client.Serve.
-//
-// Conventionally Register is called on the rpc.Server
-// to export some server RPC methods, and ListenAndServe is
-// then called on the netchan.Exporter to listen on the network.
+//  NewServer creates a new RPC-over-netchan server.  It returns a new
+//  Server instance containing a netchan.Exporter and an rpc.Server which
+//  is listening on a channel within it.  It reserves the use of netchan
+//  channels with the prefix "ncrpc".
+// 
+//  If acceptClientRPC is true, the server will accept incoming client
+//  RPC registrations made by Client.Serve.
+// 
+//  Conventionally Register is called on the rpc.Server to export some
+//  server RPC methods, and ListenAndServe is then called on the
+//  netchan.Exporter to listen on the network.
 func NewServer(acceptClientRPC bool) (*Server, os.Error) {
 	rpcsrv := rpc.NewServer()
 	exp := netchan.NewExporter()
-	nclis, err := ncnet.Listen(exp, "ncnet.ctl")
+	nclis, err := ncnet.Listen(exp, "ncrpc.ctl")
 	if err != nil {
 		return nil, err
 	}
@@ -74,16 +72,16 @@ func NewServer(acceptClientRPC bool) (*Server, os.Error) {
 	return srv, nil
 }
 
-// Client represents an ncrpc client. Importer holds
-// the underlying netchan connection, and Server
-// can be used to make calls to the server RPC interface.
+// Client represents an ncrpc client.  Importer holds the underlying
+// netchan connection, and Server can be used to make calls to the server
+// RPC interface.
 type Client struct {
 	Importer *netchan.Importer
 	Server *rpc.Client
 }
 
-// Import makes a connection to an ncrpc server
-// and calls NewClient on it.
+// Import makes a connection to an ncrpc server and calls NewClient on
+// it.
 func Import(network, addr string) (*Client, os.Error) {
 	conn, err := net.Dial(network, "", addr)
 	if err != nil {
@@ -92,23 +90,20 @@ func Import(network, addr string) (*Client, os.Error) {
 	return NewClient(conn)
 }
 
-// NewClient makes a the netchan connection from
-// the given connection, imports the rpc service
-// from that, and returns both in a new Client instance.
-// It assumes that the server has been started
-// with Server.
+// NewClient makes a the netchan connection from the given connection,
+// imports the rpc service from that, and returns both in a new Client
+// instance.  It assumes that the server has been started with Server.
 func NewClient(conn io.ReadWriter) (*Client, os.Error) {
 	imp := netchan.NewImporter(conn)
-	srvconn, err := ncnet.Dial(imp, "ncnet.ctl")
+	srvconn, err := ncnet.Dial(imp, "ncrpc.ctl")
 	if err != nil {
 		return nil, err
 	}
 	return &Client{imp, rpc.NewClient(srvconn)}, nil
 }
 
-// Serve announces an RPC service on the client using the
-// given name (which must currently be unique amongst all
-// clients).
+// Serve announces an RPC service on the client using the given name
+// (which must currently be unique amongst all clients).
 func (c *Client) Serve(clientName string, rpcServer *rpc.Server) os.Error {
 	var clientId string
 	rpcServer.RegisterName("ClientRPC", clientRPC{})		// TODO better name
@@ -127,12 +122,13 @@ func (c *Client) Serve(clientName string, rpcServer *rpc.Server) os.Error {
 // clientRPC implements the methods that Server.Publish expects of a client.
 type clientRPC struct {}
 
+// Ping is used by the server to check that the client is actually there.
 func (clientRPC) Ping(*struct{}, *struct{}) os.Error {
 	return nil
 }
 
-// Wait blocks until the client is ready to leave.
-// Currently that's forever.
+// Wait blocks until the client is ready to leave.  Currently that's
+// forever.
 func (clientRPC) Wait(*struct{}, *struct{}) os.Error {
 	select {}
 	return nil
@@ -143,8 +139,8 @@ type publisher struct {
 	srv *Server
 }
 
-// Publish is the RPC method that allows a client to publish
-// its own RPC interface. It is called (remotely) by Client.Serve.
+// Publish is the RPC method that allows a client to publish its own RPC
+// interface.  It is called (remotely) by Client.Serve.
 func (p publisher) Publish(name *string, clientId *string) os.Error {
 	if !p.acceptClientRPC {
 		return os.ErrorString("client RPC connections not accepted")
@@ -155,7 +151,7 @@ func (p publisher) Publish(name *string, clientId *string) os.Error {
 	if srv.clients[*name] != nil {
 		return os.ErrorString("client name already exists")
 	}
-	*clientId = fmt.Sprintf("ncnet.client%d", srv.clientid)
+	*clientId = fmt.Sprintf("ncrpc.client%d", srv.clientid)
 	srv.clientid++
 	listener, err := ncnet.Listen(srv.Exporter, *clientId)
 	if err != nil {
