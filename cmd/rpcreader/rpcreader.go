@@ -23,7 +23,6 @@ import (
 	"netchan"
 	"os"
 	"rog-go.googlecode.com/hg/ncrpc"
-	"rpc"
 	"strings"
 	"sync"
 )
@@ -59,10 +58,6 @@ func openFile(path string) (fd *os.File, info *os.FileInfo, err os.Error) {
 		err = os.ErrorString("cannot read directory")
 	}
 	return
-}
-
-func (srv *Server) Init(exp *netchan.Exporter) {
-	srv.exp = exp
 }
 
 func (srv *Server) Read(req *ReadReq, resp *ReadResponse) os.Error {
@@ -124,34 +119,35 @@ func main() {
 	}
 	addr := flag.Arg(0)
 	if *server {
-		exp, err := ncrpc.NewServer(new(Server))
+		srv, err := ncrpc.NewServer()
 		if err != nil {
 			log.Fatal("ncrpc NewServer failed: ", err)
 		}
+		srv.RPCServer.Register(&Server{exp: srv.Exporter})
 		lis, err := net.Listen("tcp", addr)
 		if err != nil {
 			log.Fatal("listen failed: ", err)
 		}
-		exp.Accept(lis)
+		srv.Exporter.Serve(lis)
 		return
 	}
-	imp, srv, err := ncrpc.Dial("tcp", addr)
+	client, err := ncrpc.Import("tcp", addr)
 	if err != nil {
 		log.Fatal("dial failed: ", err)
 	}
-	interact(imp, srv)
+	interact(client)
 }
 
 type command struct {
 	narg int
-	f    func(imp *netchan.Importer, srv *rpc.Client, args []string) os.Error
+	f    func(client *ncrpc.Client, args []string) os.Error
 }
 
 var commands = map[string]command{
 	"read": {-1, readcmd},
 }
 
-func interact(imp *netchan.Importer, srv *rpc.Client) {
+func interact(client *ncrpc.Client) {
 	stdin := bufio.NewReader(os.Stdin)
 	for {
 		fmt.Fprint(os.Stdout, "> ")
@@ -172,24 +168,24 @@ func interact(imp *netchan.Importer, srv *rpc.Client) {
 			fmt.Printf("invalid argument count\n")
 			continue
 		}
-		err = cmd.f(imp, srv, args[1:])
+		err = cmd.f(client, args[1:])
 		if err != nil {
 			fmt.Printf("failure: %v\n", err)
 		}
 	}
 }
 
-func readcmd(imp *netchan.Importer, srv *rpc.Client, paths []string) os.Error {
+func readcmd(client *ncrpc.Client, paths []string) os.Error {
 	if len(paths) == 0 {
 		return nil
 	}
 	var resp ReadResponse
-	err := srv.Call("Server.Read", &ReadReq{Paths: paths}, &resp)
+	err := client.Server.Call("Server.Read", &ReadReq{Paths: paths}, &resp)
 	if err != nil {
 		return fmt.Errorf("call: %v", err)
 	}
 	data := make(chan []byte)
-	err = imp.Import(resp.Chan, data, netchan.Recv, 50)
+	err = client.Importer.Import(resp.Chan, data, netchan.Recv, 50)
 	if err != nil {
 		return fmt.Errorf("import: %v", err)
 	}
@@ -210,6 +206,6 @@ func readcmd(imp *netchan.Importer, srv *rpc.Client, paths []string) os.Error {
 		}
 		fmt.Printf("\tread %d bytes\n", tot)
 	}
-	imp.Hangup(resp.Chan)
+	client.Importer.Hangup(resp.Chan)
 	return nil
 }

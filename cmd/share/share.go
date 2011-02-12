@@ -139,7 +139,7 @@ func main() {
 	addr := flag.Arg(0)
 	if *server {
 		exp := netchan.NewExporter()
-		if err := exp.Listen("tcp", addr); err != nil {
+		if err := exp.ListenAndServe("tcp", addr); err != nil {
 			log.Fatal("listen failed: ", err)
 		}
 		listener, err := ncnet.Listen(exp, "ctl")
@@ -159,7 +159,7 @@ func main() {
 		return
 	}
 
-	imp, err := netchan.NewImporter("tcp", addr)
+	imp, err := netchan.Import("tcp", addr)
 	if err != nil {
 		log.Fatal("netchan import failed: ", err)
 	}
