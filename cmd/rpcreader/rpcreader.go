@@ -119,7 +119,7 @@ func main() {
 	}
 	addr := flag.Arg(0)
 	if *server {
-		srv, err := ncrpc.NewServer()
+		srv, err := ncrpc.NewServer(false)
 		if err != nil {
 			log.Fatal("ncrpc NewServer failed: ", err)
 		}
