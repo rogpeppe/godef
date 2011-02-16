@@ -25,10 +25,15 @@ func (f *File) File() *os.File {
 	return f.file
 }
 
+// Encoder represents a encoding method.
+// Examples include gob.Encoder and json.Encoder.
 type Encoder interface {
+	// Encode writes an encoded version of x.
 	Encode(x interface{}) os.Error
 }
 
+// Decoder represents a decoding method.
+// Examples include gob.Decoder and json.Decoder.
 type Decoder interface {
 	Decode(x interface{}) os.Error
 }
@@ -41,10 +46,18 @@ type decoder struct {
 	dec Decoder
 }
 
-type header struct {
-	Id int
-}
-
+//  Encode writes a representation of x to the encoder.  We have to be
+//  careful about how we do this, because the data type that we decode
+//  into does not necessarily match the encoded data type.  Fields may
+//  occur in a different order, and some fields may not occur in the
+//  final type.  To cope with this, we assume that each Name in an
+//  os.File is unique.  We first encode x itself, followed by a list of
+//  the file names within it, followed by the data from all those files,
+//  in list order, as a sequence of byte slices, terminated with a
+//  zero-length slice.
+// 
+//  When the decoder decodes the value, it can then associate the correct
+//  item in the data structure with the correct file stream.
 func (enc encoder) Encode(x interface{}) os.Error {
 	// TODO some kind of signature so that we can be more
 	// robust if we try to Decode a stream that has not
@@ -57,7 +70,7 @@ func (enc encoder) Encode(x interface{}) os.Error {
 	files := make(map[string]*File)
 	var names []string
 	typeapply.Do(func(f *File) {
-		if files[f.Name] == nil {
+		if f.Name != "" && files[f.Name] == nil {
 			names = append(names, f.Name)
 			files[f.Name] = f
 		}
@@ -104,7 +117,7 @@ func (dec decoder) Decode(x interface{}) os.Error {
 	}
 	files := make(map[string][]*File)
 	typeapply.Do(func(f *File) {
-		if f != nil {
+		if f != nil && f.Name != "" {
 			files[f.Name] = append(files[f.Name], f)
 		}
 	},
@@ -157,22 +170,18 @@ func (nullWriter) Seek(int64, int) (int64, os.Error) {
 	return 0, nil
 }
 
-// NewEncoder returns a new Encoder that will encode
-// any *File instance that it finds within values passed
-// to Encode. The resulting encoded stream must be decoded with
-// a decoder created by NewDecoder.
+// NewEncoder returns a new Encoder that will encode any *File instance
+// that it finds within values passed to Encode.  The resulting encoded
+// stream must be decoded with a decoder created by NewDecoder.
 func NewEncoder(enc Encoder) Encoder {
 	return encoder{enc}
 }
 
-// NewDecoder returns a new Decoder that can
-// decode an encoding stream produced by an
-// encoder created with NewEncoder.
-// Any file data gets written to disk rather than
-// being stored in memory.
-// When a File is decoded, its file name will change
-// to the name of a local temporary file holding the
-// data.
+// NewDecoder returns a new Decoder that can decode an encoding stream
+// produced by an encoder created with NewEncoder.  Any file data gets
+// written to disk rather than being stored in memory.  When a File is
+// decoded, its file name will have changed to the name of a local temporary
+// file holding the same data.
 func NewDecoder(dec Decoder) Decoder {
 	return decoder{dec}
 }
