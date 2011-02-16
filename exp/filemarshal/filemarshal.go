@@ -1,3 +1,4 @@
+// 
 package filemarshal
 
 import (
@@ -178,7 +179,7 @@ func NewEncoder(enc Encoder) Encoder {
 }
 
 // NewDecoder returns a new Decoder that can decode an encoding stream
-// produced by an encoder created with NewEncoder.  Any file data gets
+// produced by an encoder created with NewEncoder.  Any File data gets
 // written to disk rather than being stored in memory.  When a File is
 // decoded, its file name will have changed to the name of a local temporary
 // file holding the same data.
