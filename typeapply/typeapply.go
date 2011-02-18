@@ -5,34 +5,48 @@ import (
 	"sync"
 )
 
-type traverserFunc func(*reflect.FuncValue, reflect.Value)
-
 var (
 	typeMutex sync.Mutex
 
-	// map from function's first argument type to a map
-	// from every type contained in that type to
-	// its typeInfo.
+	// tmap stores a map for every target type (the
+	// argument type of the function passed to Do).
+	// For each target type, we use this to cache
+	// information about how to traverse values
+	// of all types that have been passed to Do
+	// (and any types that they refer to).
 	tmap = make(map[reflect.Type]map[reflect.Type]*typeInfo)
 )
 
-type knowledge byte
+// A traverserFunc implements Do for a particular
+// value type X and target type T. It assumes that x is of
+// type X and f is of type func(T).
+type traverserFunc func(f *reflect.FuncValue, x reflect.Value)
 
+type knowledge byte
 const (
-	dontKnow = knowledge(iota)
-	no
-	yes
+	dontKnow = knowledge(iota)	// don't know yet
+	no			// definite no.
+	yes			// definite yes.
 )
 
+// typeInfo holds information on a value type with respect to a particular
+// target type.
 type typeInfo struct {
+	// Can this type contain instances of the target type?
+	// This can be dontKnow during execution of the canReach
+	// function
 	canReach knowledge
+		
+	// Is this type being currently visited?
 	visiting bool
+
+	// A function that implements Do on this type.
 	trav     traverserFunc
 }
 
 // Do calls the function f, which must be of the form func(T) for some
-// type T, on each publicly accessible member of x and recursively on
-// members of those.  It will fail with infinite recursion if the x is
+// type T, on each publicly accessible member of the value x and recursively on
+// members of those.  It will fail with infinite recursion if x is
 // cyclic.
 func Do(f interface{}, x interface{}) {
 	fv := reflect.NewValue(f).(*reflect.FuncValue)
@@ -62,6 +76,9 @@ func Do(f interface{}, x interface{}) {
 	}
 }
 
+// getTraverserFunc returns the traverserFunc for a given target type t
+// and and value type xt. It returns nil if xt cannot contain any
+// instance of t.
 func getTraverserFunc(m map[reflect.Type]*typeInfo, t, xt reflect.Type) traverserFunc {
 	needFunc := canReach(m, t, xt)
 	info := m[xt]
