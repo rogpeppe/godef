@@ -46,8 +46,9 @@ type typeInfo struct {
 
 // Do calls the function f, which must be of the form func(T) for some
 // type T, on each publicly accessible member of the value x and recursively on
-// members of those.  It will fail with infinite recursion if x is
-// cyclic.
+// members of those. It will fail with infinite recursion if x is
+// cyclic. If a member of x is reachable in more than one way,
+// then f will be called for each way.
 func Do(f interface{}, x interface{}) {
 	fv := reflect.NewValue(f).(*reflect.FuncValue)
 	ft := fv.Type().(*reflect.FuncType)
@@ -154,8 +155,8 @@ func getTraverserFunc(m map[reflect.Type]*typeInfo, t, xt reflect.Type) traverse
 			}
 		}
 
-	case reflect.ArrayOrSliceType:
-		trav := getTraverserFunc(m, t, xt.Elem())
+	case *reflect.ArrayType, *reflect.SliceType:
+		trav := getTraverserFunc(m, t, xt.(reflect.ArrayOrSliceType).Elem())
 		info.trav = func(fv *reflect.FuncValue, xv reflect.Value) {
 			y := xv.(reflect.ArrayOrSliceValue)
 			n := y.Len()
@@ -215,7 +216,10 @@ func canReach(m map[reflect.Type]*typeInfo, t, xt reflect.Type) knowledge {
 		info.canReach = canReach(m, t, xt.Key())
 		info.canReach = or(canReach(m, t, xt.Elem()), info.canReach)
 
-	case reflect.ArrayOrSliceType:
+	case *reflect.ArrayType:
+		info.canReach = canReach(m, t, xt.Elem())
+
+	case *reflect.SliceType:
 		info.canReach = canReach(m, t, xt.Elem())
 
 	case *reflect.InterfaceType:
