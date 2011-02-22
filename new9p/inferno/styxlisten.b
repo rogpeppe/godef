@@ -480,7 +480,7 @@ log(sys->sprint("------ dead client %s", c.hostname));
 				# the above flush request will be processed before
 				# the sequence end, so abort the sequence too.
 				t.sendreq(newreq(ref Tmsg.Flush(-1, t.stag)));
-				t.sendreq(newreq(ref Tmsg.Seq(-1, 0)));
+				t.sendreq(newreq(ref Tmsg.End(-1)));
 			}
 		}
 	}
@@ -594,17 +594,15 @@ log(sys->sprint("%s <- %s", tmsg.text(), c.hostname));
 				m.uname = c.uname + " " + c.hostname;	# XXX quote
 			else
 				m.uname = c.uname;
-		Seq =>
-			if(m.start){
-				# TODO: what do we do if it's already a sequence (invalid).
-				t.seq = ref blankseq;
-				t.seq.client = t.client;
-			}else{
-				t.seq.tEOF = 1;
-				# TODO: what do we do if it's not already a sequence (invalid)
-				# perhaps if a client misbehaves we could poison its connection.
-				t.seqclose(1);
-			}
+		Begin =>
+			# TODO: what do we do if it's already a sequence (invalid).
+			t.seq = ref blankseq;
+			t.seq.client = t.client;
+		End =>
+			t.seq.tEOF = 1;
+			# TODO: what do we do if it's not already a sequence (invalid)
+			# perhaps if a client misbehaves we could poison its connection.
+			t.seqclose(1);
 		Nonseq =>
 			# XXX check that fid is actually part of a sequence?
 			opfid = c.getfid(m.fid);
@@ -696,14 +694,9 @@ log(sys->sprint("\t%s", rmsg.text()));
 			Nonseq =>
 				req.action = None;
 			}
-		tagof Rmsg.Seq =>
-			pick m := req.tmsg {
-			Seq =>
-				if(!m.start){
-					t.seq.rEOF = 1;
-					t.seqclose(1);
-				}
-			}
+		tagof Rmsg.End =>
+			t.seq.rEOF = 1;
+			t.seqclose(1);
 		* =>
 			pick tm := req.tmsg {
 			Flush =>

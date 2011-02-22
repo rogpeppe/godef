@@ -640,14 +640,14 @@ log.Printf("hello\n")
 log.Printf("mount")
 	c, err := g9pc.Mount("tcp", naddr, "")
 	if err != nil {
-		log.Exitln("error mounting %s: %v", naddr, err)
+		log.Fatalf("error mounting %s: %v", naddr, err)
 	}
 log.Printf("mounted")
 
 	ns := new(g9pc.Ns)
-	root, err := c.Walk()
+	root, err := c.Walk("")
 	if err != nil {
-		log.Exitln("error walking to /: %v", err)
+		log.Fatalf("error walking to /: %v", err)
 	}
 	ns.Root = g9pc.NewNsFile(root.File())
 	ns.Dot = ns.Root

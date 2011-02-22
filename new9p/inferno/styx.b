@@ -64,8 +64,11 @@ Rstat =>	H+LEN,	# size[4] Rstat tag[2] stat[n]
 Twstat =>	H+FID+LEN,	# size[4] Twstat tag[2] fid[4] stat[n]
 Rwstat =>	H,	# size[4] Rwstat tag[2]
 
-Tseq => H+1,		# size[4] Tseq tag[2] start[1]
-Rseq => H,		# size[4] Rseq tag[2]
+Tbegin => H,		# size[4] Tbegin tag[2]
+Rbegin => H,		# size[4] Rbegin tag[2]
+
+Tend => H,		# size[4] Tend tag[2]
+Rend => H,		# size[4] Rend tag[2]
 };
 
 init()
@@ -282,7 +285,8 @@ tagof Tmsg.Clunk => Tclunk,
 tagof Tmsg.Stat => Tstat,
 tagof Tmsg.Remove => Tremove,
 tagof Tmsg.Wstat => Twstat,
-tagof Tmsg.Seq => Tseq,
+tagof Tmsg.Begin => Tbegin,
+tagof Tmsg.End => Tend,
 tagof Tmsg.Nonseq => Tnonseq,
 };
 
@@ -393,8 +397,8 @@ Tmsg.pack(t: self ref Tmsg): array of byte
 		d[H+FID] = byte n;
 		d[H+FID+1] = byte (n>>8);
 		d[H+FID+LEN:] = stat;
-	Seq =>
-		d[H] = byte m.start;
+	Begin or
+	End =>
 	* =>
 		raise sys->sprint("assertion: Styx->Tmsg.pack: bad tag: %d", tagof t);
 	}
@@ -506,8 +510,10 @@ Decode:
 			break;
 		}
 		return (H+FID+LEN+n, ref Tmsg.Wstat(tag, fid, stat));
-	Tseq =>
-		return (H+1, ref Tmsg.Seq(tag, int f[H]));
+	Tbegin =>
+		return (H, ref Tmsg.Begin(tag));
+	Tend =>
+		return (H, ref Tmsg.End(tag));
 	}
 	return (-1, nil);		# illegal
 }
@@ -528,7 +534,8 @@ tagof Tmsg.Clunk => "Clunk",
 tagof Tmsg.Stat => "Stat",
 tagof Tmsg.Remove => "Remove",
 tagof Tmsg.Wstat => "Wstat",
-tagof Tmsg.Seq => "Seq",
+tagof Tmsg.Begin => "Begin",
+tagof Tmsg.End => "End",
 };
 
 Tmsg.text(t: self ref Tmsg): string
@@ -579,8 +586,9 @@ Tmsg.text(t: self ref Tmsg): string
 		return s + sys->sprint(",%ud)", m.fid);
 	Wstat =>
 		return s + sys->sprint(",%ud,%s)", m.fid, dir2text(m.stat));
-	Seq =>
-		return s + sys->sprint(",%d)", m.start);
+	Begin or
+	End =>
+		return s + ")";
 	}
 }
 
@@ -613,7 +621,8 @@ tagof Rmsg.Clunk	=> Rclunk,
 tagof Rmsg.Remove	=> Rremove,
 tagof Rmsg.Stat	=> Rstat,
 tagof Rmsg.Wstat	=> Rwstat,
-tagof Rmsg.Seq	=> Rseq,
+tagof Rmsg.Begin	=> Rbegin,
+tagof Rmsg.End	=> Rend,
 };
 
 Rmsg.mtype(r: self ref Rmsg): int
@@ -667,7 +676,8 @@ Rmsg.pack(r: self ref Rmsg): array of byte
 	Clunk or
 	Remove or
 	Wstat or
-	Seq or
+	Begin or
+	End or
 	Nonseq =>
 		;	# nothing more required
 	Error	=>
@@ -795,8 +805,10 @@ Rmsg.unpack(f: array of byte): (int, ref Rmsg)
 			break;
 		}
 		return (H+LEN+n, ref Rmsg.Stat(tag, d));
-	Rseq =>
-		return (H, ref Rmsg.Seq(tag));
+	Rbegin =>
+		return (H, ref Rmsg.Begin(tag));
+	Rend =>
+		return (H, ref Rmsg.End(tag));
 	}
 	return (-1, nil);		# illegal
 }
@@ -817,7 +829,8 @@ tagof Rmsg.Clunk => "Clunk",
 tagof Rmsg.Remove => "Remove",
 tagof Rmsg.Stat => "Stat",
 tagof Rmsg.Wstat => "Wstat",
-tagof Rmsg.Seq => "Seq",
+tagof Rmsg.Begin => "Begin",
+tagof Rmsg.End => "End",
 };
 
 Rmsg.text(r: self ref Rmsg): string
@@ -842,7 +855,8 @@ Rmsg.text(r: self ref Rmsg): string
 	Clunk or
 	Remove or
 	Wstat or
-	Seq or
+	Begin or
+	End or
 	Nonseq =>
 		return s+")";
 	Attach =>

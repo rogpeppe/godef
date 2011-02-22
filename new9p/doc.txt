@@ -1,40 +1,43 @@
 Summary
 --------
 
-This 9p protocol addendum adds two new 9p requests: Tseq and Tnonseq.
+This 9p protocol addendum adds three new 9p requests: Tbegin, Tend and Tnonseq.
 It remains backwardly compatible with 9p2000 for the time being.
 
-size[4] Tseq tag[2] start[1]
-size[4] Rseq tag[2]
+size[4] Tbegin tag[2]
+size[4] Rbegin tag[2]
+
+size[4] Tend tag[2]
+size[4] Rend tag[2]
 
 size[4] Tnonseq tag[2] fid[4]
 size[4] Rnonseq tag[2]
 
-[Tseq tag=t start=1] begins a sequence of operations on tag t.  The
-client immediately responds with Rseq (or Rerror if it does not
+[Tbegin tag=t] begins a sequence of operations on tag t.  The
+client immediately responds with Rbegin (or Rerror if it does not
 support sequence queues, in which case all the subsequent operations
 on the tag will be discarded, as per the rules below).
 
-After the initial Tseq request, a client may send any number of T
+After a Tbegin request, a client may send any number of T
 messages with tag t.  The server will process each message in turn
-(including the initial Tseq), replying when it is done.  The server
+(including the Tbegin), replying when it is done.  The server
 will stop processing requests in a sequence on any of the following
 conditions:
 
 1) a request results in an error;
 2) the sequence is flushed;
-2) it receives the sequence termination message [Tseq tag=t start=0].
+2) it receives a Tend message [Tend tag=t].
 
 Sequence requests received after an error or a flush are simply
 discarded.
 
-Thus a sequence always begins with [Tseq tag=t start=1] and ends with
-either [Rerror tag=t ...] or [Rseq tag=t], or Rflush if it has been flushed.
+Thus a sequence always begins with [Tbegin tag=t] and ends with
+either [Rerror tag=t ...] or [Rend tag=t], or [Rflush oldtag=t] if it has been flushed.
 
-The client must send the sequence termination message [Tseq tag=t start=0]
-even when the server has stopped processing requests for the sequence.
-The client can re-use the tag t when it has received one of the above
-R messages *and* sent the sequence termination message.
+The client must send [Tend tag=t] even when the server has stopped
+processing requests for the sequence.  The client can re-use the tag t
+when it has received one of the above R messages *and* sent the
+sequence termination message.
 
 If a request results in an unexpected result, then the next request in
 the sequence will yield the error "sequence terminated".  Read and
@@ -82,24 +85,24 @@ It is an error to send a flush message within a sequence to flush
 the sequence itself. As a consequence, this can be used to deliberately
 terminate a sequence with an error, e.g. (T messages only)
 
-	1 Tseq start=1
+	1 Tbegin
 	1 Twalk fid=1 newfid=2 name="foo"
 	1 Twalk fid=1 newfid=3 name="bar"
 	1 Twrite fid=2 offset=0 data="hello"
 	1 Twrite fid=3 offset=0 data="hello"
 	1 Tflush oldtag=1
-	1 Tseq start=0
+	1 Tend
 
 In the example above, fids 2 and 3 are guaranteed to be clunked
 when the sequence has been terminated.
 
 Here's a sample sequence (tags precede messages):
 
-1 Tseq start=1
+1 Tbegin
 1 Twalk fid=10 nfid=11
 1 Twalk fid=11 nfid=11 name="foo.txt"
 1 Topen fid=11 mode=OREAD
-    1 Rseq
+    1 Rbegin
     1 Rwalk qid=...
     1 Rwalk qid=...
 1 Tread fid=11 offset=0 n=8192
@@ -111,4 +114,4 @@ Here's a sample sequence (tags precede messages):
     1 Rread data=[...8192 bytes]
     1 Rread data=[...1234 bytes]
     1 Rerror "sequence terminated"
-1 Tseq start=0
+1 Tend

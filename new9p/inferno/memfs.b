@@ -170,7 +170,7 @@ log(tmsg.text());
 		seq := findseq(tmsg.tag);
 		# don't reply to in-sequence requests after the sequence has completed.
 		{
-			if(seq != nil && tagof(tmsg) != tagof(Tmsg.Seq)) {
+			if(seq != nil && tagof(tmsg) != tagof(Tmsg.End)) {
 				if(seq.aborted){
 log("seq aborted");
 					continue;
@@ -198,30 +198,28 @@ servetmsg(tmsg: ref Styx->Tmsg, srv: ref Styxserver, seq: ref Seq){
 	pick tm := tmsg {
 	Version =>
 		srv.devversion(tm);
-	Seq =>
-		if(tm.start){
-			if(seq != nil){
-				raise "styx:sequence already started";
-			}
-			if((seq = findseq(-1)) == nil){
-				seq = ref blankseq;
-				seqs = seq :: seqs;
-			}
-			seq.tag = tm.tag;
-			reply(srv, ref Rmsg.Seq(tm.tag));
-		}else{
-			if(seq == nil){
-				raise "styx:non-existent sequence";
-			}
-			for(fl := seq.fids; fl != nil; fl = tl fl){
-				(hd fl).seqtag = -1;
-			}
-			aborted := seq.aborted;
-			*seq = blankseq;
-			seq.tag = -1;
-			if(!aborted){
-				reply(srv, ref Rmsg.Seq(tm.tag));
-			}
+	Begin =>
+		if(seq != nil){
+			raise "styx:sequence already started";
+		}
+		if((seq = findseq(-1)) == nil){
+			seq = ref blankseq;
+			seqs = seq :: seqs;
+		}
+		seq.tag = tm.tag;
+		reply(srv, ref Rmsg.Begin(tm.tag));
+	End =>
+		if(seq == nil){
+			raise "styx:non-existent sequence";
+		}
+		for(fl := seq.fids; fl != nil; fl = tl fl){
+			(hd fl).seqtag = -1;
+		}
+		aborted := seq.aborted;
+		*seq = blankseq;
+		seq.tag = -1;
+		if(!aborted){
+			reply(srv, ref Rmsg.End(tm.tag));
 		}
 	Nonseq =>
 		(c, nil) := fidtomf(srv, tm.fid);

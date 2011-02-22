@@ -13,7 +13,7 @@ const (
 type Fcall struct {
 	Type	uint8
 	Tag uint16
-	Fid uint32		// All T messages except Tversion, Tflush and Tseq
+	Fid uint32		// All T messages except Tversion, Tflush, Tbegin and Tend
 	Msize uint32	// Tversion, Rversion
 	Version string	// Tversion, Rversion
 	Oldtag uint16	// Tflush
@@ -27,7 +27,6 @@ type Fcall struct {
 	Perm Perm	// Tcreate
 	Name string	// Tcreate
 	Mode uint8	// Tcreate, Topen
-	Start bool		// Tseq
 	Newfid uint32	// Twalk
 	Wname []string	// Twalk
 	Wqid []Qid	// Rwalk
@@ -71,8 +70,10 @@ const (
 	Rstat
 	Twstat
 	Rwstat
-	Tseq
-	Rseq
+	Tbegin
+	Rbegin
+	Tend
+	Rend
 	Tnonseq
 	Rnonseq
 	Tmax
@@ -90,8 +91,8 @@ func (f *Fcall) Bytes() ([]byte, os.Error) {
 		b = pbit32(b, f.Msize)
 		b = pstring(b, f.Version)
 
-	case Tseq:
-		b = pbool(b, f.Start)
+	case Tbegin, Tend:
+		// nothing
 
 	case Tflush:
 		b = pbit16(b, f.Oldtag)
@@ -154,7 +155,7 @@ func (f *Fcall) Bytes() ([]byte, os.Error) {
 	case Rerror:
 		b = pstring(b, f.Ename)
 	
-	case Rflush, Rclunk, Rremove, Rwstat, Rseq, Rnonseq:
+	case Rflush, Rclunk, Rremove, Rwstat, Rbegin, Rend, Rnonseq:
 		// nothing
 	
 	case Rauth:
@@ -218,9 +219,6 @@ println("bad fcall at ", b)
 		f.Msize, b = gbit32(b)
 		f.Version, b = gstring(b)
 	
-	case Tseq:
-		f.Start, b = gbool(b)
-
 	case Tflush:
 		f.Oldtag, b = gbit16(b)
 
@@ -285,6 +283,9 @@ println("bad fcall at ", b)
 		}
 		f.Stat = b
 		b = nil
+
+	case Tbegin, Tend:
+		// nothing
 	
 	case Rversion:
 		f.Msize, b = gbit32(b)
@@ -293,7 +294,7 @@ println("bad fcall at ", b)
 	case Rerror:
 		f.Ename, b = gstring(b)
 	
-	case Rflush, Rclunk, Rremove, Rwstat, Rseq, Rnonseq:
+	case Rflush, Rclunk, Rremove, Rwstat, Rbegin, Rend, Rnonseq:
 		// nothing
 	
 	case Rauth:
@@ -350,8 +351,10 @@ func (f *Fcall) String() string {
 		return "<nil>"
 	}
 	switch f.Type {
-	case Tseq:
-		return fmt.Sprintf("Tseq tag %d start %v", f.Tag, f.Start)
+	case Tbegin:
+		return fmt.Sprintf("Tbegin tag %d", f.Tag)
+	case Tend:
+		return fmt.Sprintf("Tend tag %d", f.Tag)
 	case Tversion:
 		return fmt.Sprintf("Tversion tag %d msize %d version '%s'",
 			f.Tag, f.Msize, f.Version)
@@ -368,8 +371,10 @@ func (f *Fcall) String() string {
 			f.Tag, f.Fid, f.Afid, f.Uname, f.Aname)
 	case Rattach:
 		return fmt.Sprintf("Rattach tag %d qid %v", f.Tag, f.Qid)
-	case Rseq:
-		return fmt.Sprintf("Rseq tag %d", f.Tag)
+	case Rbegin:
+		return fmt.Sprintf("Rbegin tag %d", f.Tag)
+	case Rend:
+		return fmt.Sprintf("Rend tag %d", f.Tag)
 	case Rerror:
 		return fmt.Sprintf("Rerror tag %d ename %s", f.Tag, f.Ename)
 	case Tflush:

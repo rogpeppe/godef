@@ -48,9 +48,11 @@ Styx: module
 	Rstat,
 	Twstat,		#126
 	Rwstat,
-	Tseq,	# 128
-	Rseq,
-	Tnonseq,	# 130
+	Tbegin,	# 128
+	Rbegin,
+	Tend,	# 130
+	Rend,
+	Tnonseq,	# 132
 	Rnonseq,
 	Tmax: con 100+iota;
 
@@ -117,8 +119,8 @@ Styx: module
 		Wstat =>
 			fid: int;
 			stat: Sys->Dir;
-		Seq =>
-			start: int;
+		Begin or
+		End =>
 		}
 
 		read:	fn(fd: ref Sys->FD, msize: int): ref Tmsg;
@@ -147,7 +149,8 @@ Styx: module
 		Clunk or
 		Remove or
 		Wstat or
-		Seq or
+		Begin or
+		End or
 		Nonseq =>
 		Walk =>
 			qids: array of Sys->Qid;

@@ -136,9 +136,12 @@ log.Printf("stream: got result %#v (chan %p)\n", r, results)
 log.Printf("stream: closed")
 		// Stop as many requests as possible from being sent.
 		// If we implemented flush, we would flush the request now.
+	loop:
 		for {
-			if _, ok := <-bufs; !ok {
-				break
+			select{
+			case <-bufs:
+			default:
+				break loop
 			}
 		}
 		close(bufs)

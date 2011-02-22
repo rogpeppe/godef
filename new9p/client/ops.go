@@ -2,7 +2,7 @@ package client
 
 import (
 	"fmt"
-"log"
+//"log"
 	"os"
 	"container/list"
 	plan9 "rog-go.googlecode.com/hg/new9p"
@@ -53,7 +53,7 @@ func (fs *filesys9p) StartSequence() (seq.Sequence, <-chan seq.Result, os.Error)
 
 	sq.c.w.Lock()
 	defer c.w.Unlock()
-	tx := &plan9.Fcall{Type: plan9.Tseq, Tag: sq.tag, Start: true}
+	tx := &plan9.Fcall{Type: plan9.Tbegin, Tag: sq.tag}
 	sq.q.Put(req{nil, nil, tx})
 	if err := sq.c.write(tx); err != nil {
 		return nil, nil, err
@@ -91,7 +91,7 @@ func (sq *seq9p) Do(f seq.File, op seq.BasicReq) os.Error {
 	switch op := op.(type) {
 	case nil:
 //log.Printf("seq9p sending terminate message")
-		tx = &plan9.Fcall{Type: plan9.Tseq, Start: false}
+		tx = &plan9.Fcall{Type: plan9.Tend}
 	case seq.AbortReq:
 		tx = &plan9.Fcall{Type: plan9.Tflush, Oldtag: sq.tag}
 	case seq.CloneReq:
@@ -175,10 +175,9 @@ func (sq *seq9p) fcall2result(rxc <-chan *plan9.Fcall, resultc chan<- seq.Result
 		}
 		var result seq.Result
 		switch rx.Type {
-		case plan9.Rseq:
-			if !rq.tx.Start {
-				return
-			}
+		case plan9.Rbegin:
+		case plan9.Rend:
+			return
 		case plan9.Rerror:
 			switch op := rq.op.(type) {
 			case seq.CloneReq:
@@ -264,7 +263,7 @@ func (sq *seq9p) putfid(fid *Fid) {
 
 // putfids clunks all the fids if the sequence has terminated
 // with an error. It is called with sq.c.w held.
-// fids can be reused only after the terminating Tseq has been
+// fids can be reused only after Tend has been
 // sent and the final reply has been seen.
 func (sq *seq9p) putfids() {
 //log.Printf("putfids; doEOF %v; replyEOF %v; fids %p; callers %s", sq.doEOF, sq.replyEOF, sq.fids, callers(1))

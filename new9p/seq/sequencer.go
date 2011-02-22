@@ -102,8 +102,9 @@ func NewSequencer() (*Sequencer, <-chan Result) {
 }
 
 func (m *mainSeq) enter() {
-	ok := m.reentrantCheck <- true
-	if !ok {
+	select{
+	case m.reentrantCheck <- true:
+	default:
 		panic("reentrancy")
 	}
 }
