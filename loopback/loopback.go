@@ -2,7 +2,6 @@ package loopback
 
 import (
 	"sync"
-	"fmt"
 	"io"
 	"os"
 	"time"
@@ -13,7 +12,6 @@ type block struct {
 	data []byte
 	prev *block
 	next *block
-	id int
 }
 
 type streamReader stream
@@ -62,17 +60,35 @@ type stream struct {
 	waitNotFull int
 }
 
+// Loopback options for use with Pipe.
 type Options struct {
+	// ByteDelay controls the time a packet takes in the link.  A packet
+	// n bytes long takes ByteDelay * n nanoseconds to exit
+	// the output queue and is available for reading Latency
+	// nanoseconds later.
 	ByteDelay int64
 	Latency int64
+
+	// MTU gives the maximum packet size that can
+	// be tranferred atomically across the link.
+	// Larger packet will be split.
+	// If this is zero, a default of 32768 is assumed
+	MTU int
+
+	// InLimit and OutLimit gives the size of the input and output queues.
+	// If either is zero, a default of 10*MTU is assumed.
 	InLimit int
 	OutLimit int
-	MTU int
 }
 
-func Pipe(opt Options) (io.ReadCloser, io.WriteCloser) {
+// Pipe creates an asynchronous in-memory pipe,
+// Writes are divided into packets of at most opts.MTU bytes
+// written to a flow-controlled output queue, transferred across the link,
+// and put into an input queue where it is readable with the r.
+// The options determine when and how the data will be transferred.
+func Pipe(opt Options) (r io.ReadCloser, w io.WriteCloser) {
 	if opt.MTU == 0 {
-		opt.MTU = 8192
+		opt.MTU = 32768
 	}
 	if opt.InLimit == 0 {
 		opt.InLimit = 10 * opt.MTU
@@ -86,7 +102,7 @@ func Pipe(opt Options) (io.ReadCloser, io.WriteCloser) {
 	if opt.OutLimit < opt.MTU {
 		opt.OutLimit = opt.MTU
 	}
-	sentinel := &block{id: -1}
+	sentinel := &block{}
 	s := &stream{
 		outLimit: opt.OutLimit,
 		outAvail: opt.OutLimit,
@@ -146,11 +162,9 @@ func (s *stream) closeOutput() os.Error {
 }
 
 func (s *stream) pushLink(now int64) {
-	doneSomething := false
 	if !s.outBlocked(now) {
 		// move blocks from out queue to transit queue.
 		for s.outTail != s.outHead && now >= s.outHead.t {
-			doneSomething = true
 			s.outHead.t += s.latency
 			s.outAvail += len(s.outHead.data)
 			s.outHead = s.outHead.next
@@ -161,16 +175,8 @@ func (s *stream) pushLink(now int64) {
 		if s.inAvail < len(s.transitHead.data) {
 			break		// or discard packet
 		}
-		doneSomething = true
 		s.inAvail -= len(s.transitHead.data)
 		s.transitHead = s.transitHead.next
-	}
-	if !doneSomething {
-//		fmt.Printf("pushLink did nothing\n")
-	}else{
-//		fmt.Printf("after pushLink:\n")
-//		fmt.Printf("\toutAvail %d; inAvail %d\n", s.outAvail, s.inAvail)
-//		fmt.Printf("\toutTail %v; outHead %v; transitHead %v; inHead %v\n", s.outTail, s.outHead, s.transitHead, s.inHead)
 	}
 }
 
@@ -336,8 +342,7 @@ func (s *stream) addBlock(t int64, data []byte) {
 	if s.outHead == s.outTail {
 		s.outHead.t = t
 		s.outHead.data = data
-		s.outHead.id = newid()
-		s.outHead.next = &block{prev: s.outHead, id: -1}	// new sentinel
+		s.outHead.next = &block{prev: s.outHead}	// new sentinel
 		s.outTail = s.outHead.next
 		return
 	}
@@ -346,7 +351,6 @@ func (s *stream) addBlock(t int64, data []byte) {
 	b := &block{
 		t: t, 
 		data: data,
-		id: newid(),
 	}
 	b.next = s.outTail
 	b.prev = s.outTail.prev
@@ -366,28 +370,4 @@ func (s *stream) removeBlock() {
 	// help garbage collector
 	b.next = nil
 	b.prev = nil
-}
-
-var maxid int
-func newid() (id int) {
-	id = maxid
-	maxid++
-	return
-}
-
-func (s *stream) print(msg string) {
-	return
-	fmt.Printf("%s\n", msg)
-	fmt.Printf("\toutAvail %d; inAvail %d\n", s.outAvail, s.inAvail)
-	fmt.Printf("\toutTail %v; outHead %v; transitHead %v; inHead %v\n", s.outTail, s.outHead, s.transitHead, s.inHead)
-	for b := s.outTail; b != nil; b = b.prev {
-		fmt.Printf("\t%v; prev %v; next %v; len %d\n", b, b.prev, b.next, len(b.data))
-	}
-}
-
-func (b *block) String() string {
-	if b == nil {
-		return "nil"
-	}
-	return fmt.Sprint("b", b.id)
 }
