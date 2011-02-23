@@ -8,7 +8,7 @@ import (
 )
 
 type block struct {
-	t int64
+	t    int64
 	data []byte
 	prev *block
 	next *block
@@ -37,27 +37,27 @@ type stream struct {
 	mu sync.Mutex
 
 	outClosed bool
-	inClosed bool
+	inClosed  bool
 
-	outTail *block			// sentinel.
-	outHead *block		// also transitTail.
-	transitHead *block		// also inTail.
-	inHead *block			// overall head of list.
+	outTail     *block // sentinel.
+	outHead     *block // also transitTail.
+	transitHead *block // also inTail.
+	inHead      *block // overall head of list.
 
-	outLimit int			// total size of output queue.
-	outAvail int			// free bytes in output queue.
+	outLimit int // total size of output queue.
+	outAvail int // free bytes in output queue.
 
-	inLimit int				// total size of input queue.
-	inAvail int				// free bytes in input queue.
+	inLimit int // total size of input queue.
+	inAvail int // free bytes in input queue.
 
 	byteDelay int64
-	latency int64
-	mtu int
+	latency   int64
+	mtu       int
 
-	notEmpty sync.Cond
-	notFull sync.Cond
+	notEmpty     sync.Cond
+	notFull      sync.Cond
 	waitNotEmpty int
-	waitNotFull int
+	waitNotFull  int
 }
 
 // Loopback options for use with Pipe.
@@ -67,7 +67,7 @@ type Options struct {
 	// the output queue and is available for reading Latency
 	// nanoseconds later.
 	ByteDelay int64
-	Latency int64
+	Latency   int64
 
 	// MTU gives the maximum packet size that can
 	// be tranferred atomically across the link.
@@ -77,7 +77,7 @@ type Options struct {
 
 	// InLimit and OutLimit gives the size of the input and output queues.
 	// If either is zero, a default of 10*MTU is assumed.
-	InLimit int
+	InLimit  int
 	OutLimit int
 }
 
@@ -104,17 +104,17 @@ func Pipe(opt Options) (r io.ReadCloser, w io.WriteCloser) {
 	}
 	sentinel := &block{}
 	s := &stream{
-		outLimit: opt.OutLimit,
-		outAvail: opt.OutLimit,
-		inLimit: opt.InLimit,
-		inAvail: opt.InLimit,
-		mtu: opt.MTU,
-		byteDelay: opt.ByteDelay,
-		latency: opt.Latency,
-		outTail: sentinel,
-		outHead: sentinel,
+		outLimit:    opt.OutLimit,
+		outAvail:    opt.OutLimit,
+		inLimit:     opt.InLimit,
+		inAvail:     opt.InLimit,
+		mtu:         opt.MTU,
+		byteDelay:   opt.ByteDelay,
+		latency:     opt.Latency,
+		outTail:     sentinel,
+		outHead:     sentinel,
 		transitHead: sentinel,
-		inHead: sentinel,
+		inHead:      sentinel,
 	}
 	s.notEmpty.L = &s.mu
 	s.notFull.L = &s.mu
@@ -131,7 +131,7 @@ func Pipe(opt Options) (r io.ReadCloser, w io.WriteCloser) {
 // will incur less latency.
 func (s *stream) outBlocked(now int64) bool {
 	return s.transitHead != s.outHead &&
-		now >= s.transitHead.t + s.latency &&
+		now >= s.transitHead.t+s.latency &&
 		s.inAvail < len(s.transitHead.data)
 }
 
@@ -173,7 +173,7 @@ func (s *stream) pushLink(now int64) {
 	// move blocks from transit queue to input queue
 	for s.transitHead != s.outHead && now >= s.transitHead.t {
 		if s.inAvail < len(s.transitHead.data) {
-			break		// or discard packet
+			break // or discard packet
 		}
 		s.inAvail -= len(s.transitHead.data)
 		s.transitHead = s.transitHead.next
@@ -193,7 +193,7 @@ func (s *stream) Write(data []byte) (int, os.Error) {
 	now := time.Nanoseconds()
 	for {
 		s.pushLink(now)
-		if s.outAvail >= len(data) || s.outClosed{
+		if s.outAvail >= len(data) || s.outClosed {
 			break
 		}
 		if s.outBlocked(time.Nanoseconds()) {
@@ -220,7 +220,7 @@ func (s *stream) Write(data []byte) (int, os.Error) {
 	// that one.
 	if s.outHead != s.outTail && now < s.outTail.prev.t {
 		t = s.outTail.prev.t + delay
-	}else{
+	} else {
 		t = now + delay
 	}
 	s.addBlock(t, s.copy(data))
@@ -342,14 +342,14 @@ func (s *stream) addBlock(t int64, data []byte) {
 	if s.outHead == s.outTail {
 		s.outHead.t = t
 		s.outHead.data = data
-		s.outHead.next = &block{prev: s.outHead}	// new sentinel
+		s.outHead.next = &block{prev: s.outHead} // new sentinel
 		s.outTail = s.outHead.next
 		return
 	}
 
 	// Add a new block just after the sentinel.	
 	b := &block{
-		t: t, 
+		t:    t,
 		data: data,
 	}
 	b.next = s.outTail

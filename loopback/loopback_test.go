@@ -1,4 +1,5 @@
 package loopback
+
 import (
 	"encoding/binary"
 	"io"
@@ -45,7 +46,7 @@ func TestOutputClose(t *testing.T) {
 }
 
 func TestInputClose(t *testing.T) {
-	r, w := Pipe(Options{MTU: 100, InLimit: 2*100, OutLimit: 2*100})
+	r, w := Pipe(Options{MTU: 100, InLimit: 2 * 100, OutLimit: 2 * 100})
 	sync := make(chan bool)
 	go func() {
 		buf := make([]byte, 100)
@@ -61,7 +62,7 @@ func TestInputClose(t *testing.T) {
 		sync <- true
 	}()
 	r.Close()
-	select{
+	select {
 	case <-time.After(0.2e9):
 		t.Fatalf("close did not wake up writer")
 	case <-sync:
@@ -70,27 +71,27 @@ func TestInputClose(t *testing.T) {
 
 func TestLatency(t *testing.T) {
 	const (
-		n = 10
+		n       = 10
 		latency = int64(0.1e9)
-		leeway = int64(0.01e9)
+		leeway  = int64(0.01e9)
 	)
 	r, w := Pipe(Options{Latency: 0.1e9})
 	go writeNValues(t, w, n, make([]byte, 14), 0.1e9)
 	buf := make([]byte, 14)
 	for i := 0; i < 10; i++ {
 		now, sentTime := readPacket(t, r, buf, i)
-		if abs(now - sentTime - latency) > leeway {
-			t.Errorf("expected latency of %dns; got %dns\n", latency, now - sentTime)
+		if abs(now-sentTime-latency) > leeway {
+			t.Errorf("expected latency of %dns; got %dns\n", latency, now-sentTime)
 		}
 	}
 }
 
 func TestBandwidth(t *testing.T) {
 	const (
-		n = 10
+		n          = 10
 		packetSize = 8192
-		bandwidth = int64((1024*1024)/8)	// 1 Mbit in bytes
-		delay = 1e9 / bandwidth		// byte delay in ns.
+		bandwidth  = int64((1024 * 1024) / 8) // 1 Mbit in bytes
+		delay      = 1e9 / bandwidth          // byte delay in ns.
 	)
 	r, w := Pipe(Options{ByteDelay: delay, MTU: 8192})
 	go writeNValues(t, w, n, make([]byte, 8192), 0)
@@ -103,17 +104,17 @@ func TestBandwidth(t *testing.T) {
 			t0 = sent
 		}
 	}
-	expect := delay * int64(packetSize * n)
+	expect := delay * int64(packetSize*n)
 	got := t1 - t0
-	if abs(expect - got) * 100 / expect > 1 {
+	if abs(expect-got)*100/expect > 1 {
 		t.Error("wrong bandwidth; expected %dns; got %dns", expect, got)
 	}
 }
 
-func TestWriteBlocking(t *testing.T){
-	r, w := Pipe(Options{MTU: 14, InLimit: 14*2, OutLimit: 14*2})
+func TestWriteBlocking(t *testing.T) {
+	r, w := Pipe(Options{MTU: 14, InLimit: 14 * 2, OutLimit: 14 * 2})
 	sync := make(chan bool)
-	go func(){
+	go func() {
 		// fill buffers - 2 for the buffer at each end, and
 		// one blocked in transit.
 		writeNValues(t, w, 5, make([]byte, 14), 0)
@@ -123,7 +124,7 @@ func TestWriteBlocking(t *testing.T){
 		sync <- true
 	}()
 	// Check that write has not blocked filling the buffers.
-	select{
+	select {
 	case <-time.After(0.2e9):
 		t.Fatalf("writer blocked too early")
 	case <-sync:
@@ -132,7 +133,7 @@ func TestWriteBlocking(t *testing.T){
 	time.Sleep(0.2e9)
 
 	// Check that write has correctly blocked.
-	select{
+	select {
 	case <-sync:
 		t.Fatalf("writer did not block")
 	default:
@@ -141,7 +142,7 @@ func TestWriteBlocking(t *testing.T){
 	// check that write unblocks when we read a packet.
 	readPacket(t, r, make([]byte, 14), 0)
 	time.Sleep(0.2e9)
-	select{
+	select {
 	case <-time.After(0.2e9):
 		t.Fatalf("writer still blocked")
 	case <-sync:
@@ -154,12 +155,12 @@ func BenchmarkPacketTransfer(b *testing.B) {
 	b.SetBytes(int64(bufSize))
 	go func() {
 		buf := make([]byte, bufSize)
-		for i := b.N-1; i >= 0; i-- {
+		for i := b.N - 1; i >= 0; i-- {
 			w.Write(buf)
 		}
 	}()
 	buf := make([]byte, bufSize)
-	for i := b.N-1; i >= 0; i-- {
+	for i := b.N - 1; i >= 0; i-- {
 		n, err := r.Read(buf)
 		if n != bufSize || err != nil {
 			panic("read failed")
@@ -173,12 +174,12 @@ func BenchmarkPipeTransfer(b *testing.B) {
 	b.SetBytes(int64(bufSize))
 	go func() {
 		buf := make([]byte, bufSize)
-		for i := b.N-1; i >= 0; i-- {
+		for i := b.N - 1; i >= 0; i-- {
 			w.Write(buf)
 		}
 	}()
 	buf := make([]byte, bufSize)
-	for i := b.N-1; i >= 0; i-- {
+	for i := b.N - 1; i >= 0; i-- {
 		n, err := r.Read(buf)
 		if n != bufSize || err != nil {
 			panic("read failed")
@@ -197,7 +198,7 @@ func writeNValues(t *testing.T, s io.Writer, n int, buf []byte, period int64) {
 	}
 }
 
-func writePacket(t *testing.T, s io.Writer, buf []byte, index int){
+func writePacket(t *testing.T, s io.Writer, buf []byte, index int) {
 	if len(buf) < 14 {
 		panic("buf too small for header")
 	}
