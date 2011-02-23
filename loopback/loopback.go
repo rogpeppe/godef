@@ -56,8 +56,6 @@ type stream struct {
 
 	notEmpty     sync.Cond
 	notFull      sync.Cond
-	waitNotEmpty int
-	waitNotFull  int
 }
 
 // Loopback options for use with Pipe.
@@ -138,12 +136,8 @@ func (s *stream) outBlocked(now int64) bool {
 func (s *stream) closeInput() os.Error {
 	s.mu.Lock()
 	s.inClosed = true
-	if s.waitNotEmpty > 0 {
-		s.notEmpty.Broadcast()
-	}
-	if s.waitNotFull > 0 {
-		s.notFull.Broadcast()
-	}
+	s.notEmpty.Broadcast()
+	s.notFull.Broadcast()
 	s.mu.Unlock()
 	return nil
 }
@@ -151,12 +145,8 @@ func (s *stream) closeInput() os.Error {
 func (s *stream) closeOutput() os.Error {
 	s.mu.Lock()
 	s.outClosed = true
-	if s.waitNotEmpty > 0 {
-		s.notEmpty.Broadcast()
-	}
-	if s.waitNotFull > 0 {
-		s.notFull.Broadcast()
-	}
+	s.notEmpty.Broadcast()
+	s.notFull.Broadcast()
 	s.mu.Unlock()
 	return nil
 }
@@ -201,9 +191,7 @@ func (s *stream) Write(data []byte) (int, os.Error) {
 				s.mu.Unlock()
 				return 0, os.EPIPE
 			}
-			s.waitNotFull++
 			s.notFull.Wait()
-			s.waitNotFull--
 			continue
 		}
 		t := s.earliestWriteTime(len(data))
@@ -226,9 +214,7 @@ func (s *stream) Write(data []byte) (int, os.Error) {
 	s.addBlock(t, s.copy(data))
 	s.outAvail -= len(data)
 
-	if s.waitNotEmpty > 0 {
-		s.notEmpty.Broadcast()
-	}
+	s.notEmpty.Broadcast()
 	s.mu.Unlock()
 	// TODO runtime.Gosched() ?
 	return len(data), nil
@@ -251,9 +237,7 @@ func (s *stream) Read(buf []byte) (int, os.Error) {
 				s.mu.Unlock()
 				return 0, os.EOF
 			}
-			s.waitNotEmpty++
 			s.notEmpty.Wait()
-			s.waitNotEmpty--
 			continue
 		}
 		now = s.sleepUntil(s.earliestReadTime())
@@ -271,9 +255,7 @@ func (s *stream) Read(buf []byte) (int, os.Error) {
 		s.removeBlock()
 	}
 	// Wake up any writers blocked on a full queue.
-	if s.waitNotFull > 0 {
-		s.notFull.Broadcast()
-	}
+	s.notFull.Broadcast()
 	s.mu.Unlock()
 	return n, nil
 }
