@@ -54,8 +54,8 @@ type stream struct {
 	latency   int64
 	mtu       int
 
-	notEmpty     sync.Cond
-	notFull      sync.Cond
+	notEmpty sync.Cond
+	notFull  sync.Cond
 }
 
 // Loopback options for use with Pipe.
@@ -172,10 +172,12 @@ func (s *stream) pushLink(now int64) {
 
 func (s *stream) Write(data []byte) (int, os.Error) {
 	// split the packet into MTU-sized portions if necessary.
+	tot := 0
 	for len(data) > s.mtu {
-		_, err := s.Write(data[0:s.mtu])
+		n, err := s.Write(data[0:s.mtu])
+		tot += n
 		if err != nil {
-			return 0, err
+			return tot, err
 		}
 		data = data[s.mtu:]
 	}
