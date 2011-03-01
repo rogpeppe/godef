@@ -1,6 +1,4 @@
 #include <pthread.h>
-#include <stdarg.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include "callback.h"
 #define nil ((void*)0)
@@ -16,10 +14,10 @@ struct Callback {
 
 extern void newCallbackRunner(void);
 
-static pthread_cond_t cbcond;		// Condition to signal a callback to run.
+static pthread_cond_t cbcond;		// Condition to signal that there is a callback to run.
 static pthread_mutex_t cbmutex;	// Guards the following global variables.
 static Callback *callbacks;			// List of outstanding callbacks.
-static int cbwaiters;				// Number of available waiting threads.
+static int idlecount;				// Number of available waiting threads.
 static Callback *freelist;			// Recycled Callback structures.
 
 void
@@ -27,12 +25,16 @@ callbackInit(void){
 	// These variables need to be explicitly initialised to guard
 	// against a bug in cgo under mac os.
 	callbacks = nil;
-	cbwaiters = 1;		// one waiter is started automatically by init.
+	idlecount = 1;		// one waiter is started automatically by init.
 	freelist = nil;
 	pthread_mutex_init(&cbmutex, nil);
 	pthread_cond_init(&cbcond, nil);
 }
 
+// runCallbacks sits forever waiting for new callbacks,
+// and then running them. It makes sure that there
+// is always a ready instance of runCallbacks by
+// starting a new one when the idle count goes to zero.
 void
 runCallbacks(void){
 	Callback *item;
@@ -45,26 +47,34 @@ runCallbacks(void){
 		item = callbacks;
 		callbacks = callbacks->next;
 		item->next = nil;
-		if(--cbwaiters == 0){
-			cbwaiters++;
+		// Decrement the idle count while we're running
+		// the function. If it goes to zero, then we start
+		// a new thread.
+		if(--idlecount == 0){
+			idlecount++;
 			pthread_mutex_unlock(&cbmutex);
 			newCallbackRunner();
 		}else{
 			pthread_mutex_unlock(&cbmutex);
 		}
 
-		pthread_cond_signal(&cbcond);	// wake the next waiter
+		// Wake the next waiter.
+		pthread_cond_signal(&cbcond);
+
+		// Call back the function.
 		item->f(item->arg);
+
 		pthread_mutex_lock(&cbmutex);
+
+		// Wake up the caller.
 		item->done = 1;
 		pthread_cond_signal(&item->cond);
-		cbwaiters++;
+		idlecount++;
 	}
 }
 
-// Call f with the given argument in a Go context,
-// even if the current thread has been created from without
-// Go.
+// Call f with the given argument in a Go context, even
+// if the current thread has not been created by Go.
 void
 callback(void (*f)(void*), void*arg){
 	Callback *item;
@@ -97,19 +107,4 @@ callback(void (*f)(void*), void*arg){
 void*
 callbackFunc(void) {
 	return callback;
-}
-
-static void
-print(char *fmt, ...){
-	char buf[50];
-	int n;
-	va_list ap;
-	va_start(ap, fmt);
-	n = snprintf(buf, sizeof(buf), "%p ", pthread_self());
-	n += vsnprintf(buf+n, sizeof(buf)-n, fmt, ap);
-	va_end(ap);
-	if(n < sizeof(buf)){
-		buf[n++] = '\n';
-	}
-	write(1, buf, n);
 }
