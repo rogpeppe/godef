@@ -23,7 +23,7 @@ static Callback *freelist;			// Recycled Callback structures.
 void
 callbackInit(void){
 	// These variables need to be explicitly initialised to guard
-	// against a bug in cgo under mac os.
+	// against issue 1559.
 	callbacks = nil;
 	idlecount = 1;		// one waiter is started automatically by init.
 	freelist = nil;
