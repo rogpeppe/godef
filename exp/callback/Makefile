@@ -2,7 +2,7 @@ include $(GOROOT)/src/Make.inc
 
 TARG=rog-go.googlecode.com/hg/exp/callback
 CGOFILES=\
-	initialise.go\
+	init.go\
 
 CGO_OFILES=\
 	callback.o\
