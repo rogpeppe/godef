@@ -14,9 +14,9 @@ func TestLooper(t *testing.T) {
 	loop.Close()
 }
 
-func BenchmarkLooper(b *testing.B){
-	i := b.N-1
-	c := make(chan int);
+func BenchmarkLooper(b *testing.B) {
+	i := b.N - 1
+	c := make(chan int)
 	loop := NewLooper(func() bool {
 		i--
 		if i <= 0 {
@@ -25,7 +25,7 @@ func BenchmarkLooper(b *testing.B){
 		}
 		return true
 	})
-	for _= range c {
+	for _ = range c {
 	}
 	loop.Close()
 }
