@@ -23,10 +23,23 @@ func init() {
 }
 
 // Func holds a pointer to the C callback function.
-// It can be used by converting it to a function pointer
-// with type void (*callback)(void (*f)(void*), void *arg);
 // When called, it calls the provided function f in a
-// a Go context.
+// a Go context with the given argument.
+//
+// It can be used by first converting it to a function pointer
+// and then calling from C.
+// Here is an example that sets up the callback function:
+// 	//static void (*callback)(void (*f)(void*), void *arg);
+//	//void setCallback(void *c){
+//	//	callback = c;
+//	//}
+//     import "C"
+//	import "rog-go.googlecode.com/hg/exp/callback"
+//	
+//	func init() {
+//		C.setCallback(callback.Func)
+//	}
+//
 var Func = callbackFunc
 
 var callbackFunc = unsafe.Pointer(C.callbackFunc())
