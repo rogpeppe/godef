@@ -27,4 +27,6 @@ func init() {
 // with type void (*callback)(void (*f)(void*), void *arg);
 // When called, it calls the provided function f in a
 // a Go context.
-var Func = unsafe.Pointer(C.callbackFunc())
+var Func = callbackFunc
+
+var callbackFunc = unsafe.Pointer(C.callbackFunc())
