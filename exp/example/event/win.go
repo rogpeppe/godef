@@ -1,3 +1,8 @@
+// The event package demonstrates use of the callback package
+// to call Go functions from a non-Go-created thread.
+// The C "window" API is intended to represent a conventional
+// C API which invokes callbacks from a thread it has created itself.
+// The event package layers a Go callback on top of that.
 package event
 
 //#include <pthread.h>
