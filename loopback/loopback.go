@@ -7,7 +7,9 @@ import (
 	"time"
 )
 
-// TODO implement CloseWithError
+// TODO implement CloseWithError.
+// BUG close propagates faster than latency time.
+//	send close as a block with nil data.
 
 type block struct {
 	t    int64
