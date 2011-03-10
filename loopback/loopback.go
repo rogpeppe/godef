@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+// TODO implement CloseWithError
+
 type block struct {
 	t    int64
 	data []byte
@@ -54,8 +56,8 @@ type stream struct {
 	latency   int64
 	mtu       int
 
-	notEmpty sync.Cond
-	notFull  sync.Cond
+	rwait sync.Cond
+	wwait  sync.Cond
 }
 
 // Loopback options for use with Pipe.
@@ -74,7 +76,7 @@ type Options struct {
 	MTU int
 
 	// InLimit and OutLimit gives the size of the input and output queues.
-	// If either is zero, a default of 10*MTU is assumed.
+	// If either is zero, a default of MTU is assumed.
 	InLimit  int
 	OutLimit int
 }
@@ -89,10 +91,10 @@ func Pipe(opt Options) (r io.ReadCloser, w io.WriteCloser) {
 		opt.MTU = 32768
 	}
 	if opt.InLimit == 0 {
-		opt.InLimit = 10 * opt.MTU
+		opt.InLimit = opt.MTU
 	}
 	if opt.OutLimit == 0 {
-		opt.OutLimit = 10 * opt.MTU
+		opt.OutLimit = opt.MTU
 	}
 	if opt.InLimit < opt.MTU {
 		opt.InLimit = opt.MTU
@@ -114,8 +116,8 @@ func Pipe(opt Options) (r io.ReadCloser, w io.WriteCloser) {
 		transitHead: sentinel,
 		inHead:      sentinel,
 	}
-	s.notEmpty.L = &s.mu
-	s.notFull.L = &s.mu
+	s.rwait.L = &s.mu
+	s.wwait.L = &s.mu
 	return (*streamReader)(s), (*streamWriter)(s)
 }
 
@@ -136,8 +138,8 @@ func (s *stream) outBlocked(now int64) bool {
 func (s *stream) closeInput() os.Error {
 	s.mu.Lock()
 	s.inClosed = true
-	s.notEmpty.Broadcast()
-	s.notFull.Broadcast()
+	s.rwait.Broadcast()
+	s.wwait.Broadcast()
 	s.mu.Unlock()
 	return nil
 }
@@ -145,8 +147,8 @@ func (s *stream) closeInput() os.Error {
 func (s *stream) closeOutput() os.Error {
 	s.mu.Lock()
 	s.outClosed = true
-	s.notEmpty.Broadcast()
-	s.notFull.Broadcast()
+	s.rwait.Broadcast()
+	s.wwait.Broadcast()
 	s.mu.Unlock()
 	return nil
 }
@@ -193,7 +195,7 @@ func (s *stream) Write(data []byte) (int, os.Error) {
 				s.mu.Unlock()
 				return 0, os.EPIPE
 			}
-			s.notFull.Wait()
+			s.wwait.Wait()
 			continue
 		}
 		t := s.earliestWriteTime(len(data))
@@ -216,7 +218,7 @@ func (s *stream) Write(data []byte) (int, os.Error) {
 	s.addBlock(t, s.copy(data))
 	s.outAvail -= len(data)
 
-	s.notEmpty.Broadcast()
+	s.rwait.Broadcast()
 	s.mu.Unlock()
 	// TODO runtime.Gosched() ?
 	return len(data), nil
@@ -239,7 +241,7 @@ func (s *stream) Read(buf []byte) (int, os.Error) {
 				s.mu.Unlock()
 				return 0, os.EOF
 			}
-			s.notEmpty.Wait()
+			s.rwait.Wait()
 			continue
 		}
 		now = s.sleepUntil(s.earliestReadTime())
@@ -257,7 +259,7 @@ func (s *stream) Read(buf []byte) (int, os.Error) {
 		s.removeBlock()
 	}
 	// Wake up any writers blocked on a full queue.
-	s.notFull.Broadcast()
+	s.wwait.Broadcast()
 	s.mu.Unlock()
 	return n, nil
 }
