@@ -143,7 +143,7 @@ func done(obj *ast.Object, typ types.Type) {
 			for obj := range typ.Iter() {
 				id := ast.NewIdent(obj.Name)
 				id.Obj = obj
-				_, mt := types.ExprInfo(id)
+				_, mt := types.ExprType(id)
 				m = append(m, strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
 			}
 			sort.SortStrings(m)
