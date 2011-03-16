@@ -77,7 +77,7 @@ func main() {
 	}
 	if !*tflag {
 		// try local declarations only
-		if obj, typ := types.ExprInfo(e); obj != nil {
+		if obj, typ := types.ExprType(e); obj != nil {
 			done(obj, typ)
 		}
 	}
@@ -86,7 +86,7 @@ func main() {
 	if pkg == nil {
 		fail("no declaration found for %v", pretty{e})
 	}
-	if obj, typ := types.ExprInfo(e); obj != nil {
+	if obj, typ := types.ExprType(e); obj != nil {
 		done(obj, typ)
 	}
 	fail("no declaration found for %v", pretty{e})
