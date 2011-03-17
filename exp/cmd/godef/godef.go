@@ -129,7 +129,7 @@ func findIdentifier(f *ast.File, searchpos int) ast.Expr {
 }
 
 func done(obj *ast.Object, typ types.Type) {
-	pos := types.FileSet.Position(obj.Pos())
+	pos := types.FileSet.Position(types.DeclPos(obj))
 	if pos.Column > 0 {
 		pos.Column--
 	}

@@ -11,6 +11,9 @@ func declObj(kind ast.ObjKind, name string) {
 func init() {
 	declObj(ast.Typ, "bool")
 
+	declObj(ast.Typ, "complex64"),
+	declObj(ast.Typ, "complex128"),
+
 	declObj(ast.Typ, "int")
 	declObj(ast.Typ, "int8")
 	declObj(ast.Typ, "int16")
