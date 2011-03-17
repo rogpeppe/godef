@@ -30,8 +30,9 @@ if(! ~ $#addr 2){
 	echo bad addr $addr >[1=2]
 	exit fail
 }
+cmd = (godef $opts -r -o $addr(1)-i $file $*)
 if(~ $debug y){
-	echo godef $opts -o $addr(1)-i $file $*
+	echo $cmd
 }
 echo '	'^$file^':#'^$addr(1)
-9p read acme/$winid/body | godef $opts -o  $addr(1) -i $file $*
+9p read acme/$winid/body | $cmd

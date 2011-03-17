@@ -19,7 +19,7 @@ import (
 var readStdin = flag.Bool("i", false, "read file from stdin")
 var offset = flag.Int("o", -1, "file offset of identifier")
 var debug = flag.Bool("debug", false, "debug mode")
-var bflag = flag.Bool("b", false, "offset is specified in bytes instead of code points")
+var rflag = flag.Bool("r", false, "offset is specified in unicode code points instead of bytes")
 var tflag = flag.Bool("t", false, "print type information")
 var aflag = flag.Bool("a", false, "print type and member information")
 
@@ -65,7 +65,7 @@ func main() {
 		e = parseExpr(f.Scope, flag.Arg(1))
 
 	case searchpos >= 0:
-		if !*bflag {
+		if *rflag {
 			searchpos = runeOffset2ByteOffset(src, searchpos)
 		}
 		e = findIdentifier(f, searchpos)
