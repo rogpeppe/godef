@@ -677,11 +677,11 @@ func splitDecl(obj *ast.Object, id *ast.Ident) (expr, typ ast.Node) {
 	case *ast.TypeSwitchStmt:
 		expr := decl.Assign.(*ast.AssignStmt).Rhs[0].(*ast.TypeAssertExpr).X
 		for _, stmt := range decl.Body.List {
-			tcase := stmt.(*ast.TypeCaseClause)
+			tcase := stmt.(*ast.CaseClause)
 			for _, stmt := range tcase.Body {
 				if containsNode(stmt, id) {
-					if len(tcase.Types) == 1 {
-						return expr, tcase.Types[0]
+					if len(tcase.List) == 1 {
+						return expr, tcase.List[0]
 					}
 					return expr, nil
 				}

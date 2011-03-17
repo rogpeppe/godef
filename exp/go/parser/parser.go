@@ -106,17 +106,24 @@ func (p *parser) openScope() {
 
 
 func (p *parser) closeScope() {
-	p.topScope = p.topScope.Outer
+	if p.topScope != nil {
+		p.topScope = p.topScope.Outer
+	}
 }
 
 
 func (p *parser) openLabelScope() {
-	p.labelScope = p.newScope(p.labelScope)
-	p.targetStack = append(p.targetStack, nil)
+	if p.topScope != nil {
+		p.labelScope = ast.NewScope(p.labelScope)
+		p.targetStack = append(p.targetStack, nil)
+	}
 }
 
 
 func (p *parser) closeLabelScope() {
+	if p.topScope == nil {
+		return
+	}
 	// resolve labels
 	n := len(p.targetStack) - 1
 	scope := p.labelScope
@@ -1571,9 +1578,11 @@ func (p *parser) parseBranchStmt(tok token.Token) *ast.BranchStmt {
 	var label *ast.Ident
 	if tok != token.FALLTHROUGH && p.tok == token.IDENT {
 		label = p.parseIdent()
-		// add to list of unresolved targets
-		n := len(p.targetStack) - 1
-		p.targetStack[n] = append(p.targetStack[n], label)
+		if p.topScope != nil {
+			// add to list of unresolved targets
+			n := len(p.targetStack) - 1
+			p.targetStack[n] = append(p.targetStack[n], label)
+		}
 	}
 	p.expectSemi()
 
@@ -1636,29 +1645,6 @@ func (p *parser) parseIfStmt() *ast.IfStmt {
 }
 
 
-func (p *parser) parseCaseClause() *ast.CaseClause {
-	if p.trace {
-		defer un(trace(p, "CaseClause"))
-	}
-
-	pos := p.pos
-	var x []ast.Expr
-	if p.tok == token.CASE {
-		p.next()
-		x = p.parseExprList()
-	} else {
-		p.expect(token.DEFAULT)
-	}
-
-	colon := p.expect(token.COLON)
-	p.openScope()
-	body := p.parseStmtList()
-	p.closeScope()
-
-	return &ast.CaseClause{pos, x, colon, body}
-}
-
-
 func (p *parser) parseTypeList() (list []ast.Expr) {
 	if p.trace {
 		defer un(trace(p, "TypeList"))
@@ -1674,16 +1660,20 @@ func (p *parser) parseTypeList() (list []ast.Expr) {
 }
 
 
-func (p *parser) parseTypeCaseClause() *ast.TypeCaseClause {
+func (p *parser) parseCaseClause(exprSwitch bool) *ast.CaseClause {
 	if p.trace {
 		defer un(trace(p, "TypeCaseClause"))
 	}
 
 	pos := p.pos
-	var types []ast.Expr
+	var list []ast.Expr
 	if p.tok == token.CASE {
 		p.next()
-		types = p.parseTypeList()
+		if exprSwitch {
+			list = p.parseExprList()
+		} else {
+			list = p.parseTypeList()
+		}
 	} else {
 		p.expect(token.DEFAULT)
 	}
@@ -1693,7 +1683,7 @@ func (p *parser) parseTypeCaseClause() *ast.TypeCaseClause {
 	body := p.parseStmtList()
 	p.closeScope()
 
-	return &ast.TypeCaseClause{pos, types, colon, body}
+	return &ast.CaseClause{pos, list, colon, body}
 }
 
 
@@ -1738,33 +1728,28 @@ func (p *parser) parseSwitchStmt() ast.Stmt {
 		p.exprLev = prevLev
 	}
 
-	if isExprSwitch(s2) {
-		lbrace := p.expect(token.LBRACE)
-		var list []ast.Stmt
-		for p.tok == token.CASE || p.tok == token.DEFAULT {
-			list = append(list, p.parseCaseClause())
-		}
-		rbrace := p.expect(token.RBRACE)
-		body := &ast.BlockStmt{lbrace, list, rbrace}
-		p.expectSemi()
-		return &ast.SwitchStmt{pos, s1, p.makeExpr(s2), body}
-	}
-
-	// type switch
-	// TODO(gri): do all the checks!
+	exprSwitch := isExprSwitch(s2)
 	lbrace := p.expect(token.LBRACE)
 	var list []ast.Stmt
 	for p.tok == token.CASE || p.tok == token.DEFAULT {
-		list = append(list, p.parseTypeCaseClause())
+		list = append(list, p.parseCaseClause(exprSwitch))
 	}
 	rbrace := p.expect(token.RBRACE)
 	p.expectSemi()
 	body := &ast.BlockStmt{lbrace, list, rbrace}
-	stmt := &ast.TypeSwitchStmt{pos, s1, s2, body}
-	if s2, ok := s2.(*ast.AssignStmt); ok && s2.Tok == token.DEFINE {
-		// TODO is this guarded sufficiently well?
-		s2.Lhs[0].(*ast.Ident).Obj.Decl = stmt
+
+	if exprSwitch {
+		return &ast.SwitchStmt{pos, s1, p.makeExpr(s2), body}
 	}
+	stmt := &ast.TypeSwitchStmt{pos, s1, s2, body}
+	if p.topScope != nil {
+		if s2, ok := s2.(*ast.AssignStmt); ok && s2.Tok == token.DEFINE {
+			// TODO is this guarded sufficiently well?
+			s2.Lhs[0].(*ast.Ident).Obj.Decl = stmt
+		}
+	}
+	// type switch
+	// TODO(gri): do all the checks!
 	return stmt
 }
 
@@ -1990,9 +1975,9 @@ func (p *parser) parseStmt() (s ast.Stmt) {
 // ----------------------------------------------------------------------------
 // Declarations
 
-type parseSpecFunction func(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl) ast.Spec
+type parseSpecFunction func(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, iota int) ast.Spec
 
-func parseImportSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl) ast.Spec {
+func parseImportSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, _ int) ast.Spec {
 	if p.trace {
 		defer un(trace(p, "ImportSpec"))
 	}
@@ -2030,7 +2015,7 @@ func parseImportSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl) ast.Sp
 	return spec
 }
 
-func parseConstSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl) ast.Spec {
+func parseConstSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, iota int) ast.Spec {
 	if p.trace {
 		defer un(trace(p, "ConstSpec"))
 	}
@@ -2038,7 +2023,7 @@ func parseConstSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl) ast.Spe
 	idents := p.parseIdentList()
 	typ := p.tryType()
 	var values []ast.Expr
-	if typ != nil || p.tok == token.ASSIGN {
+	if typ != nil || p.tok == token.ASSIGN || iota == 0 {
 		p.expect(token.ASSIGN)
 		values = p.parseExprList()
 	}
@@ -2062,7 +2047,7 @@ func parseConstSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl) ast.Spe
 }
 
 
-func parseTypeSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl) ast.Spec {
+func parseTypeSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, _ int) ast.Spec {
 	if p.trace {
 		defer un(trace(p, "TypeSpec"))
 	}
@@ -2082,7 +2067,7 @@ func parseTypeSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl) ast.Spec
 }
 
 
-func parseVarSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl) ast.Spec {
+func parseVarSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, _ int) ast.Spec {
 	if p.trace {
 		defer un(trace(p, "VarSpec"))
 	}
@@ -2119,13 +2104,13 @@ func (p *parser) parseGenDecl(keyword token.Token, f parseSpecFunction) *ast.Gen
 	if p.tok == token.LPAREN {
 		decl.Lparen = p.pos
 		p.next()
-		for p.tok != token.RPAREN && p.tok != token.EOF {
-			decl.Specs = append(decl.Specs, f(p, p.leadComment, decl))
+		for iota := 0; p.tok != token.RPAREN && p.tok != token.EOF; iota++ {
+			decl.Specs = append(decl.Specs, f(p, p.leadComment, decl, iota))
 		}
 		decl.Rparen = p.expect(token.RPAREN)
 		p.expectSemi()
 	} else {
-		decl.Specs = append(decl.Specs, f(p, nil, decl))
+		decl.Specs = append(decl.Specs, f(p, nil, decl, 0))
 	}
 
 	return decl
