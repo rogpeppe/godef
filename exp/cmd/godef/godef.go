@@ -77,16 +77,16 @@ func main() {
 	}
 	if !*tflag {
 		// try local declarations only
-		if obj, typ := types.ExprType(e); obj != nil {
+		if obj, typ := types.ExprType(e, types.DefaultImporter); obj != nil {
 			done(obj, typ)
 		}
 	}
 	// add declarations from other files in the local package and try again
-	pkg, err := parseLocalPackage(filename, f, pkgScope)
-	if pkg == nil {
-		fail("no declaration found for %v", pretty{e})
+	pkg, _ := parseLocalPackage(filename, f, pkgScope)
+	if pkg == nil && !*tflag {
+		fmt.Printf("parseLocalPackage error: %v\n", err)
 	}
-	if obj, typ := types.ExprType(e); obj != nil {
+	if obj, typ := types.ExprType(e, types.DefaultImporter); obj != nil {
 		done(obj, typ)
 	}
 	fail("no declaration found for %v", pretty{e})
@@ -140,10 +140,10 @@ func done(obj *ast.Object, typ types.Type) {
 		}
 		if *aflag {
 			var m []string
-			for obj := range typ.Iter() {
+			for obj := range typ.Iter(types.DefaultImporter) {
 				id := ast.NewIdent(obj.Name)
 				id.Obj = obj
-				_, mt := types.ExprType(id)
+				_, mt := types.ExprType(id, types.DefaultImporter)
 				m = append(m, strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
 			}
 			sort.SortStrings(m)
@@ -166,7 +166,7 @@ func typeStr(obj *ast.Object, typ types.Type) string {
 	case ast.Lbl:
 		return fmt.Sprintf("label %s", obj.Name)
 	case ast.Typ:
-		typ = typ.Underlying(false)
+		typ = typ.Underlying(false, types.DefaultImporter)
 		return fmt.Sprintf("type %s %v", obj.Name, pretty{typ.Node})
 	}
 	return fmt.Sprintf("unknown %s %v\n", obj.Name, typ.Kind)
@@ -213,7 +213,7 @@ var errNoPkgFiles = os.ErrorString("no more package files found")
 // itself, which will already have been parsed.
 //
 func parseLocalPackage(filename string, src *ast.File, pkgScope *ast.Scope) (*ast.Package, os.Error) {
-	pkg := &ast.Package{src.Name.Name, pkgScope, map[string]*ast.File{filename: src}}
+	pkg := &ast.Package{src.Name.Name, pkgScope, nil, map[string]*ast.File{filename: src}}
 	d, f := filepath.Split(filename)
 	if d == "" {
 		d = "./"
