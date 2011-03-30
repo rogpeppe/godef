@@ -64,18 +64,17 @@ func predecl(name string) *ast.Ident {
 	return &ast.Ident{Name: name, Obj: parser.Universe.Lookup(name)}
 }
 
-// When ExprType needs a package, it calls GetPackage to get it.
-var GetPackage = DefaultGetPackage
+type Importer func(path string) *ast.Package
 
-// When DefaultGetPackage is called, it adds any files to FileSet.
+// When DefaultImporter is called, it adds any files to FileSet.
 var FileSet = token.NewFileSet()
 
-// GoPath is used by DefaultGetPackage to find packages.
+// GoPath is used by DefaultImporter to find packages.
 var GoPath = []string{filepath.Join(os.Getenv("GOROOT"), "src", "pkg")}
 
 // DefaultGetPackage looks for the package; if it finds it,
 // it parses and returns it. If no package was found, it returns nil.
-func DefaultGetPackage(path string) *ast.Package {
+func DefaultImporter(path string) *ast.Package {
 	debugp("getting package %s", path)
 	for _, pd := range GoPath {
 		dir := pd + "/" + path
@@ -111,7 +110,7 @@ func DefaultGetPackage(path string) *ast.Package {
 // else can we do?
 //
 func isGoFile(d *os.FileInfo) bool {
-	return strings.HasSuffix(d.Name, ".go") && !strings.HasSuffix(d.Name, "_test.go")
+	return strings.HasSuffix(d.Name, ".go") && !strings.HasSuffix(d.Name, "_test.go") && goodOSArch(d.Name)
 }
 
 // When Debug is true, log messages will be printed.
@@ -122,14 +121,24 @@ func (t Type) String() string {
 	return fmt.Sprintf("Type{%v %q %T %v}", t.Kind, t.Pkg, t.Node, pretty{t.Node})
 }
 
+var Panic = true
+
 // Member looks for a member with the given name inside
 // the type. For packages, the member can be any exported
 // top level declaration inside the package.
-func (t Type) Member(name string) *ast.Object {
+func (t Type) Member(name string, importer Importer) *ast.Object {
 	debugp("member %v '%s' {", t, name)
 	c := make(chan *ast.Object)
 	go func() {
-		doMembers(t, name, func(obj *ast.Object) {
+		if !Panic {
+			defer func() {
+				if err := recover(); err != nil {
+					log.Printf("panic: %v", err)
+					c <- nil
+				}
+			}()
+		}
+		doMembers(t, name, importer, func(obj *ast.Object) {
 			if obj.Name == name {
 				c <- obj
 				runtime.Goexit()
@@ -147,11 +156,11 @@ func (t Type) Member(name string) *ast.Object {
 // Members at a shallower depth will be
 // sent first.
 //
-func (t Type) Iter() <-chan *ast.Object {
+func (t Type) Iter(importer Importer) <-chan *ast.Object {
 	// TODO avoid sending members with the same name twice.
 	c := make(chan *ast.Object)
 	go func() {
-		doMembers(t, "", func(obj *ast.Object) {
+		doMembers(t, "", importer, func(obj *ast.Object) {
 			c <- obj
 		})
 		close(c)
@@ -166,25 +175,20 @@ func (t Type) Iter() <-chan *ast.Object {
 // The returns object can be used with DeclPos to find out
 // the source location of the definition of the object.
 //
-func ExprType(e ast.Expr) (obj *ast.Object, typ Type) {
-	return exprType(e, false, "")
+func ExprType(e ast.Expr, importer Importer) (obj *ast.Object, typ Type) {
+	return exprType(e, false, "", importer)
 }
 
-// exprType 
-func exprType(n ast.Node, expectTuple bool, pkg string) (xobj *ast.Object, typ Type) {
+func exprType(n ast.Node, expectTuple bool, pkg string, importer Importer) (xobj *ast.Object, typ Type) {
 	debugp("exprType tuple:%v pkg:%s %T %v [", expectTuple, pkg, n, pretty{n})
 	defer func() {
-		debugp("] -> %v", typ)
+		debugp("] -> %p, %v", xobj, typ)
 	}()
 	switch n := n.(type) {
 	case nil:
-		return
 	case *ast.Ident:
 		obj := n.Obj
-		if obj == nil {
-			break
-		}
-		if obj.Kind == ast.Bad {
+		if obj == nil || obj.Kind == ast.Bad {
 			break
 		}
 		// A type object represents itself.
@@ -199,80 +203,85 @@ func exprType(n ast.Node, expectTuple bool, pkg string) (xobj *ast.Object, typ T
 		expr, typ := splitDecl(obj, n)
 		switch {
 		case typ != nil:
-			_, t := exprType(typ, false, pkg)
+			_, t := exprType(typ, false, pkg, importer)
 			if t.Kind != ast.Bad {
 				t.Kind = obj.Kind
-				return obj, t
 			}
+			return obj, t
 
 		case expr != nil:
-			_, t := exprType(expr, false, pkg)
-			if t.Kind != ast.Typ {
-				return obj, t
+			_, t := exprType(expr, false, pkg, importer)
+			if t.Kind == ast.Typ {
+				debugp("expected value, got type %v", t)
+				t = badType
 			}
-			debugp("expected value, got type %v", t)
+			return obj, t
 
-		case obj.Kind == ast.Con:
+		default:
 			switch n.Obj {
 			case falseIdent.Obj, trueIdent.Obj:
 				return obj, Type{boolIdent, ast.Con, ""}
 			case iotaIdent.Obj:
 				return obj, Type{intIdent, ast.Con, ""}
+			default:
+				return obj, Type{}
 			}
 		}
+	case *ast.LabeledStmt:
+		return n.Label.Obj, Type{n, ast.Lbl, pkg}
 
 	case *ast.ImportSpec:
 		return nil, Type{n, ast.Pkg, ""}
 
 	case *ast.ParenExpr:
-		return exprType(n.X, expectTuple, pkg)
+		return exprType(n.X, expectTuple, pkg, importer)
 
 	case *ast.CompositeLit:
-		return nil, certify(n.Type, ast.Var, pkg)
+		return nil, certify(n.Type, ast.Var, pkg, importer)
 
 	case *ast.FuncLit:
-		return nil, certify(n.Type, ast.Var, pkg)
+		return nil, certify(n.Type, ast.Var, pkg, importer)
 
 	case *ast.SelectorExpr:
-		_, t := exprType(n.X, false, pkg)
+		_, t := exprType(n.X, false, pkg, importer)
 		// TODO: method expressions. when t.Kind == ast.Typ,
 		// 	mutate a method declaration into a function with
 		//	the receiver as first argument
 		if t.Kind == ast.Bad {
 			break
 		}
-		obj := t.Member(n.Sel.Name)
+		obj := t.Member(n.Sel.Name, importer)
 		if obj == nil {
 			return nil, badType
 		}
 		if t.Kind == ast.Pkg {
-			return exprType(&ast.Ident{Name: obj.Name, Obj: obj}, false, t.Pkg)
+			return exprType(&ast.Ident{Name: obj.Name, Obj: obj}, false, t.Pkg, importer)
 		}
 		// a method turns into a function type;
 		// the number of formal arguments depends
 		// on the class of the receiver expression.
 		if fd, ismethod := obj.Decl.(*ast.FuncDecl); ismethod {
 			if t.Kind == ast.Typ {
-				return obj, certify(methodExpr(fd), ast.Fun, t.Pkg)
+				return obj, certify(methodExpr(fd), ast.Fun, t.Pkg, importer)
 			}
-			return obj, certify(fd.Type, ast.Fun, t.Pkg)
+			return obj, certify(fd.Type, ast.Fun, t.Pkg, importer)
 		} else if obj.Kind == ast.Typ {
-			return obj, certify(&ast.Ident{Name: obj.Name, Obj: obj}, ast.Typ, t.Pkg)
+			return obj, certify(&ast.Ident{Name: obj.Name, Obj: obj}, ast.Typ, t.Pkg, importer)
 		}
 		_, typ := splitDecl(obj, nil)
-		return obj, certify(typ, obj.Kind, t.Pkg)
+		return obj, certify(typ, obj.Kind, t.Pkg, importer)
 
 	case *ast.FuncDecl:
-		return nil, certify(methodExpr(n), ast.Fun, pkg)
+		return nil, certify(methodExpr(n), ast.Fun, pkg, importer)
 
 	case *ast.IndexExpr:
-		_, t0 := exprType(n.X, false, pkg)
-		t := t0.Underlying(true)
+		_, t0 := exprType(n.X, false, pkg, importer)
+		t := t0.Underlying(true, importer)
 		switch n := t.Node.(type) {
 		case *ast.ArrayType:
-			return nil, certify(n.Elt, ast.Var, t.Pkg)
+			return nil, certify(n.Elt, ast.Var, t.Pkg, importer)
 		case *ast.MapType:
-			t := certify(n.Value, ast.Var, t.Pkg)
+			t := certify(n.Value, ast.Var, t.Pkg, importer)
 			if expectTuple {
 				return nil, Type{MultiValue{[]ast.Expr{t.Node.(ast.Expr), predecl("bool")}}, ast.Var, t.Pkg}
 			}
@@ -280,31 +289,31 @@ func exprType(n ast.Node, expectTuple bool, pkg string) (xobj *ast.Object, typ T
 		}
 
 	case *ast.SliceExpr:
-		_, typ := exprType(n.X, false, pkg)
+		_, typ := exprType(n.X, false, pkg, importer)
 		return nil, typ
 
 	case *ast.CallExpr:
 		switch exprName(n.Fun) {
 		case makeIdent.Obj:
 			if len(n.Args) > 0 {
-				return nil, certify(n.Args[0], ast.Var, pkg)
+				return nil, certify(n.Args[0], ast.Var, pkg, importer)
 			}
 		case newIdent.Obj:
 			if len(n.Args) > 0 {
-				t := certify(n.Args[0], ast.Var, pkg)
+				t := certify(n.Args[0], ast.Var, pkg, importer)
 				if t.Kind != ast.Bad {
 					return nil, Type{&ast.StarExpr{n.Pos(), t.Node.(ast.Expr)}, ast.Var, t.Pkg}
 				}
 			}
 		default:
-			if _, fntype := exprType(n.Fun, false, pkg); fntype.Kind != ast.Bad {
+			if _, fntype := exprType(n.Fun, false, pkg, importer); fntype.Kind != ast.Bad {
 				// A type cast transforms a type expression
 				// into a value expression.
 				if fntype.Kind == ast.Typ {
 					fntype.Kind = ast.Var
 					// Preserve constness if underlying expr is constant.
 					if len(n.Args) == 1 {
-						_, argtype := exprType(n.Args[0], false, pkg)
+						_, argtype := exprType(n.Args[0], false, pkg, importer)
 						if argtype.Kind == ast.Con {
 							fntype.Kind = ast.Con
 						}
@@ -312,37 +321,37 @@ func exprType(n ast.Node, expectTuple bool, pkg string) (xobj *ast.Object, typ T
 					return nil, fntype
 				}
 				// A function call operates on the underlying type,
-				t := fntype.Underlying(true)
+				t := fntype.Underlying(true, importer)
 				if fn, ok := t.Node.(*ast.FuncType); ok {
-					return nil, certify(fields2type(fn.Results), ast.Var, t.Pkg)
+					return nil, certify(fields2type(fn.Results), ast.Var, t.Pkg, importer)
 				}
 			}
 		}
 
 	case *ast.StarExpr:
-		if _, t := exprType(n.X, false, pkg); t.Kind != ast.Bad {
+		if _, t := exprType(n.X, false, pkg, importer); t.Kind != ast.Bad {
 			if t.Kind == ast.Typ {
 				return nil, Type{&ast.StarExpr{n.Pos(), t.Node.(ast.Expr)}, ast.Typ, t.Pkg}
 			}
 			if n, ok := t.Node.(*ast.StarExpr); ok {
-				return nil, certify(n.X, ast.Var, t.Pkg)
+				return nil, certify(n.X, ast.Var, t.Pkg, importer)
 			}
 		}
 
 	case *ast.TypeAssertExpr:
-		t := certify(n.Type, ast.Var, pkg)
+		t := certify(n.Type, ast.Var, pkg, importer)
 		if expectTuple && t.Kind != ast.Bad {
 			return nil, Type{MultiValue{[]ast.Expr{t.Node.(ast.Expr), predecl("bool")}}, ast.Var, t.Pkg}
 		}
 		return nil, t
 
 	case *ast.UnaryExpr:
-		if _, t := exprType(n.X, false, pkg); t.Kind != ast.Bad {
-			u := t.Underlying(true)
+		if _, t := exprType(n.X, false, pkg, importer); t.Kind != ast.Bad {
+			u := t.Underlying(true, importer)
 			switch n.Op {
 			case token.ARROW:
 				if ct, ok := u.Node.(*ast.ChanType); ok {
-					return nil, certify(ct.Value, ast.Var, u.Pkg)
+					return nil, certify(ct.Value, ast.Var, u.Pkg, importer)
 				}
 			case token.RANGE:
 				switch n := u.Node.(type) {
@@ -357,10 +366,10 @@ func exprType(n ast.Node, expectTuple bool, pkg string) (xobj *ast.Object, typ T
 					if expectTuple {
 						return nil, Type{MultiValue{[]ast.Expr{n.Key, n.Value}}, ast.Var, u.Pkg}
 					}
-					return nil, certify(n.Key, ast.Var, u.Pkg)
+					return nil, certify(n.Key, ast.Var, u.Pkg, importer)
 
 				case *ast.ChanType:
-					return nil, certify(n.Value, ast.Var, u.Pkg)
+					return nil, certify(n.Value, ast.Var, u.Pkg, importer)
 				}
 
 			case token.AND:
@@ -379,28 +388,28 @@ func exprType(n ast.Node, expectTuple bool, pkg string) (xobj *ast.Object, typ T
 	case *ast.BinaryExpr:
 		switch n.Op {
 		case token.LSS, token.EQL, token.GTR, token.NEQ, token.LEQ, token.GEQ, token.ARROW, token.LOR, token.LAND:
-			_, t := exprType(n.X, false, pkg)
+			_, t := exprType(n.X, false, pkg, importer)
 			if t.Kind == ast.Con {
-				_, t = exprType(n.Y, false, pkg)
+				_, t = exprType(n.Y, false, pkg, importer)
 			}
 			return nil, Type{predecl("bool"), t.Kind, ""}
 
 		case token.ADD, token.SUB, token.MUL, token.QUO, token.REM, token.AND, token.AND_NOT, token.XOR:
-			_, tx := exprType(n.X, false, pkg)
-			_, ty := exprType(n.Y, false, pkg)
+			_, tx := exprType(n.X, false, pkg, importer)
+			_, ty := exprType(n.Y, false, pkg, importer)
 			switch {
 			case tx.Kind == ast.Bad || ty.Kind == ast.Bad:
 
-			case !isNamedType(tx):
+			case !isNamedType(tx, importer):
 				return nil, ty
-			case !isNamedType(ty):
+			case !isNamedType(ty, importer):
 				return nil, tx
 			}
 			// could check type equality
 			return nil, tx
 
 		case token.SHL, token.SHR:
-			_, typ := exprType(n.X, false, pkg)
+			_, typ := exprType(n.X, false, pkg, importer)
 			return nil, typ
 		}
 
@@ -430,15 +439,20 @@ func exprType(n ast.Node, expectTuple bool, pkg string) (xobj *ast.Object, typ T
 		return nil, Type{n, ast.Typ, pkg}
 
 	case *exprIndex:
-		_, t := exprType(n.x, true, pkg)
+		_, t := exprType(n.x, true, pkg, importer)
 		if t.Kind != ast.Bad {
 			if ts, ok := t.Node.(MultiValue); ok {
 				if n.i < len(ts.Types) {
-					return nil, certify(ts.Types[n.i], ast.Var, t.Pkg)
+					return nil, certify(ts.Types[n.i], ast.Var, t.Pkg, importer)
 				}
 			}
 		}
-
+	case *ast.Ellipsis:
+		t := certify(n.Elt, ast.Var, pkg, importer)
+		if t.Kind != ast.Bad {
+			return nil, Type{&ast.ArrayType{n.Pos(), nil, t.Node.(ast.Expr)}, ast.Var, t.Pkg}
+		}
+		
 	default:
 		panic(fmt.Sprintf("unknown type %T", n))
 	}
@@ -462,14 +476,14 @@ func litToString(lit *ast.BasicLit) (v string) {
 // directly for members with that name when possible.
 // It uses the list q as a queue to perform breadth-first
 // traversal, as per the Go specification.
-func doMembers(typ Type, name string, fn func(*ast.Object)) {
+func doMembers(typ Type, name string, importer Importer, fn func(*ast.Object)) {
 	switch t := typ.Node.(type) {
 	case nil:
 		return
 
 	case *ast.ImportSpec:
 		path := litToString(t.Path)
-		if pkg := GetPackage(path); pkg != nil {
+		if pkg := importer(path); pkg != nil {
 			doScope(pkg.Scope, name, fn, path)
 		}
 		return
@@ -478,35 +492,64 @@ func doMembers(typ Type, name string, fn func(*ast.Object)) {
 	q := list.New()
 	q.PushBack(typ)
 	for e := q.Front(); e != nil; e = q.Front() {
-		doTypeMembers(e.Value.(Type), name, fn, q)
+		doTypeMembers(e.Value.(Type), name, importer, fn, q)
 		q.Remove(e)
 	}
 }
 
 // doTypeMembers calls fn for each member of the given type,
 // at one level only. Unnamed members are pushed onto the queue.
-func doTypeMembers(t Type, name string, fn func(*ast.Object), q *list.List) {
+func doTypeMembers(t Type, name string, importer Importer, fn func(*ast.Object), q *list.List) {
 	// strip off single indirection
 	// TODO: eliminate methods disallowed when indirected.
 	if u, ok := t.Node.(*ast.StarExpr); ok {
-		_, t = exprType(u.X, false, t.Pkg)
+		_, t = exprType(u.X, false, t.Pkg, importer)
 	}
 	if id, _ := t.Node.(*ast.Ident); id != nil && id.Obj != nil {
 		if scope, ok := id.Obj.Type.(*ast.Scope); ok {
 			doScope(scope, name, fn, t.Pkg)
 		}
 	}
-	u := t.Underlying(true)
+	u := t.Underlying(true, importer)
 	switch n := u.Node.(type) {
 	case *ast.StructType:
-		doFieldMembers(n.Fields.List, t.Pkg, fn, q)
+		doStructMembers(n.Fields.List, t.Pkg, importer, fn, q)
 
 	case *ast.InterfaceType:
-		doFieldMembers(n.Methods.List, t.Pkg, fn, q)
+		doInterfaceMembers(n.Methods.List, t.Pkg, importer, fn)
 	}
 }
 
-func doFieldMembers(fields []*ast.Field, pkg string, fn func(*ast.Object), q *list.List) {
+func doInterfaceMembers(fields []*ast.Field, pkg string, importer Importer, fn func(*ast.Object)) {
+	// Go Spec: An interface may contain an interface type name T in place of a method
+	// specification. The effect is equivalent to enumerating the methods of T explicitly
+	// in the interface.
+
+	for _, f := range fields {
+		if len(f.Names) > 0 {
+			for _, fname := range f.Names {
+				fn(fname.Obj)
+			}
+		}else{
+			_, typ := exprType(f.Type, false, pkg, importer)
+			typ = typ.Underlying(true, importer)
+			switch n := typ.Node.(type) {
+			case *ast.InterfaceType:
+				doInterfaceMembers(n.Methods.List, typ.Pkg, importer, fn)
+			default:
+				debugp("unknown anon type in interface: %T\n", n)
+			}
+		}
+	}
+}
+				
+func doStructMembers(fields []*ast.Field, pkg string, importer Importer, fn func(*ast.Object), q *list.List) {
+	// Go Spec: For a value x of type T or *T where T is not an interface type, x.f
+	// denotes the field or method at the shallowest depth in T where there
+	// is such an f.
+	// Thus we traverse shallower fields first, pushing anonymous fields
+	// onto the queue for later.
+
 	for _, f := range fields {
 		if len(f.Names) > 0 {
 			for _, fname := range f.Names {
@@ -518,7 +561,7 @@ func doFieldMembers(fields []*ast.Field, pkg string, fn func(*ast.Object), q *li
 			// The unnamed field's Decl points to the
 			// original type declaration.
 			_, typeNode := splitDecl(m.Obj, nil)
-			obj, typ := exprType(typeNode, false, pkg)
+			obj, typ := exprType(typeNode, false, pkg, importer)
 			if typ.Kind == ast.Typ {
 				q.PushBack(typ)
 			} else {
@@ -570,14 +613,14 @@ func doScope(s *ast.Scope, name string, fn func(*ast.Object), pkg string) {
 // the type that it was defined as. If all is true,
 // it repeats this process until the type is not
 // a named type.
-func (typ Type) Underlying(all bool) Type {
+func (typ Type) Underlying(all bool, importer Importer) Type {
 	for {
 		id, _ := typ.Node.(*ast.Ident)
 		if id == nil || id.Obj == nil {
 			break
 		}
 		_, typNode := splitDecl(id.Obj, id)
-		_, t := exprType(typNode, false, typ.Pkg)
+		_, t := exprType(typNode, false, typ.Pkg, importer)
 		if t.Kind != ast.Typ {
 			return badType
 		}
@@ -602,8 +645,8 @@ func noParens(typ interface{}) interface{} {
 }
 
 // make sure that the type is really a type expression
-func certify(typ ast.Node, kind ast.ObjKind, pkg string) Type {
-	_, t := exprType(typ, false, pkg)
+func certify(typ ast.Node, kind ast.ObjKind, pkg string, importer Importer) Type {
+	_, t := exprType(typ, false, pkg, importer)
 	if t.Kind == ast.Typ {
 		return Type{t.Node, kind, t.Pkg}
 	}
@@ -662,7 +705,7 @@ func splitDecl(obj *ast.Object, id *ast.Ident) (expr, typ ast.Node) {
 		return nil, decl.Type
 
 	case *ast.LabeledStmt:
-		panic("labels not done yet")
+		return decl, nil
 
 	case *ast.ImportSpec:
 		return nil, decl
@@ -769,8 +812,8 @@ func containsNode(node, x ast.Node) (found bool) {
 	return
 }
 
-func isNamedType(typ Type) bool {
-	return typ.Underlying(false).Node != typ.Node
+func isNamedType(typ Type, importer Importer) bool {
+	return typ.Underlying(false, importer).Node != typ.Node
 }
 
 func fields2type(fields *ast.FieldList) ast.Node {
@@ -825,3 +868,5 @@ func (p pretty) String() string {
 	printer.Fprint(&b, FileSet, p.n)
 	return b.String()
 }
+
+

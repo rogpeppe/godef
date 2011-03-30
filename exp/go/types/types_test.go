@@ -3,16 +3,150 @@ package types
 import (
 	"bytes"
 	"exec"
+	"go/ast"
+	"go/token"
 	"io"
+	"os"
+	"path/filepath"
+	"rog-go.googlecode.com/hg/exp/go/parser"
 	"strings"
 	"testing"
 	"unicode"
-	"go/token"
-	"go/ast"
-	"rog-go.googlecode.com/hg/exp/go/parser"
 )
 
-// TODO test cross-package symbols
+type dirVisitor func(path string, f *os.FileInfo) bool
+
+func (v dirVisitor) VisitDir(path string, f *os.FileInfo) bool {
+	return v(path, f)
+}
+func (v dirVisitor) VisitFile(path string, f *os.FileInfo) {
+}
+
+type astVisitor func(n ast.Node) bool
+
+func (f astVisitor) Visit(n ast.Node) ast.Visitor {
+	if f(n) {
+		return f
+	}
+	return nil
+}
+
+func parseDir(dir string) *ast.Package {
+	pkgs, _ := parser.ParseDir(FileSet, dir, isGoFile, parser.Declarations)
+	if len(pkgs) == 0 {
+		return nil
+	}
+	for name, pkg := range pkgs {
+		if len(pkgs) == 1 || name != "main" {
+			return pkg
+		}
+	}
+	return nil
+}
+
+func checkIdents(t *testing.T, pkg *ast.File, importer Importer) {
+	var visit astVisitor
+	stopped := false
+	visit = func(n ast.Node) bool {
+		if stopped {
+			return false
+		}
+		var e ast.Expr
+		switch n := n.(type) {
+		case *ast.ImportSpec:
+			// If the file imports a package to ".", abort
+			// because we don't support that (yet).
+			if n.Name != nil && n.Name.Name == "." {
+				stopped = true
+				return false
+			}
+			return true
+
+		case *ast.FuncDecl:
+			// add object for init functions
+			if n.Recv == nil && n.Name.Name == "init" {
+				n.Name.Obj = ast.NewObj(ast.Fun, "init")
+			}
+			return true
+	
+		case *ast.Ident:
+			if n.Name == "_" {
+				return false
+			}
+			e = n
+		case *ast.KeyValueExpr:
+			// don't try to resolve the key part of a key-value
+			// because it might be a map key which doesn't
+			// need resolving, and we can't tell without being
+			// complicated with types.
+			ast.Walk(visit, n.Value)
+			return false
+		case *ast.SelectorExpr:
+			ast.Walk(visit, n.X)
+//			Debug = true
+//			defer func() { Debug = false }()
+			e = n
+		case *ast.File:
+			for _, d := range n.Decls {
+				ast.Walk(visit, d)
+			}
+			return false
+		default:
+			return true
+		}
+		defer func() {
+			if err := recover(); err != nil {
+				t.Fatalf("panic (%v) on %T", err, e)
+				//t.Fatalf("panic (%v) on %v at %v\n", err, e, FileSet.Position(e.Pos()))
+			}
+		}()
+		obj, _ := ExprType(e, importer)
+		if obj == nil {
+			t.Fatalf("no object for %v(%p, %T) at %v\n", e, e, e, FileSet.Position(e.Pos()))
+		}
+		return false
+	}
+	ast.Walk(visit, pkg)
+}
+
+func TestSourceTree(t *testing.T) {
+	Panic = false
+	defer func(){
+		Panic = true
+	}()
+	root := os.Getenv("GOROOT") + "/src"
+	cache := make(map[string] *ast.Package)
+	importer := func(path string) *ast.Package {
+		p := filepath.Join(root, "pkg", path)
+		if pkg := cache[p]; pkg != nil {
+			return pkg
+		}
+		pkg := DefaultImporter(path)
+		cache[p] = pkg
+		return pkg
+	}
+	excluded := map[string]bool{
+		filepath.Join(root, "pkg/exp/wingui"): true,
+	}
+	visitDir := func(path string, f *os.FileInfo) bool {
+		isExternal, _ := filepath.Match(filepath.Join(root, "pkg/*.*"), path)
+		if isExternal || excluded[path] {
+			return false
+		}
+		pkg := cache[path]
+		if pkg == nil {
+			pkg = parseDir(path)
+		}
+		if pkg != nil {
+			for _, f := range pkg.Files {
+				checkIdents(t, f, importer)
+			}
+		}
+		return true
+	}
+		
+	filepath.Walk(root, dirVisitor(visitDir), nil)
+}
 
 // TestCompile checks that the test code actually compiles.
 func TestCompile(t *testing.T) {
@@ -66,7 +200,7 @@ func testExpr(t *testing.T, fset *token.FileSet, e ast.Expr, offsetMap map[int]*
 		panic("unexpected expression type")
 	}
 	from := fset.Position(name.NamePos)
-	obj, typ := ExprType(e)
+	obj, typ := ExprType(e, DefaultImporter)
 	if obj == nil {
 		t.Errorf("no object found for %v at %v", pretty{e}, from)
 		return
@@ -119,6 +253,7 @@ var kinds = map[int]ast.ObjKind{
 	'c': ast.Con,
 	't': ast.Typ,
 	'f': ast.Fun,
+	'l': ast.Lbl,
 }
 
 type sym struct {
@@ -139,7 +274,7 @@ type sym struct {
 // determined from the returned map.
 //
 // The first occurrence of a translated symbol must
-// be followed by a letter representing the symbol
+// be followed by a @ and letter representing the symbol
 // kind (see kinds, above). All subsequent references
 // to that symbol must resolve to the given kind.
 //
@@ -183,7 +318,7 @@ func translateSymbols(code []byte) (result []byte, offsetMap map[int]*sym) {
 		s := syms[name]
 		if s == nil {
 			if typec == 0 {
-				panic("first symbol reference must have type character")
+				panic("missing type character for symbol: " + name)
 			}
 			s = &sym{name, wbuf.Len(), kinds[typec]}
 			if s.kind == ast.Bad {
@@ -213,12 +348,21 @@ type xx_link@t struct {
 	xx_next@v *xx_link
 }
 
-type xx_structembed@t struct {
+type xx_structEmbed@t struct {
 	xx_struct#f@v
 }
 
 type xx_interface@t interface {
 	xx_value#i@f()
+}
+
+type xx_interfaceAndMethod#t@t interface {
+	xx_interfaceAndMethod#i@f()
+}
+
+type xx_interfaceEmbed@t interface {
+	xx_interface
+	xx_interfaceAndMethod#t
 }
 
 type xx_int@t int
@@ -240,7 +384,7 @@ func (xx_5@v xx_struct) xx_value#s@f() {
 	_ = xx_5.xx_2
 }
 
-func (s xx_structembed) xx_value#e@f() {}
+func (s xx_structEmbed) xx_value#e@f() {}
 
 type xx_other@t bool
 func (xx_other) xx_value#x@f() {}
@@ -290,13 +434,17 @@ func main() {
 	var xx_6@v xx_interface = xx_struct{}
 
 	switch xx_i@v := xx_6.(type) {
-	case xx_struct, xx_structembed:
+	case xx_struct, xx_structEmbed:
 		xx_i.xx_value#i()
 	case xx_interface:
 		xx_i.xx_value#i()
 	case xx_other:
 		xx_i.xx_value#x()
 	}
+	var xx_iembed@v xx_interfaceEmbed
+	xx_iembed.xx_value#i()
+	xx_iembed.xx_interfaceAndMethod#i()
+
 
 	xx_map2@v := make(map[xx_int]xx_struct)
 	for xx_a@v, xx_b@v := range xx_map2 {
@@ -314,10 +462,14 @@ func main() {
 	xxv_struct@v := new(xx_struct)
 	_ = xxv_struct.xx_1
 
-	var xx_1e@v xx_structembed
+	var xx_1e@v xx_structEmbed
 	xx_1e.xx_value#e()
 	xx_1e.xx_ptr()
 	_ = xx_1e.xx_struct#f
+
+	var xx_2e@v xx_struct
+	xx_2e.xx_value#s()
+	xx_2e.xx_ptr()
 
 	xxv_int.xx_k()
 	xx_inta.xx_k()
@@ -332,12 +484,28 @@ func main() {
 
 	xxp@v := new(int)
 	(*xx_int)(xxp).xx_k()
+	var xx_label#v@v xx_struct
 
+xx_label#l@l:
 	xx_foo(5).xx_k()
+
+	goto xx_label#l
+	_ = xx_label#v.xx_1
 
 	_ = xxv_link.xx_next.xx_next.xx_3
 
+	type xx_internalType@t struct {
+		xx_7@v xx_struct
+	}
+	xx_intern@v := xx_internalType{}
+	_ = xx_intern.xx_7.xx_1
+
 	use(xx_c, xx_d, xx_e, xx_f, xx_g, xx_h)
+}
+
+
+func xx_varargs@f(xx_args@v ... xx_struct) {
+	_ = xx_args[0].xx_1
 }
 
 func use(...interface{}) {}

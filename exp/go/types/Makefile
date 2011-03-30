@@ -8,5 +8,6 @@ TARG=rog-go.googlecode.com/hg/exp/go/types
 GOFILES=\
 	types.go\
 	objpos.go\
+	goodarch.go\
 
 include $(GOROOT)/src/Make.pkg

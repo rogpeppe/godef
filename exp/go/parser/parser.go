@@ -53,7 +53,7 @@ type parser struct {
 	// Next token
 	pos token.Pos   // token position
 	tok token.Token // one token look-ahead
-	lit []byte      // token literal
+	lit string      // token literal
 
 	// Non-syntactic parser control
 	exprLev int // < 0: in control clause, >= 0: in expression
@@ -218,7 +218,7 @@ func (p *parser) declare1(decl ast.Node, scope *ast.Scope, kind ast.ObjKind, ide
 	}
 	ident.Obj = obj
 	alt := scope.Insert(obj)
-	if alt != obj {
+	if alt != nil {
 		p.redeclared(ident, alt, "")
 	}
 }
@@ -252,10 +252,12 @@ func (p *parser) shortVarDecl(idents []*ast.Ident, stmt *ast.AssignStmt) {
 		obj := ast.NewObj(ast.Var, ident.Name)
 		obj.Decl = stmt
 		alt := p.topScope.Insert(obj)
-		if alt == obj {
+		if alt != nil {
+			obj = alt
+		}else{
 			n++ // new declaration
 		}
-		ident.Obj = alt
+		ident.Obj = obj
 	}
 	if n == 0 && p.mode&DeclarationErrors != 0 {
 		p.error(idents[0].Pos(), "no new variables on left side of :=")
@@ -1744,6 +1746,15 @@ func (p *parser) parseSwitchStmt() ast.Stmt {
 	stmt := &ast.TypeSwitchStmt{pos, s1, s2, body}
 	if p.topScope != nil {
 		if s2, ok := s2.(*ast.AssignStmt); ok && s2.Tok == token.DEFINE {
+			if len(s2.Lhs) != 1 {
+				panic("bad len")
+			}
+			if _, ok := s2.Lhs[0].(*ast.Ident); !ok {
+				panic("not an identifier")
+			}
+			if s2.Lhs[0].(*ast.Ident).Obj == nil {
+				panic(fmt.Sprintf("no object for %v(%p)", s2.Lhs[0], s2.Lhs[0]))
+			}
 			// TODO is this guarded sufficiently well?
 			s2.Lhs[0].(*ast.Ident).Obj.Decl = stmt
 		}
@@ -2053,15 +2064,15 @@ func parseTypeSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, _ int) a
 	}
 
 	ident := p.parseIdent()
-	typ := p.parseType()
-	p.expectSemi() // call before accessing p.linecomment
-
 	// Go spec: The scope of a type identifier declared inside a function begins
 	// at the identifier in the TypeSpec and ends at the end of the innermost
 	// containing block.
 	// (Global identifiers are resolved in a separate phase after parsing.)
-	spec := &ast.TypeSpec{doc, ident, typ, p.lineComment}
+	spec := &ast.TypeSpec{doc, ident, nil, p.lineComment}
 	p.declare(spec, p.topScope, ast.Typ, ident)
+	typ := p.parseType()
+	p.expectSemi() // call before accessing p.linecomment
+	spec.Type = typ
 
 	return spec
 }
@@ -2207,7 +2218,7 @@ func (p *parser) parseFuncDecl() *ast.FuncDecl {
 	//
 	// init() functions cannot be referred to and there may
 	// be more than one - don't put them in the pkgScope
-	if ident.Name != "init" {
+	if recv != nil || ident.Name != "init" {
 		p.declare(decl, p.topScope, ast.Fun, ident)
 	}
 
@@ -2308,5 +2319,5 @@ func (p *parser) parseFile() *ast.File {
 		panic("internal error: imbalanced scopes")
 	}
 
-	return &ast.File{doc, pos, ident, decls, p.fileScope, nil, p.comments}
+	return &ast.File{doc, pos, ident, decls, p.fileScope, nil, nil, p.comments}
 }

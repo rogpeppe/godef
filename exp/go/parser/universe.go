@@ -11,8 +11,8 @@ func declObj(kind ast.ObjKind, name string) {
 func init() {
 	declObj(ast.Typ, "bool")
 
-	declObj(ast.Typ, "complex64"),
-	declObj(ast.Typ, "complex128"),
+	declObj(ast.Typ, "complex64")
+	declObj(ast.Typ, "complex128")
 
 	declObj(ast.Typ, "int")
 	declObj(ast.Typ, "int8")
@@ -42,14 +42,21 @@ func init() {
 
 	// predeclared functions
 	// TODO(gri) provide "type"
+	declObj(ast.Fun, "append")
 	declObj(ast.Fun, "cap")
+	declObj(ast.Fun, "close")
+	declObj(ast.Fun, "complex")
+	declObj(ast.Fun, "copy")
+	declObj(ast.Fun, "imag")
 	declObj(ast.Fun, "len")
-	declObj(ast.Fun, "new")
 	declObj(ast.Fun, "make")
+	declObj(ast.Fun, "new")
 	declObj(ast.Fun, "panic")
 	declObj(ast.Fun, "panicln")
 	declObj(ast.Fun, "print")
 	declObj(ast.Fun, "println")
+	declObj(ast.Fun, "real")
+	declObj(ast.Fun, "recover")
 
 	// byte is an alias for uint8, so cheat
 	// by storing the same object for both name
