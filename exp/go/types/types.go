@@ -1,5 +1,5 @@
-// Types is a package to infer types of expressions in Go source code,
-// and enumerate any method or field members of the type.
+// Types infers source locations and types from Go expressions.
+// and allows enumeration of the type's method or field members.
 package types
 
 import (
