@@ -14,6 +14,13 @@ import (
 	"unicode"
 )
 
+// TODO recursive types avoiding infinite loop.
+// e.g.
+// type A struct {*A}
+// func (a *A) Foo() {
+// }
+// var x *A
+
 type dirVisitor func(path string, f *os.FileInfo) bool
 
 func (v dirVisitor) VisitDir(path string, f *os.FileInfo) bool {
@@ -44,13 +51,14 @@ func parseDir(dir string) *ast.Package {
 	return nil
 }
 
-func checkIdents(t *testing.T, pkg *ast.File, importer Importer) {
+func checkExprs(t *testing.T, pkg *ast.File, importer Importer) {
 	var visit astVisitor
 	stopped := false
 	visit = func(n ast.Node) bool {
 		if stopped {
 			return false
 		}
+		mustResolve := false
 		var e ast.Expr
 		switch n := n.(type) {
 		case *ast.ImportSpec:
@@ -74,6 +82,8 @@ func checkIdents(t *testing.T, pkg *ast.File, importer Importer) {
 				return false
 			}
 			e = n
+			mustResolve = true
+
 		case *ast.KeyValueExpr:
 			// don't try to resolve the key part of a key-value
 			// because it might be a map key which doesn't
@@ -81,16 +91,21 @@ func checkIdents(t *testing.T, pkg *ast.File, importer Importer) {
 			// complicated with types.
 			ast.Walk(visit, n.Value)
 			return false
+
 		case *ast.SelectorExpr:
 			ast.Walk(visit, n.X)
-//			Debug = true
-//			defer func() { Debug = false }()
 			e = n
+			mustResolve = true
+
 		case *ast.File:
 			for _, d := range n.Decls {
 				ast.Walk(visit, d)
 			}
 			return false
+
+		case ast.Expr:
+			e = n
+
 		default:
 			return true
 		}
@@ -101,7 +116,7 @@ func checkIdents(t *testing.T, pkg *ast.File, importer Importer) {
 			}
 		}()
 		obj, _ := ExprType(e, importer)
-		if obj == nil {
+		if obj == nil && mustResolve {
 			t.Fatalf("no object for %v(%p, %T) at %v\n", e, e, e, FileSet.Position(e.Pos()))
 		}
 		return false
@@ -139,7 +154,7 @@ func TestSourceTree(t *testing.T) {
 		}
 		if pkg != nil {
 			for _, f := range pkg.Files {
-				checkIdents(t, f, importer)
+				checkExprs(t, f, importer)
 			}
 		}
 		return true

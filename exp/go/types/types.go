@@ -817,6 +817,9 @@ func isNamedType(typ Type, importer Importer) bool {
 }
 
 func fields2type(fields *ast.FieldList) ast.Node {
+	if fields == nil {
+		return MultiValue{nil}
+	}
 	n := 0
 	for _, f := range fields.List {
 		j := len(f.Names)
