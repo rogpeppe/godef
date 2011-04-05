@@ -16,7 +16,6 @@ import (
 	"go/ast"
 	"go/scanner"
 	"go/token"
-"log"
 )
 
 
@@ -29,7 +28,7 @@ const (
 	ImportsOnly                        // parsing stops after import declarations
 	ParseComments                      // parse comments and add them to AST
 	Trace                              // print a trace of parsed productions
-	DeclarationErrors                  // resolve symbols and report declaration errors.
+	DeclarationErrors                  // report declaration errors.
 )
 
 
@@ -229,7 +228,7 @@ func (p *parser) redeclared(ident *ast.Ident, prev *ast.Object, reason string) {
 	}
 	prevDecl := ""
 	if pos := prev.Pos(); pos.IsValid() {
-		prevDecl = fmt.Sprintf("\n\tprevious declaration at %s", p.file.Position(pos))
+		prevDecl = fmt.Sprintf("\n\tprevious declaration at %s", p.fset.Position(pos))
 	}else{
 		prevDecl = fmt.Sprintf("\n\tprevious declaration as %s", prev.Kind)
 	}

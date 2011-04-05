@@ -5,7 +5,7 @@ package main
 import (
 	"bufio"
 	"flag"
-	"fmt"	
+	"fmt"
 	"log"
 	"http"
 	"os"
@@ -258,7 +258,7 @@ func cmdget(c *g9pc.Client, s []string) {
 		fmt.Fprintf(os.Stderr, "from arguments; usage: get from to\n")
 	}
 
-	tofile, err := os.Open(to, os.O_CREATE|os.O_WRONLY, 0666)
+	tofile, err := os.Create(to)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error opening %s for writing: %s\n", to, err)
 		return
@@ -310,7 +310,7 @@ func cmdput(c *g9pc.Client, s []string) {
 		fmt.Fprintf(os.Stderr, "incorrect arguments; usage: put local [remote]\n")
 	}
 
-	fromfile, err := os.Open(from, os.O_RDONLY, 0)
+	fromfile, err := os.Open(from)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error opening %s for reading: %s\n", from, err)
 		return
@@ -422,7 +422,7 @@ func interactive(c *g9pc.Client) {
 	}()
 loop:
 	for {
-		select{
+		select {
 		case e := <-done:
 			fmt.Fprintf(os.Stderr, "server: %v\n", e)
 			break loop
@@ -477,12 +477,12 @@ func main() {
 		log.Exitln("error mounting %s: %s", naddr, err)
 	}
 
-//	if *debug {
-//		c.Debuglevel = 1
-//	}
-//	if *debugall {
-//		c.Debuglevel = 2
-//	}
+	//	if *debug {
+	//		c.Debuglevel = 1
+	//	}
+	//	if *debugall {
+	//		c.Debuglevel = 2
+	//	}
 
 	walkone(c, "/")
 

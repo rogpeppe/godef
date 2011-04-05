@@ -167,11 +167,7 @@ func parseFileInPkg(fset *token.FileSet, pkgs map[string]*ast.Package, filename 
 	name := src.Name.Name
 	pkg := pkgs[name]
 	if pkg == nil {
-		var scope *ast.Scope
-		if mode&DeclarationErrors != 0 {
-			scope = ast.NewScope(Universe)
-		}
-		pkg = &ast.Package{name, scope, nil, make(map[string]*ast.File)}
+		pkg = &ast.Package{name, ast.NewScope(Universe), nil, make(map[string]*ast.File)}
 		pkgs[name] = pkg
 	}
 	src, err = ParseFile(fset, filename, data, mode, pkg.Scope)
@@ -214,7 +210,7 @@ func ParseFiles(fset *token.FileSet, filenames []string, mode uint) (pkgs map[st
 // error are returned.
 //
 func ParseDir(fset *token.FileSet, path string, filter func(*os.FileInfo) bool, mode uint) (map[string]*ast.Package, os.Error) {
-	fd, err := os.Open(path, os.O_RDONLY, 0)
+	fd, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}

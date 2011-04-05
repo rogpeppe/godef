@@ -6,7 +6,7 @@ import (
 )
 
 func Dial(network, addr string) (*Conn, os.Error) {
-	c, err := net.Dial(network, "", addr)
+	c, err := net.Dial(network, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -18,7 +18,7 @@ func DialService(service string) (*Conn, os.Error) {
 	if ns == "" {
 		return nil, Error("unknown name space")
 	}
-	return Dial("unix", ns + "/" + service)
+	return Dial("unix", ns+"/"+service)
 }
 
 func Mount(network, addr string, aname string) (*Fsys, os.Error) {
@@ -44,4 +44,3 @@ func MountService(service string) (*Fsys, os.Error) {
 	}
 	return fsys, err
 }
-

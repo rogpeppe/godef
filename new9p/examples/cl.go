@@ -5,7 +5,7 @@ package main
 import (
 	"bufio"
 	"flag"
-	"fmt"	
+	"fmt"
 	"log"
 	"os"
 	"io"
@@ -13,7 +13,7 @@ import (
 	"path"
 	"strings"
 	"strconv"
-	g9p "rog-go.googlecode.com/hg/new9p"
+	g9p  "rog-go.googlecode.com/hg/new9p"
 	g9pc "rog-go.googlecode.com/hg/new9p/client"
 	"rog-go.googlecode.com/hg/new9p/seq"
 )
@@ -34,23 +34,23 @@ var cmds map[string]*Cmd
 
 func init() {
 	cmds = map[string]*Cmd{
-		"write": &Cmd{cmdwrite, "write file string [...]\t«write the unmodified string to file, create file if necessary»"},
-		"echo": &Cmd{cmdecho, "echo file string [...]\t«echo string to file (newline appended)»"},
-		"stat": &Cmd{cmdstat, "stat file [...]\t«stat file»"},
-		"ls": &Cmd{cmdls, "ls [-l] file [...]\t«list contents of directory or file»"},
-		"cd": &Cmd{cmdcd, "cd dir\t«change working directory»"},
-		"cat": &Cmd{cmdcat, "cat file [...]\t«print the contents of file»"},
-		"stream": &Cmd{cmdstream, "stream file [...]\t«print the contents of file by streaming»"},
-		"mkdir": &Cmd{cmdmkdir, "mkdir dir [...]\t«create dir on remote server»"},
-		"get": &Cmd{cmdget, "get file [local]\t«get file from remote server»"},
-		"put": &Cmd{cmdput, "put file [remote]\t«put file on the remote server as 'file'»"},
-		"pwd": &Cmd{cmdpwd, "pwd\t«print working directory»"},
-		"rm": &Cmd{cmdrm, "rm file [...]\t«remove file from remote server»"},
-		"help": &Cmd{cmdhelp, "help [cmd]\t«print available commands or help on cmd»"},
+		"write":   &Cmd{cmdwrite, "write file string [...]\t«write the unmodified string to file, create file if necessary»"},
+		"echo":    &Cmd{cmdecho, "echo file string [...]\t«echo string to file (newline appended)»"},
+		"stat":    &Cmd{cmdstat, "stat file [...]\t«stat file»"},
+		"ls":      &Cmd{cmdls, "ls [-l] file [...]\t«list contents of directory or file»"},
+		"cd":      &Cmd{cmdcd, "cd dir\t«change working directory»"},
+		"cat":     &Cmd{cmdcat, "cat file [...]\t«print the contents of file»"},
+		"stream":  &Cmd{cmdstream, "stream file [...]\t«print the contents of file by streaming»"},
+		"mkdir":   &Cmd{cmdmkdir, "mkdir dir [...]\t«create dir on remote server»"},
+		"get":     &Cmd{cmdget, "get file [local]\t«get file from remote server»"},
+		"put":     &Cmd{cmdput, "put file [remote]\t«put file on the remote server as 'file'»"},
+		"pwd":     &Cmd{cmdpwd, "pwd\t«print working directory»"},
+		"rm":      &Cmd{cmdrm, "rm file [...]\t«remove file from remote server»"},
+		"help":    &Cmd{cmdhelp, "help [cmd]\t«print available commands or help on cmd»"},
 		"torture": &Cmd{cmdtorture, "torture [dir]\t«torture»"},
-		"read": &Cmd{cmdread, "read file"},
-		"quit": &Cmd{cmdquit, "quit\t«exit»"},
-		"exit": &Cmd{cmdquit, "exit\t«quit»"},
+		"read":    &Cmd{cmdread, "read file"},
+		"quit":    &Cmd{cmdquit, "quit\t«exit»"},
+		"exit":    &Cmd{cmdquit, "exit\t«quit»"},
 	}
 }
 
@@ -94,7 +94,7 @@ func cmdwrite(ns *g9pc.Ns, s []string) {
 
 // Echo (append newline) s[1:] to s[0]
 func cmdecho(ns *g9pc.Ns, s []string) {
-	writeone(ns, s[0], strings.Join(s[1:], " ") + "\n")
+	writeone(ns, s[0], strings.Join(s[1:], " ")+"\n")
 }
 
 // Stat the remote file f
@@ -236,7 +236,7 @@ func cmdget(ns *g9pc.Ns, s []string) {
 		fmt.Fprintf(os.Stderr, "from arguments; usage: get from to\n")
 	}
 
-	tofile, err := os.Open(to, os.O_CREATE|os.O_WRONLY, 0666)
+	tofile, err := os.Create(to)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error opening %s for writing: %s\n", to, err)
 		return
@@ -271,7 +271,7 @@ func cmdput(ns *g9pc.Ns, s []string) {
 		fmt.Fprintf(os.Stderr, "incorrect arguments; usage: put local [remote]\n")
 	}
 
-	fromfile, err := os.Open(from, os.O_RDONLY, 0)
+	fromfile, err := os.Open(from)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "error opening %s for reading: %s\n", from, err)
 		return
@@ -337,7 +337,7 @@ func cmdhelp(ns *g9pc.Ns, s []string) {
 }
 
 type traverser struct {
-	out chan string
+	out  chan string
 	refc chan int
 	tokc chan bool
 }
@@ -349,9 +349,9 @@ func cmdtorture(ns *g9pc.Ns, s []string) {
 		path = s[0]
 	}
 	t := &traverser{
-		out: make(chan string),
+		out:  make(chan string),
 		refc: make(chan int),
-//		tokc: make(chan bool, 2),
+		//		tokc: make(chan bool, 2),
 	}
 	if len(s) > 1 {
 		max, err := strconv.Atoi(s[1])
@@ -376,7 +376,7 @@ func cmdtorture(ns *g9pc.Ns, s []string) {
 		t.refc <- -1
 	}()
 	for ref > 0 {
-		select{
+		select {
 		case s := <-t.out:
 			fmt.Print("************ ", s)
 		case r := <-t.refc:
@@ -396,15 +396,15 @@ func (t *traverser) traverse(parent *g9pc.NsFile, path, name string, sync chan b
 	go func() {
 		defer close(doneWalk)
 		if name != "" {
-			_, ok := <-results		// SeqWalk
+			_, ok := <-results // SeqWalk
 			if !ok {
 				t.printf("cannot walk to %q: %v", path+"/"+name, sq.Error())
 				return
 			}
 		}
 		doneWalk <- true
-		<-results		// readDir or readFile.
-		_, ok := <-results		// eof.
+		<-results          // readDir or readFile.
+		_, ok := <-results // eof.
 		if ok {
 			panic("expected closed")
 		}
@@ -425,7 +425,7 @@ func (t *traverser) traverse(parent *g9pc.NsFile, path, name string, sync chan b
 		path += "/" + name
 		if fid.IsDir() {
 			t.readDir(sq, fid, path)
-		}else{
+		} else {
 			t.readFile(sq, fid, path)
 		}
 		sq.Do(nil, nil)
@@ -435,20 +435,20 @@ func (t *traverser) traverse(parent *g9pc.NsFile, path, name string, sync chan b
 }
 
 func (t *traverser) readDir(pseq *seq.Sequencer, fid *g9pc.NsFile, path string) {
-t.printf("readDir %s", path)
+	t.printf("readDir %s", path)
 	sq, results := pseq.Subsequencer("readDir")
 	errc := make(chan os.Error, 1)
 	go func() {
-		<-results				// SeqWalk (clone)
-		_, ok := <-results			// OpenReq
+		<-results          // SeqWalk (clone)
+		_, ok := <-results // OpenReq
 		if !ok {
 			errc <- fmt.Errorf("cannot open %q: %#v", path, sq.Error())
 			return
 		}
-		<-results			// NonseqReq
-		<-results			// ReadStream
+		<-results // NonseqReq
+		<-results // ReadStream
 		errc <- nil
-		_, ok = <-results			// eof
+		_, ok = <-results // eof
 		if ok {
 			panic("expected closed")
 		}
@@ -456,7 +456,7 @@ t.printf("readDir %s", path)
 	}()
 
 	rfid := fid.SeqWalk(sq)
-//	defer rfid.Close()		TODO something better!
+	//	defer rfid.Close()		TODO something better!
 
 	sq.Do(rfid.File(), seq.OpenReq{g9p.OREAD})
 	sq.Do(fid.File(), seq.NonseqReq{})
@@ -464,18 +464,18 @@ t.printf("readDir %s", path)
 	defer rd.Close()
 
 	buf, _ := ioutil.ReadAll(rd)
-t.printf("read %d bytes from %q", len(buf), path)
+	t.printf("read %d bytes from %q", len(buf), path)
 	err := <-errc
 	sq.Do(nil, nil)
 	<-errc
-//we get here but fid still can be part of the sequence.
-//maybe that means that subsequence has not terminated
-//correctly. no it doesn't. it means that the overall sequence
-//has not terminated correctly.
-//
-//question: should files opened as part of a subsequence be
-//ratified by the subsequence finishing?
-//only 
+	//we get here but fid still can be part of the sequence.
+	//maybe that means that subsequence has not terminated
+	//correctly. no it doesn't. it means that the overall sequence
+	//has not terminated correctly.
+	//
+	//question: should files opened as part of a subsequence be
+	//ratified by the subsequence finishing?
+	//only 
 
 	if err != nil && len(buf) == 0 {
 		sq.Result(nil, err)
@@ -520,21 +520,22 @@ func (t *traverser) release() {
 	}
 }
 
-type nullWriter struct {}
+type nullWriter struct{}
+
 func (nullWriter) Write(data []byte) (int, os.Error) {
 	return len(data), nil
 }
 
 func (t *traverser) readFile(sq *seq.Sequencer, fid *g9pc.NsFile, path string) {
-t.printf("readFile %s", path)
+	t.printf("readFile %s", path)
 	sq, results := sq.Subsequencer("readFile")
 	go func() {
-		_, ok := <-results				// open
+		_, ok := <-results // open
 		if !ok {
 			t.printf("cannot open %s: %v", path, sq.Error())
 			return
 		}
-		<-results				// stream
+		<-results // stream
 		_, ok = <-results
 		if ok {
 			panic("expected closed")
@@ -555,12 +556,12 @@ func cmdquit(ns *g9pc.Ns, s []string) {
 func cmdread(ns *g9pc.Ns, s []string) {
 	sq, results := seq.NewSequencer()
 	go func() {
-		r := <-results		// walk result
-log.Printf("cmdread: got1 %#v", r)
-		r = <-results		// open result
-log.Printf("cmdread: got2 %#v", r)
-		r = <-results		// readstream result
-log.Printf("cmdread: got3 %#v", r)
+		r := <-results // walk result
+		log.Printf("cmdread: got1 %#v", r)
+		r = <-results // open result
+		log.Printf("cmdread: got2 %#v", r)
+		r = <-results // readstream result
+		log.Printf("cmdread: got3 %#v", r)
 		_, ok := <-results
 		if ok {
 			panic("expected closed")
@@ -581,7 +582,7 @@ log.Printf("cmdread: got3 %#v", r)
 		fmt.Printf("%q\n", buf[0:n])
 	}
 	rd.Close()
-	sq.Do(f.File(), seq.ClunkReq{})		// strictly speaking unnecessary.
+	sq.Do(f.File(), seq.ClunkReq{}) // strictly speaking unnecessary.
 	sq.Do(nil, nil)
 	sq.Wait()
 }
@@ -624,12 +625,12 @@ func interactive(ns *g9pc.Ns) {
 }
 
 func init() {
-	log.SetFlags(log.Lmicroseconds)		//  | log.Lshortfile
-//	log.SetOutput(nullWriter{})
+	log.SetFlags(log.Lmicroseconds) //  | log.Lshortfile
+	//	log.SetOutput(nullWriter{})
 }
 
 func main() {
-log.Printf("hello\n")
+	log.Printf("hello\n")
 	flag.Parse()
 
 	naddr := *addr
@@ -637,12 +638,12 @@ log.Printf("hello\n")
 		naddr = naddr + ":5640"
 	}
 
-log.Printf("mount")
+	log.Printf("mount")
 	c, err := g9pc.Mount("tcp", naddr, "")
 	if err != nil {
 		log.Fatalf("error mounting %s: %v", naddr, err)
 	}
-log.Printf("mounted")
+	log.Printf("mounted")
 
 	ns := new(g9pc.Ns)
 	root, err := c.Walk("")
@@ -676,12 +677,12 @@ func Copy(dst io.Writer, src io.Reader) (written int64, err os.Error) {
 	}
 	buf := make([]byte, 32*1024)
 	for {
-fmt.Printf("reading from %T\n", src)
+		fmt.Printf("reading from %T\n", src)
 		nr, er := src.Read(buf)
-fmt.Printf("read %v, %v\n", nr, er)
+		fmt.Printf("read %v, %v\n", nr, er)
 		if nr > 0 {
 			nw, ew := dst.Write(buf[0:nr])
-fmt.Printf("write(%d bytes) returned %v, %v\n", nr, nw, ew)
+			fmt.Printf("write(%d bytes) returned %v, %v\n", nr, nw, ew)
 			if nw > 0 {
 				written += int64(nw)
 			}

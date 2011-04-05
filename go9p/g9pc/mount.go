@@ -62,7 +62,7 @@ func (clnt *Client) Attach(afid *Fid, user g9p.User, aname string) (*Fid, os.Err
 }
 // Connects to a file server and attaches to it as the specified user.
 func Mount(netw, addr, aname string, user g9p.User, log g9p.Logger) (*Client, os.Error) {
-	conn, err := net.Dial(netw, "", addr)
+	conn, err := net.Dial(netw, addr)
 	if conn == nil {
 		return nil, err
 	}

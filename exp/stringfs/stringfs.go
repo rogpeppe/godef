@@ -32,10 +32,10 @@ import (
 // entry is the basic file system structure - it holds
 // information on one directory entry.
 type entry struct {
-	name string		// name of entry.
-	offset int			// start of information for this entry.
-	dir bool			// is it a directory?
-	len int			// length of file (only if it's a file)
+	name   string // name of entry.
+	offset int    // start of information for this entry.
+	dir    bool   // is it a directory?
+	len    int    // length of file (only if it's a file)
 }
 
 // fsWriter represents file system while it's being encoded.
@@ -47,17 +47,17 @@ type fsWriter struct {
 
 // FS represents the file system and all its data.
 type FS struct {
-	mu sync.Mutex
-	s string
-	root uint32			// offset of root directory.
-	dec *gob.Decoder		// primed decoder, reading from &rd.
-	rd strings.Reader
+	mu   sync.Mutex
+	s    string
+	root uint32       // offset of root directory.
+	dec  *gob.Decoder // primed decoder, reading from &rd.
+	rd   strings.Reader
 }
 
 // A File represents an entry in the file system.
 type File struct {
-	fs *FS
-	rd strings.Reader
+	fs    *FS
+	rd    strings.Reader
 	entry *entry
 }
 
@@ -83,7 +83,7 @@ func Encode(path string) (string, os.Error) {
 
 // write writes path and all its contents to the file system.
 func (fs *fsWriter) write(path string) (*entry, os.Error) {
-	f, err := os.Open(path, os.O_RDONLY, 0)
+	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
@@ -99,7 +99,7 @@ func (fs *fsWriter) write(path string) (*entry, os.Error) {
 		}
 		entries := make([]entry, len(names))
 		for i, name := range names {
-			ent, err := fs.write(path+"/"+name)
+			ent, err := fs.write(path + "/" + name)
 			if err != nil {
 				return nil, err
 			}
@@ -132,7 +132,7 @@ func Decode(s string) (*FS, os.Error) {
 	if err := binary.Read(r, binary.LittleEndian, &fs.root); err != nil {
 		return nil, err
 	}
-	fs.s = s[0:len(s)-4]
+	fs.s = s[0 : len(s)-4]
 	fs.dec = gob.NewDecoder(&fs.rd)
 
 	// read dummy entry at start to prime the gob types.
@@ -169,9 +169,9 @@ func (fs *FS) Open(path string) (*File, os.Error) {
 	}
 	return &File{
 		fs,
-		strings.Reader(fs.s[e.offset: e.offset+e.len]),
+		strings.Reader(fs.s[e.offset : e.offset+e.len]),
 		e,
-	}, nil
+	},nil
 }
 
 func (fs *FS) walk(e *entry, name string) (*entry, os.Error) {

@@ -117,7 +117,7 @@ func (Client) Wait(*Void, *Void) os.Error {
 }
 
 func (Client) Read(file *string, data *[]byte) (err os.Error) {
-	f, err := os.Open(*file, os.O_RDONLY, 0)
+	f, err := os.Open(*file)
 	if err != nil {
 		return err
 	}

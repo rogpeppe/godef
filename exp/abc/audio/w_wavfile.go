@@ -11,28 +11,28 @@ import (
 )
 
 func init() {
-	Register("readwav", wInput, map[string]abc.Socket {
-			"out": abc.Socket{SamplesT, abc.Male},
-			"1": abc.Socket{abc.StringT, abc.Female},
-		}, makeWavReader)
-	Register("writewav", wOutput, map[string]abc.Socket {
-			"1": abc.Socket{SamplesT, abc.Female},
-			"2": abc.Socket{abc.StringT, abc.Female},
-		}, makeWavWriter)
+	Register("readwav", wInput, map[string]abc.Socket{
+		"out": abc.Socket{SamplesT, abc.Male},
+		"1":   abc.Socket{abc.StringT, abc.Female},
+	},makeWavReader)
+	Register("writewav", wOutput, map[string]abc.Socket{
+		"1": abc.Socket{SamplesT, abc.Female},
+		"2": abc.Socket{abc.StringT, abc.Female},
+	},makeWavWriter)
 }
 
 type Rerror string
 
-type fileOffset int64			// help prevent mixing of file offsets and sample counts
+type fileOffset int64 // help prevent mixing of file offsets and sample counts
 
 type WavReader struct {
-	fd *os.File
-	end fileOffset
-	offset fileOffset
+	fd             *os.File
+	end            fileOffset
+	offset         fileOffset
 	bytesPerSample int
 	Format
 	bytesPerFrame int
-	eof bool
+	eof           bool
 
 	buf []byte
 	cvt func([]float32, []byte)
@@ -104,22 +104,22 @@ func (w *WavReader) Init(_ map[string]Widget) {
 // 44        *   Data             The actual sound data.
 
 type chunkHeader struct {
-	ChunkID	uint32
+	ChunkID   uint32
 	ChunkSize uint32
 }
 
 type riffChunk struct {
 	ChunkSize uint32
-	Format uint32
+	Format    uint32
 }
 
 type fmtChunk struct {
 	chunkHeader
-	AudioFormat int16
-	NumChannels int16
-	SampleRate int32
-	ByteRate int32
-	BlockAlign int16
+	AudioFormat   int16
+	NumChannels   int16
+	SampleRate    int32
+	ByteRate      int32
+	BlockAlign    int16
 	BitsPerSample int16
 }
 
@@ -139,7 +139,7 @@ func OpenWavReader(filename string) (r *WavReader, err os.Error) {
 			panic(s)
 		}
 	}()
-	fd, err := os.Open(filename, os.O_RDONLY, 0)
+	fd, err := os.Open(filename)
 	if fd == nil {
 		return nil, err
 	}
@@ -160,7 +160,7 @@ func OpenWavReader(filename string) (r *WavReader, err os.Error) {
 	if c0.Format != str4("WAVE", endian) {
 		panic(Rerror(fmt.Sprintf("bad format %x", c0.Format)))
 	}
-	
+
 	var c1 fmtChunk
 	binread(fd, endian, &c1)
 	if c1.ChunkID != str4("fmt ", endian) {
@@ -205,10 +205,10 @@ func (r *WavReader) ReadSamples(b Buffer, p int64) bool {
 	if r.eof {
 		return false
 	}
-defer un(log("wav read %v [%d]", p, b.Len()))
+	defer un(log("wav read %v [%d]", p, b.Len()))
 	o0 := fileOffset(p * int64(r.bytesPerFrame))
 	if o0 != r.offset {
-		r.fd.Seek(int64(o0 - r.offset), 1)
+		r.fd.Seek(int64(o0-r.offset), 1)
 		r.offset = o0
 	}
 	if r.offset >= r.end {
@@ -216,11 +216,11 @@ defer un(log("wav read %v [%d]", p, b.Len()))
 	}
 	samples := b.(ContiguousFloat32Buffer).AsFloat32Buf()
 	n := len(samples)
-	o1 := o0 + fileOffset(n * r.bytesPerSample)
+	o1 := o0 + fileOffset(n*r.bytesPerSample)
 	leftover := 0
-	if o1 >  r.end {
-		leftover = (int(o1 - r.end) + r.bytesPerSample - 1) / r.bytesPerSample
-		samples = samples[0: n - leftover]
+	if o1 > r.end {
+		leftover = (int(o1-r.end) + r.bytesPerSample - 1) / r.bytesPerSample
+		samples = samples[0 : n-leftover]
 		o1 = r.end
 	}
 	nb := len(samples) * r.bytesPerSample
@@ -230,15 +230,15 @@ defer un(log("wav read %v [%d]", p, b.Len()))
 	nr, err := io.ReadFull(r.fd, r.buf[0:nb])
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "sample read error: %v\n", err)
-		r.offset = r.end		// ensure we don't try again
+		r.offset = r.end // ensure we don't try again
 		leftover += (nb - nr + r.bytesPerFrame - 1) / r.bytesPerFrame
-		samples = samples[0:n - leftover]
+		samples = samples[0 : n-leftover]
 		nb = nr
 	}
 	r.offset += fileOffset(nb)
 	r.cvt(samples, r.buf)
 	if leftover > 0 {
-		samples = samples[len(samples) : n]
+		samples = samples[len(samples):n]
 		samples.Zero(0, len(samples))
 		r.eof = true
 	}
@@ -248,11 +248,11 @@ defer un(log("wav read %v [%d]", p, b.Len()))
 func makeWavWriter(status *abc.Status, args map[string]interface{}) Widget {
 	defer un(log("makeWavWriter"))
 	filename := args["2"].(string)
-	fd, err := os.Open(filename, os.O_WRONLY|os.O_CREATE, 0666)
+	fd, err := os.Create(filename)
 	if fd == nil {
 		panic("cannot open " + filename + ": " + err.String())
 	}
-	
+
 	w := &WavWriter{}
 	w.fd = fd
 	w.Layout = Interleaved
@@ -269,7 +269,7 @@ func (w *WavWriter) ReadSamples(_ Buffer, _ int64) bool {
 }
 
 func WriteWav(filename string, input Widget) os.Error {
-	fd, err := os.Open(filename, os.O_WRONLY|os.O_CREATE, 0666)
+	fd, err := os.Create(filename)
 	if fd == nil {
 		return err
 	}
@@ -285,27 +285,27 @@ func (w *WavWriter) init(input Widget) {
 		bitsPerSample = 16
 	)
 	c0 := riffChunk{
-		ChunkSize: 4 +		// Format
+		ChunkSize: 4 + // Format
 			uint32(sizeof(fmtChunk{})) +
-			uint32(sizeof(dataChunk{})),	// excluding data length
+			uint32(sizeof(dataChunk{})), // excluding data length
 		Format: str4("WAVE", endian),
 	}
 	format := input.GetFormat("out")
 	c1 := fmtChunk{
 		chunkHeader: chunkHeader{
-			ChunkID: str4("fmt ", endian),
+			ChunkID:   str4("fmt ", endian),
 			ChunkSize: uint32(sizeof(fmtChunk{})) - 8,
 		},
-		AudioFormat: 1,
-		NumChannels: int16(format.NumChans),
-		SampleRate: int32(format.Rate),
-		ByteRate: int32(format.Rate* format.NumChans)  * (bitsPerSample / 8),
-		BlockAlign: int16(format.NumChans) * (bitsPerSample / 8),
+		AudioFormat:   1,
+		NumChannels:   int16(format.NumChans),
+		SampleRate:    int32(format.Rate),
+		ByteRate:      int32(format.Rate*format.NumChans) * (bitsPerSample / 8),
+		BlockAlign:    int16(format.NumChans) * (bitsPerSample / 8),
 		BitsPerSample: bitsPerSample,
 	}
 	c2 := dataChunk{
-		ChunkID: str4("data", endian),
-		ChunkSize: 0,			// excluding data length
+		ChunkID:   str4("data", endian),
+		ChunkSize: 0, // excluding data length
 	}
 	w.fd.Write([]byte("RIFF"))
 	binary.Write(w.fd, endian, c0)
@@ -313,7 +313,7 @@ func (w *WavWriter) init(input Widget) {
 	binary.Write(w.fd, endian, c2)
 
 	samples := AllocNFloat32Buf(int(c1.NumChannels), 8192)
-	buf := make([]byte,  samples.Size * int(c1.BlockAlign))
+	buf := make([]byte, samples.Size*int(c1.BlockAlign))
 	p := int64(0)
 	for input.ReadSamples(samples, p) {
 		float32toint16le(buf, samples.Buf)
@@ -321,7 +321,7 @@ func (w *WavWriter) init(input Widget) {
 		p += int64(samples.Size)
 	}
 	size := fileOffset(p) * fileOffset(c1.BlockAlign)
-	if size > 0x7fffffff - fileOffset(c0.ChunkSize) {
+	if size > 0x7fffffff-fileOffset(c0.ChunkSize) {
 		fmt.Fprintf(os.Stderr, "wav file limit exceeded")
 		size = 0x7fffffff - fileOffset(c0.ChunkSize)
 	}
@@ -339,7 +339,7 @@ func (w *WavWriter) init(input Widget) {
 func int16tofloat32le(samples []float32, data []byte) {
 	j := 0
 	for i := range samples {
-		n := int16(data[j]) + int16(data[j+1]) << 8
+		n := int16(data[j]) + int16(data[j+1])<<8
 		samples[i] = float32(n) / 0x7fff
 		j += 2
 	}
@@ -348,13 +348,13 @@ func int16tofloat32le(samples []float32, data []byte) {
 func int16tofloat32be(samples []float32, data []byte) {
 	j := 0
 	for i := range samples {
-		n := int16(data[j+1]) + int16(data[j]) << 8
+		n := int16(data[j+1]) + int16(data[j])<<8
 		samples[i] = float32(n) / 0x7fff
 		j += 2
 	}
 }
 
-func float32toint16le(data[]byte, samples []float32) {
+func float32toint16le(data []byte, samples []float32) {
 	j := 0
 	for _, s := range samples {
 		s *= 0x7fff
@@ -370,7 +370,7 @@ func float32toint16le(data[]byte, samples []float32) {
 		}
 		n := int(s)
 		data[j] = byte(n)
-		data[j + 1] = byte(n >> 8)
+		data[j+1] = byte(n >> 8)
 		j += 2
 	}
 }

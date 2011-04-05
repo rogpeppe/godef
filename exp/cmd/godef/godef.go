@@ -129,9 +129,10 @@ func findIdentifier(f *ast.File, searchpos int) ast.Expr {
 }
 
 type orderedObjects []*ast.Object
+
 func (o orderedObjects) Less(i, j int) bool { return o[i].Name < o[j].Name }
-func (o orderedObjects) Len() int { return len(o) }
-func (o orderedObjects) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
+func (o orderedObjects) Len() int           { return len(o) }
+func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
 func done(obj *ast.Object, typ types.Type) {
 	pos := types.FileSet.Position(types.DeclPos(obj))
@@ -227,7 +228,7 @@ func parseLocalPackage(filename string, src *ast.File, pkgScope *ast.Scope) (*as
 	if d == "" {
 		d = "./"
 	}
-	fd, err := os.Open(d, os.O_RDONLY, 0)
+	fd, err := os.Open(d)
 	if err != nil {
 		return nil, errNoPkgFiles
 	}
@@ -245,7 +246,7 @@ func parseLocalPackage(filename string, src *ast.File, pkgScope *ast.Scope) (*as
 			pkgName(file) != pkg.Name {
 			continue
 		}
-		src, err := parser.ParseFile(types.FileSet, file, nil, parser.Declarations, pkg.Scope)
+		src, err := parser.ParseFile(types.FileSet, file, nil, 0, pkg.Scope)
 		if err == nil {
 			pkg.Files[file] = src
 		}

@@ -46,7 +46,7 @@ type ReadResponse struct {
 }
 
 func openFile(path string) (fd *os.File, info *os.FileInfo, err os.Error) {
-	fd, err = os.Open(path, os.O_RDONLY, 0)
+	fd, err = os.Open(path)
 	if fd == nil {
 		return
 	}

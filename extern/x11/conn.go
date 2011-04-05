@@ -42,10 +42,10 @@ type conn struct {
 	gc, window, root, visual resID
 
 	img        *image.RGBA
-	bufimg     *image.RGBA    // coherent image, as of last FlushImage.
+	bufimg     *image.RGBA     // coherent image, as of last FlushImage.
 	dirty      image.Rectangle // of bufimg that needs to be flushed to server.
 	flushLock  sync.Mutex
-	event	chan interface{}
+	event      chan interface{}
 	mouseState draw.MouseEvent
 
 	buf [256]byte // General purpose scratch buffer.
@@ -96,7 +96,7 @@ func (c *conn) flusher() {
 		setU32LE(c.flushBuf0[12:16], 1<<16|uint32(w))
 		c.flushBuf0[21] = 0x18 // depth = 24 bits.
 
- // Pix holds the image's pixels. The pixel at (x, y) is Pix[y*Stride+x].
+		// Pix holds the image's pixels. The pixel at (x, y) is Pix[y*Stride+x].
 		stride := c.bufimg.Stride
 		for y := dirty.Min.Y; y < dirty.Max.Y; y++ {
 			setU32LE(c.flushBuf0[16:20], uint32(y<<16|dirty.Min.X))
@@ -105,7 +105,7 @@ func (c *conn) flusher() {
 				c.flushLock.Unlock()
 				return
 			}
-			row := c.bufimg.Pix[y * stride:]
+			row := c.bufimg.Pix[y*stride:]
 			for x := dirty.Min.X; x < dirty.Max.X; {
 				nx := dirty.Max.X - x
 				if nx > len(c.flushBuf1)/4 {
@@ -148,7 +148,7 @@ func (c *conn) FlushImageRect(r image.Rectangle) {
 	// channel is full (in which case there already is a flush request pending).
 	// We send with the lock held to avoid the flusher picking up our flush
 	// notification after it has actually dealt with it.
-	select{
+	select {
 	case c.flush <- false:
 	default:
 	}
@@ -217,7 +217,7 @@ func (c *conn) pumper(mouse chan<- draw.MouseEvent) {
 			h := int(c.buf[15])<<8 | int(c.buf[14])
 			c.flushLock.Lock()
 			c.dirty = c.dirty.Union(image.Rect(x, y, x+w, x+h))
-			select{
+			select {
 			case c.flush <- false:
 			default:
 			}
@@ -272,11 +272,11 @@ func connect(display string) (conn net.Conn, displayStr string, err os.Error) {
 	}
 	// Make the connection.
 	if socket != "" {
-		conn, err = net.Dial("unix", "", socket+":"+displayStr)
+		conn, err = net.Dial("unix", socket+":"+displayStr)
 	} else if host != "" {
-		conn, err = net.Dial(protocol, "", host+":"+strconv.Itoa(6000+displayInt))
+		conn, err = net.Dial(protocol, host+":"+strconv.Itoa(6000+displayInt))
 	} else {
-		conn, err = net.Dial("unix", "", "/tmp/.X11-unix/X"+displayStr)
+		conn, err = net.Dial("unix", "/tmp/.X11-unix/X"+displayStr)
 	}
 	if err != nil {
 		return nil, "", os.NewError("cannot connect to " + display + ": " + err.String())

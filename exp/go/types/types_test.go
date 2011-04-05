@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 	"unicode"
+"log"
 )
 
 // TODO recursive types avoiding infinite loop.
@@ -39,10 +40,11 @@ func (f astVisitor) Visit(n ast.Node) ast.Visitor {
 }
 
 func parseDir(dir string) *ast.Package {
-	pkgs, _ := parser.ParseDir(FileSet, dir, isGoFile, parser.Declarations)
+	pkgs, _ := parser.ParseDir(FileSet, dir, isGoFile, 0)
 	if len(pkgs) == 0 {
 		return nil
 	}
+	pkgs["documentation"] = nil, false
 	for name, pkg := range pkgs {
 		if len(pkgs) == 1 || name != "main" {
 			return pkg
@@ -154,6 +156,7 @@ func TestSourceTree(t *testing.T) {
 		}
 		if pkg != nil {
 			for _, f := range pkg.Files {
+log.Printf("doing %s\n", FileSet.Position(f.Package).Filename)
 				checkExprs(t, f, importer)
 			}
 		}
@@ -188,9 +191,7 @@ func TestCompile(t *testing.T) {
 func TestOneFile(t *testing.T) {
 	code, offsetMap := translateSymbols(testCode)
 	//fmt.Printf("------------------- {%s}\n", code)
-	fset := token.NewFileSet()
-	scope := ast.NewScope(parser.Universe)
-	f, err := parser.ParseFile(fset, "xx.go", code, parser.DeclarationErrors, scope)
+	f, err := parser.ParseFile(FileSet, "xx.go", code, 0, ast.NewScope(parser.Universe))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -200,7 +201,7 @@ func TestOneFile(t *testing.T) {
 		close(v)
 	}()
 	for e := range v {
-		testExpr(t, fset, e, offsetMap)
+		testExpr(t, FileSet, e, offsetMap)
 	}
 }
 
