@@ -168,7 +168,7 @@ func parseFileInPkg(fset *token.FileSet, pkgs map[string]*ast.Package, filename 
 	pkg := pkgs[name]
 	if pkg == nil {
 		var scope *ast.Scope
-		if mode&(Declarations|DeclarationErrors) != 0 {
+		if mode&DeclarationErrors != 0 {
 			scope = ast.NewScope(Universe)
 		}
 		pkg = &ast.Package{name, scope, nil, make(map[string]*ast.File)}

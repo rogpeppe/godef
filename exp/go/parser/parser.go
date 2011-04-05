@@ -16,6 +16,7 @@ import (
 	"go/ast"
 	"go/scanner"
 	"go/token"
+"log"
 )
 
 
@@ -28,8 +29,7 @@ const (
 	ImportsOnly                        // parsing stops after import declarations
 	ParseComments                      // parse comments and add them to AST
 	Trace                              // print a trace of parsed productions
-	DeclarationErrors                  // report declaration errors
-	Declarations		// resolve identifiers.
+	DeclarationErrors                  // resolve symbols and report declaration errors.
 )
 
 
@@ -2002,15 +2002,16 @@ func parseImportSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, _ int)
 		ident = p.parseIdent()
 	}
 
+	declIdent := ident
 	var path *ast.BasicLit
 	if p.tok == token.STRING {
 		path = &ast.BasicLit{p.pos, p.tok, p.lit}
-		if ident == nil {
+		if declIdent == nil {
 			name := ImportPathToName(litToString(path))
 			if name == "" {
 				p.error(path.Pos(), "invalid package path")
 			}else{
-				ident = &ast.Ident{NamePos: path.ValuePos, Name: name}
+				declIdent = &ast.Ident{NamePos: path.ValuePos, Name: name}
 			}
 		}
 		p.next()
@@ -2020,8 +2021,8 @@ func parseImportSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, _ int)
 	p.expectSemi() // call before accessing p.linecomment
 
 	spec := &ast.ImportSpec{doc, ident, path, p.lineComment}
-	if ident != nil && ident.Name != "." {
-		p.declare(spec, p.topScope, ast.Pkg, ident)
+	if declIdent != nil && declIdent.Name != "." {
+		p.declare(spec, p.topScope, ast.Pkg, declIdent)
 	}
 	return spec
 }
