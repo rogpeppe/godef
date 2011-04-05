@@ -29,20 +29,20 @@ import (
 
 var server = flag.Bool("s", false, "server mode")
 
-type Server struct { 
-	mu sync.Mutex
+type Server struct {
+	mu     sync.Mutex
 	chanId int
-	exp *netchan.Exporter
+	exp    *netchan.Exporter
 }
 
 type ReadReq struct {
-	Paths	[]string
+	Paths []string
 }
 
 type ReadResponse struct {
-	Info []struct{X *os.FileInfo}
+	Info  []struct{ X *os.FileInfo }
 	Error []string
-	Chan string		// name of channel to receive data on.
+	Chan  string // name of channel to receive data on.
 }
 
 func openFile(path string) (fd *os.File, info *os.FileInfo, err os.Error) {
@@ -68,7 +68,7 @@ func (srv *Server) Read(req *ReadReq, resp *ReadResponse) os.Error {
 
 	n := len(req.Paths)
 	fd := make([]*os.File, n)
-	resp.Info = make([]struct{X *os.FileInfo}, n)
+	resp.Info = make([]struct{ X *os.FileInfo }, n)
 	resp.Error = make([]string, n)
 	for i, path := range req.Paths {
 		var err os.Error

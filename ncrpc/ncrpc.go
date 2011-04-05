@@ -80,17 +80,16 @@ type Client struct {
 	Server *rpc.Client
 }
 
-// Import makes a connection to an ncrpc server and calls NewClient on
-// it.
+// Import makes a connection to an ncrpc server and calls NewClient on it.
 func Import(network, addr string) (*Client, os.Error) {
-	conn, err := net.Dial(network, "", addr)
+	conn, err := net.Dial(network, addr)
 	if err != nil {
 		return nil, err
 	}
 	return NewClient(conn)
 }
 
-// NewClient makes a the netchan connection from the given connection,
+// NewClient makes a netchan connection from the given connection,
 // imports the rpc service from that, and returns both in a new Client
 // instance.  It assumes that the server has been started with Server.
 func NewClient(conn io.ReadWriter) (*Client, os.Error) {

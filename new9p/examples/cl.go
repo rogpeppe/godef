@@ -396,16 +396,16 @@ func (t *traverser) traverse(parent *g9pc.NsFile, path, name string, sync chan b
 	go func() {
 		defer close(doneWalk)
 		if name != "" {
-			<-results		// SeqWalk
-			if closed(results) {
+			_, ok := <-results		// SeqWalk
+			if !ok {
 				t.printf("cannot walk to %q: %v", path+"/"+name, sq.Error())
 				return
 			}
 		}
 		doneWalk <- true
 		<-results		// readDir or readFile.
-		<-results		// eof.
-		if !closed(results) {
+		_, ok := <-results		// eof.
+		if ok {
 			panic("expected closed")
 		}
 	}()
@@ -413,8 +413,8 @@ func (t *traverser) traverse(parent *g9pc.NsFile, path, name string, sync chan b
 	if name != "" {
 		fid = parent.SeqWalk(sq, name)
 	}
-	<-doneWalk
-	if closed(doneWalk) {
+	_, ok := <-doneWalk
+	if !ok {
 		return
 	}
 	sync <- true
@@ -439,17 +439,17 @@ t.printf("readDir %s", path)
 	sq, results := pseq.Subsequencer("readDir")
 	errc := make(chan os.Error, 1)
 	go func() {
-		<-results			// SeqWalk (clone)
-		<-results			// OpenReq
-		if closed(results) {
+		<-results				// SeqWalk (clone)
+		_, ok := <-results			// OpenReq
+		if !ok {
 			errc <- fmt.Errorf("cannot open %q: %#v", path, sq.Error())
 			return
 		}
 		<-results			// NonseqReq
 		<-results			// ReadStream
 		errc <- nil
-		<-results			// eof
-		if !closed(results) {
+		_, ok = <-results			// eof
+		if ok {
 			panic("expected closed")
 		}
 		errc <- nil
@@ -529,14 +529,14 @@ func (t *traverser) readFile(sq *seq.Sequencer, fid *g9pc.NsFile, path string) {
 t.printf("readFile %s", path)
 	sq, results := sq.Subsequencer("readFile")
 	go func() {
-		<-results				// open
-		if closed(results) {
+		_, ok := <-results				// open
+		if !ok {
 			t.printf("cannot open %s: %v", path, sq.Error())
 			return
 		}
 		<-results				// stream
-		<-results
-		if !closed(results) {
+		_, ok = <-results
+		if ok {
 			panic("expected closed")
 		}
 		sq.Result(seq.StringResult("readFile"), sq.Error())
@@ -561,8 +561,8 @@ log.Printf("cmdread: got1 %#v", r)
 log.Printf("cmdread: got2 %#v", r)
 		r = <-results		// readstream result
 log.Printf("cmdread: got3 %#v", r)
-		<-results
-		if !closed(results) {
+		_, ok := <-results
+		if ok {
 			panic("expected closed")
 		}
 	}()

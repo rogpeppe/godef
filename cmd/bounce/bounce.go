@@ -416,7 +416,8 @@ loop:
 				b.p, hitline, version = currp, oldline, lineVersion
 				continue loop
 			}
-			if reply, ok := <-c; ok {
+			select{
+			case reply := <-c:
 				if reply == nil {
 					window.Delete(obj.item)
 					window.Flush()
@@ -425,6 +426,7 @@ loop:
 				reply <- false
 				// we were paused, so pretend no time went by
 				t0 = time.Nanoseconds() - t
+			default:
 			}
 			time.Sleep(sleepTime)
 			t = time.Nanoseconds() - t0

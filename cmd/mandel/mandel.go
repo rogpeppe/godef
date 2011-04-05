@@ -483,16 +483,16 @@ func (t *Tiler) Stop() {
 
 func (t *Tiler) drawer() {
 	for {
-		r := <-t.updatec
-		if closed(t.updatec) {
+		r, ok := <-t.updatec
+		if !ok {
 			break
 		}
 		t.backing.Atomically(func(flush canvas.FlushFunc){
-			for {
+			for ok {
 				flush(r, nil)
-				var ok bool
-				if r, ok = <-t.updatec; !ok || closed(t.updatec) {
-					break
+				select {
+				case r, ok = <-t.updatedc:
+				default:
 				}
 			}
 		})

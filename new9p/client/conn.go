@@ -98,7 +98,7 @@ func (c *Conn) getfid() (*Fid, os.Error) {
 		return nil, plan9.ProtocolError("out of fids")
 	}
 	c.nextfid++
-found:
+//found:
 	fid := new(Fid)
 	fid.fid = fidnum
 	fid.c = c
@@ -132,7 +132,7 @@ func (c *Conn) newtag(ch chan *plan9.Fcall) (uint16, os.Error) {
 		return 0, plan9.ProtocolError("out of tags")
 	}
 	c.nexttag++
-found:
+//found:
 	c.tagmap[tagnum] = ch
 	return tagnum, nil
 }

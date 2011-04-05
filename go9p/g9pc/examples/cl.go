@@ -420,10 +420,13 @@ func interactive(c *g9pc.Client) {
 		fmt.Printf("wait finished (%v)\n", e)
 		done <- e
 	}()
+loop:
 	for {
-		if e, ok := <-done; ok {
+		select{
+		case e := <-done:
 			fmt.Fprintf(os.Stderr, "server: %v\n", e)
-			break
+			break loop
+		default:
 		}
 		fmt.Print(*prompt)
 		line, ok := reader.ReadSlice('\n')

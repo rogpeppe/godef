@@ -88,8 +88,8 @@ func (ns *Ns) Walk(name string) (*NsFile, os.Error) {
 	f, elem := ns.path(name)
 	go func() {
 		<-results
-		<-results
-		if !closed(results) {
+		_, ok := <-results
+		if ok {
 			panic("expected closed")
 		}
 	}()
@@ -121,8 +121,8 @@ func (ns *Ns) ReadStream(name string, nreqs, iounit int) io.ReadCloser {
 		<-replies		// open
 		<-replies		// stream
 		sq.Do(nil, nil)
-		<-replies
-		if !closed(replies) {
+		_, ok := <-replies
+		if ok {
 			panic("expected closed")
 		}
 	}()
@@ -141,8 +141,8 @@ func (ns *Ns) SeqCreate(sq *seq.Sequencer, path string, mode uint8, perm plan9.P
 	go func() {
 		<-results			// walk result
 		<-results			// create result
-		<-results
-		if !closed(results) {
+		_, ok := <-results
+		if ok {
 			panic("expected closed")
 		}
 		subseq.Result(nil, subseq.Error())
@@ -158,8 +158,8 @@ func (ns *Ns) Create(name string, mode uint8, perm plan9.Perm) (*NsFile, os.Erro
 	sq, replies := seq.NewSequencer()
 	go func() {
 		<-replies
-		<-replies
-		if !closed(replies) {
+		_, ok := <-replies
+		if ok {
 			panic("expected closed")
 		}
 	}()
@@ -230,14 +230,14 @@ func (ns *Ns) ops(name string, ops ...seq.Req) (*NsFile, []seq.Result, os.Error)
 	sq, replies := seq.NewSequencer()
 	c := make(chan []seq.Result)
 	go func() {
-		r := <-replies
-		if closed(replies) {
+		r, ok := <-replies
+		if !ok {
 //log.Printf("ops got premature eof, seq %p, error %#v", seq, seq.Error())
 			c <- nil
 			return
 		}
-		<-replies		// read eof
-		if !closed(replies) {
+		_, ok = <-replies
+		if ok {
 			panic("expected closed")
 		}
 		c <- r.(OpResults)
@@ -257,8 +257,8 @@ func (ns *Ns) seqops(sq *seq.Sequencer, name string, ops ...seq.Req) *NsFile {
 	go func() {
 		<-results			// walk result
 		r := <-results
-		<-results
-		if !closed(results) {
+		_, ok := <-results
+		if ok {
 			panic("expected closed")
 		}
 		subseq.Result(r, subseq.Error())
@@ -314,8 +314,8 @@ func (f *NsFile) ReadStream(nreqs, iounit int) io.ReadCloser {
 	sq, replies := seq.NewSequencer()
 	go func() {
 		<-replies	// ReadStream
-		<-replies
-		if !closed(replies) {
+		_, ok := <-replies
+		if ok {
 			panic("expected eof")
 		}
 	}()
@@ -384,12 +384,12 @@ func (f *NsFile) ops(ops ...seq.Req) ([]seq.Result, os.Error) {
 	c := make(chan OpResults)
 	seq, replies := seq.NewSequencer()
 	go func() {
-		r := <-replies
-		if closed(replies) {
+		r, ok := <-replies
+		if !ok {
 			c <- nil
 		}
-		<-replies
-		if !closed(replies) {
+		_, ok = <-replies
+		if ok {
 			panic("expected closed")
 		}
 		c <- r.(OpResults)
@@ -423,8 +423,8 @@ func (f *NsFile) Walk(elem ...string) (*NsFile, os.Error) {
 	seq, results := seq.NewSequencer()
 	go func() {
 		<-results		// Walk
-		<-results
-		if !closed(results) {
+		_, ok := <-results
+		if ok {
 			panic("expected closed")
 		}
 	}()

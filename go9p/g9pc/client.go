@@ -332,28 +332,33 @@ func (client *Client) fidAlloc() *Fid {
 }
 
 func (client *Client) newFcall() *g9p.Fcall {
-	tc, ok := <-client.tchan
-	if !ok {
-		tc = g9p.NewFcall(client.msize)
+	select{
+	case tc := <-client.tchan:
+		return tc
+	default:
 	}
-
-	return tc
+	return g9p.NewFcall(client.msize)
 }
 
 func (client *Client) reqAlloc() *req {
-	r, ok := <-client.reqchan
-	if !ok {
-		r = new(req)
-		r.client = client
-		r.tag = uint16(client.tagpool.getId())
+	select{
+	case r := <-client.reqchan:
+		return r
+	default:
 	}
+	r := new(req)
+	r.client = client
+	r.tag = uint16(client.tagpool.getId())
 
 	return r
 }
 
 func (client *Client) reqFree(r *req) {
 	if r.tc != nil && len(r.tc.Buf) >= int(client.msize) {
-		_ = client.tchan <- r.tc
+		select{
+		case client.tchan <- r.tc:
+		default:
+		}
 	}
 
 	r.tc = nil
@@ -363,7 +368,9 @@ func (client *Client) reqFree(r *req) {
 	r.next = nil
 	r.prev = nil
 
-	if ok := client.reqchan <- r; !ok {
+	select {
+	case client.reqchan <- r:
+	default:
 		client.tagpool.putId(uint32(r.tag))
 	}
 }

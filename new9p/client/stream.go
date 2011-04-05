@@ -106,8 +106,8 @@ func (nsf *NsFile) SeqReadStream(sq *seq.Sequencer, nreqs, iounit int) io.ReadCl
 		f := nsf.File()
 		offset := int64(0)
 		for {
-			b := <-bufs
-			if closed(bufs) {
+			b, ok := <-bufs
+			if !ok {
 				break
 			}
 			q.Put(b)

@@ -331,8 +331,8 @@ log.Printf("replier: closing seq %p", seq)
 		// before its subsequence has properly closed.
 		for !seqs.closed {
 			select{
-			case p := <-r.newRequest:
-				r.request(p)
+			case p, ok := <-r.newRequest:
+				r.request(p, !ok)
 			case <-r.newFs:
 				r.newSeq <- nil
 			}
@@ -340,8 +340,8 @@ log.Printf("replier: closing seq %p", seq)
 		parent := seqs.parent
 		if parent != nil {
 log.Printf("replier: waiting for result from %p", seq)
-			v := <-seq.result
-			if closed(seq.result) {
+			v, ok := <-seq.result
+			if !ok {
 				// error has changed
 				parent.seq.error = seq.error
 log.Printf("replier: %p error result: %v", seq, seq.error)
@@ -359,8 +359,8 @@ func (r *replier) discardRequests() {
 	// discard any subsequent requests.
 	for r.newRequest != nil {
 		select {
-		case p := <-r.newRequest:
-			if closed(r.newRequest) {
+		case p, ok := <-r.newRequest:
+			if !ok {
 				r.newRequest = nil
 			}else if p.subseq != nil {
 				p.subseq.error = Eaborted
@@ -391,11 +391,11 @@ func (r *replier) run() os.Error {
 		case fs := <-newFs:
 //log.Printf("replier: new sequence")
 			r.newSeq <- r.newSequence(fs)
-		case p := <-r.newRequest:
+		case p, ok := <-r.newRequest:
 //log.Printf("replier: got request %#v", p)
-			r.request(p)
-		case p := <-r.currSeq.results:
-			if closed(r.currSeq.results) {
+			r.request(p, !ok)
+		case p, ok := <-r.currSeq.results:
+			if !ok {
 				// result could only have been closed as a result
 				// of an error, as none of the underlying sequences have
 				// been closed yet.
@@ -419,8 +419,8 @@ func (r *replier) run() os.Error {
 	return nil
 }
 
-func (r *replier) request(p seqRequest) {
-	if closed(r.newRequest) {
+func (r *replier) request(p seqRequest, closed bool) {
+	if closed {
 		if r.subseqs.parent != nil {
 			panic("close with outstanding subsequences")
 		}
@@ -492,8 +492,8 @@ func (seq *Sequencer) closeSequences(currSeq seqInfo, allSeqs map[FileSys]seqInf
 		s.seq.Do(nil, nil)
 	}
 	for _, s := range allSeqs {
-		<-s.results
-		if !closed(s.results) {
+		_, ok := <-s.results
+		if ok {
 			panic("expected closed")
 		}
 	}
@@ -519,8 +519,8 @@ func (r *replier) closeSubsequences() {
 		}
 		close(hd.seq.results)
 		// propagate the subsequence's result to its parent.
-		v := <-hd.seq.result
-		if closed(hd.seq.result) {
+		v, ok := <-hd.seq.result
+		if !ok {
 			panic("unexpected error result, cannot happen!")
 		}
 //log.Printf("closeSubsequences: sending propagated value %#v from %p(%q) to %p(%q)", v, hd.seq, hd.seq.name, hd.parent.seq, hd.parent.seq.name)

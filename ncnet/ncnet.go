@@ -109,8 +109,8 @@ func Listen(exp *netchan.Exporter, service string) (net.Listener, os.Error) {
 }
 
 func (r *netchanListener) Accept() (c net.Conn, err os.Error) {
-	c = <-r.conns
-	if closed(r.conns) {
+	c, ok := <-r.conns
+	if !ok {
 		err = r.err
 	}
 	return
@@ -222,8 +222,9 @@ func newChanReader(c <-chan []byte) *chanReader {
 
 func (r *chanReader) Read(buf []byte) (int, os.Error) {
 	for len(r.buf) == 0 {
-		r.buf = <-r.c
-		if closed(r.c) {
+		var ok bool
+		r.buf, ok = <-r.c
+		if !ok {
 			return 0, os.EOF
 		}
 	}
