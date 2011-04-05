@@ -128,6 +128,11 @@ func findIdentifier(f *ast.File, searchpos int) ast.Expr {
 	return ev
 }
 
+type orderedObjects []*ast.Object
+func (o orderedObjects) Less(i, j int) bool { return o[i].Name < o[j].Name }
+func (o orderedObjects) Len() int { return len(o) }
+func (o orderedObjects) Swap(i, j int) { o[i], o[j] = o[j], o[i] }
+
 func done(obj *ast.Object, typ types.Type) {
 	pos := types.FileSet.Position(types.DeclPos(obj))
 	if pos.Column > 0 {
@@ -136,19 +141,23 @@ func done(obj *ast.Object, typ types.Type) {
 	fmt.Printf("%v\n", pos)
 	if typ.Kind != ast.Bad {
 		if *tflag {
-			fmt.Printf("\t%s\n", strings.Replace(typeStr(obj, typ), "\n", "\n\t", -1))
+			fmt.Printf("\t%s (%s)\n", strings.Replace(typeStr(obj, typ), "\n", "\n\t", -1), typ.Pkg)
 		}
 		if *aflag {
-			var m []string
+			var m orderedObjects
 			for obj := range typ.Iter(types.DefaultImporter) {
+				m = append(m, obj)
+			}
+			sort.Sort(m)
+			for _, obj := range m {
+				if typ.Pkg != "" && !ast.IsExported(obj.Name) {
+					continue
+				}
+				fmt.Printf("\t%v\n", types.FileSet.Position(types.DeclPos(obj)))
 				id := ast.NewIdent(obj.Name)
 				id.Obj = obj
 				_, mt := types.ExprType(id, types.DefaultImporter)
-				m = append(m, strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
-			}
-			sort.SortStrings(m)
-			for _, s := range m {
-				fmt.Printf("\t\t%s\n", s)
+				fmt.Printf("\t\t%s\n", strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
 			}
 		}
 	}
