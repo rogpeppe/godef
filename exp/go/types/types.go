@@ -128,6 +128,9 @@ var Panic = true
 // top level declaration inside the package.
 func (t Type) Member(name string, importer Importer) *ast.Object {
 	debugp("member %v '%s' {", t, name)
+	if t.Pkg != "" && !ast.IsExported(name) {
+		return nil
+	}
 	c := make(chan *ast.Object)
 	go func() {
 		if !Panic {
@@ -160,8 +163,11 @@ func (t Type) Iter(importer Importer) <-chan *ast.Object {
 	// TODO avoid sending members with the same name twice.
 	c := make(chan *ast.Object)
 	go func() {
+		internal := t.Pkg == ""
 		doMembers(t, "", importer, func(obj *ast.Object) {
-			c <- obj
+			if internal || ast.IsExported(obj.Name) {
+				c <- obj
+			}
 		})
 		close(c)
 	}()
