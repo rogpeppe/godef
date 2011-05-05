@@ -4,13 +4,13 @@ import (
 	"os"
 )
 
-// Float2String returns a Lens which maps between float64
-// and string. The given formats are used to effect the conversion;
+// Float64ToString returns a Lens which transforms from float64
+// to string. The given formats are used to effect the conversion;
 // fmt.Sprintf(printf, x) is used to convert the float64 value x to string;
-// fmt.Sscanf(s, scanf, &x) is used to convert the string s to the float64
+// fmt.Sscanf(s, scanf, &x) is used to scan the string s into the float64
 // value x.
 //
-func Float2String(printf, scanf string) *Lens {
+func Float64ToString(printf, scanf string) *Lens {
 	// do early sanity check on format.
 	s := fmt.Sprintf(printf, float64(0))
 	var f float64
@@ -30,10 +30,19 @@ func Float2String(printf, scanf string) *Lens {
 	)
 }
 
-func Float2Int() *Lens {
+func round(f float64) int {
+	if f < 0 {
+		return int(f - 0.5)
+	}
+	return int(f + 0.5)
+}
+
+// Float64ToInt returns a Lens that transforms a float64
+// value to the nearest int.
+func Float64ToInt() *Lens {
 	return NewLens(
 		func(f float64) (int, os.Error) {
-			return int(f + 0.5), nil
+			return round(f), nil
 		},
 		func(i int) (float64, os.Error) {
 			return float64(i), nil
@@ -41,10 +50,11 @@ func Float2Int() *Lens {
 	)
 }
 
-// UnitFloat2RangedFloat peforms a linear conversion between a float64
-// value in [0, 1] and a float64 value in [lo, hi].
+// UnitFloat64ToRangedFloat64 returns a Lens that peforms a linear
+// transformation from a float64
+// value in [0, 1] to a float64 value in [lo, hi].
 //
-func UnitFloat2RangedFloat(lo, hi float64) *Lens {
+func UnitFloat64ToRangedFloat64(lo, hi float64) *Lens {
 	return NewLens(
 		func(uf float64) (float64, os.Error) {
 			if uf > 1 {
@@ -67,9 +77,9 @@ func UnitFloat2RangedFloat(lo, hi float64) *Lens {
 	)
 }
 
-// FloatMultiply multiplies by x.
+// Float64Multiply returns a Lens that multiplies by x.
 //
-func FloatMultiply(x float64) *Lens {
+func Float64Multiply(x float64) *Lens {
 	return NewLens(
 		func(f float64) (float64, os.Error) {
 			return f * x, nil
@@ -79,4 +89,3 @@ func FloatMultiply(x float64) *Lens {
 		},
 	)
 }
-

@@ -1,4 +1,5 @@
 package values
+
 import (
 	"fmt"
 	"os"
@@ -10,88 +11,84 @@ import (
 // other direction, and be combined with other Lenses.
 //
 type Lens struct {
-	f, finv func(interface{}) (interface{}, os.Error)
+	f, finv func(reflect.Value) (reflect.Value, os.Error)
 	t, t1   reflect.Type
 }
 
-func caller(f *reflect.FuncValue, argt reflect.Type) func(interface{}) (interface{}, os.Error) {
-	_, isInterface := argt.(*reflect.InterfaceType)
-	return func(arg interface{}) (interface{}, os.Error) {
-		argv := reflect.NewValue(arg)
-		// if T is an interface type, then we need to
-		// explicitly perform the type conversion,
-		// otherwise the static types will not match.
-		if argv.Type() != argt {
-			if isInterface {
-				i := reflect.MakeZero(argt).(*reflect.InterfaceValue)
-				i.Set(argv)
-				argv = i
-			} else {
-				panic("invalid type passed to Lens.Transform")
-			}
+// caller converts from an actual function to a function type
+// that we can construct on the fly.
+func caller(f reflect.Value) func(reflect.Value) (reflect.Value, os.Error) {
+	return func(v reflect.Value) (reflect.Value, os.Error) {
+		r := f.Call([]reflect.Value{v})
+		if r[1].IsNil() {
+			return r[0], nil
 		}
-		t1val := f.Call([]reflect.Value{argv})
-		var err os.Error
-		if e := t1val[1].Interface(); e != nil {
-			err = e.(os.Error)
-		}
-		return t1val[0].Interface(), err
+		return r[0], r[1].Interface().(os.Error)
 	}
 }
 
-// NewLens creates a new Lens instance.
-// Both f and finv must be functions; their
+func okTransform(f reflect.Type) bool {
+	return f.Kind() == reflect.Func &&
+		f.NumIn() == 1 &&
+		f.NumOut() == 2 &&
+		f.Out(1) == osErrorType
+}
+
+// NewLens creates a new Lens instance that transforms values
+// from type T to type T1. Both f and finv must be functions; their
 // actual signatures must be:
 // f func(T) (T1, os.Error)
 // finv func(T1) (T, os.Error)
 // for some types T and T1.
 // finv is expected to be the inverse of f.
-// If either function receives a value that cannot
-// be successfully converted, it should return
-// a non-nil os.Error.
-//
+// If either function receives a value that cannot be successfully converted,
+// it should return an error.
 func NewLens(f, finv interface{}) *Lens {
-	ft := reflect.Typeof(f).(*reflect.FuncType)
-	finvt := reflect.Typeof(finv).(*reflect.FuncType)
+	fv := reflect.ValueOf(f)
+	ft := fv.Type()
+	finvv := reflect.ValueOf(finv)
+	finvt := finvv.Type()
 
-	if ft.NumIn() != 1 || ft.NumOut() != 2 ||
-		finvt.NumIn() != 1 || finvt.NumOut() != 2 ||
+	if !okTransform(ft) ||
+		!okTransform(finvt) ||
 		ft.In(0) != finvt.Out(0) ||
-		ft.Out(1) != osErrorType ||
-		finvt.In(0) != ft.Out(0) ||
-		finvt.Out(1) != osErrorType {
+		finvt.In(0) != ft.Out(0) {
 		panic(fmt.Sprintf("bad transform function types: %T; %T", f, finv))
 	}
-	t := ft.In(0)
-	t1 := ft.Out(0)
 	return &Lens{
-		caller(reflect.NewValue(f).(*reflect.FuncValue), t),
-		caller(reflect.NewValue(finv).(*reflect.FuncValue), t1),
-		t,
-		t1,
+		caller(fv),
+		caller(finvv),
+		ft.In(0),
+		ft.Out(0),
 	}
 }
 
 // Reverse returns a lens that transforms in the opposite
-// direction to m.
+// direction to m, from m.Type1() to m.Type()
 func (m *Lens) Reverse() *Lens {
 	return &Lens{m.finv, m.f, m.t1, m.t}
 }
 
-// Combine layers m1 on top of m.
+// Combine layers m1 on top of m. If m transforms from
+// type T to T1 and m1 transforms from type T1 to T2,
+// then the returned Lens transforms from T to T2.
+// Combine panics if m.Type1() != m1.Type().
 func (m *Lens) Combine(m1 *Lens) *Lens {
+	if m.Type1() != m1.Type() {
+		panic("incompatible Lens combination")
+	}
 	return &Lens{
-		func(x interface{}) (interface{}, os.Error) {
+		func(x reflect.Value) (reflect.Value, os.Error) {
 			x1, err := m.f(x)
 			if err != nil {
-				return nil, err
+				return x1, err
 			}
 			return m1.f(x1)
 		},
-		func(x2 interface{}) (interface{}, os.Error) {
+		func(x2 reflect.Value) (reflect.Value, os.Error) {
 			x1, err := m1.finv(x2)
 			if err != nil {
-				return nil, err
+				return x1, err
 			}
 			return m.finv(x1)
 		},
@@ -101,17 +98,23 @@ func (m *Lens) Combine(m1 *Lens) *Lens {
 }
 
 // Transform transforms a value of type T into a value of type T1.
-// 
+// The value val must be assignable to T.
 func (m *Lens) Transform(val interface{}) (interface{}, os.Error) {
-	return m.f(val)
+	x, err := m.f(reflect.ValueOf(val))
+	if err != nil {
+		return nil, err
+	}
+	return x.Interface(), nil
 }
 
-// Type returns the type of T.
+// Type returns the type of T - the type that
+// the Lens transforms to.
 func (m *Lens) Type() reflect.Type {
 	return m.t
 }
 
-// Type1 returns the type of T1.
+// Type1 returns the type of T1 - the type
+// that the Lens transforms from.
 func (m *Lens) Type1() reflect.Type {
 	return m.t1
 }
@@ -121,53 +124,59 @@ type transformedValue struct {
 	m *Lens
 }
 
-// XXX there must be a simpler way to do this!
-var osErrorType = reflect.Typeof(func(os.Error) {}).(*reflect.FuncType).In(0)
-var interfaceType = reflect.Typeof(func(interface{}){}).(*reflect.FuncType).In(0)
+type transformedGetter struct {
+	g Getter
+	m *Lens
+}
+
+var osErrorType = reflect.TypeOf((*os.Error)(nil)).Elem()
+var interfaceType = reflect.TypeOf((*interface{})(nil)).Elem()
 
 // Transform returns a Value, v1, that mirrors an existing Value, v,
 // by running m.Transform(x) on each value received from
-// v.Iter(), and m.Reverse.Transform(x) on each value
-// passed to v.Set().
-// m.Type must equal v.Type.
+// v.Iter(), and m.Reverse.Transform(x) on each value passed to v.Set().
+// m.Type() must equal v.Type().
 // The Type of the resulting value is m.Type1().
 //
 func Transform(v Value, m *Lens) (v1 Value) {
 	if v.Type() != m.Type() {
 		panic(fmt.Sprintf("Value type (%v) does not match Lens type (%v)", v.Type(), m.Type()))
 	}
-	return transformedValue{v, m}
+	return &transformedValue{v, m}
 }
 
-func (v transformedValue) Close() {
-	v.v.Close()
+func (v *transformedValue) Get() interface{} {
+	x1, _ := v.m.Transform(v.v.Get())
+	return x1
 }
 
-func (v transformedValue) Iter() <-chan interface{} {
-	c := make(chan interface{})
-	go func() {
-		for x := range v.v.Iter() {
-			x1, err := v.m.Transform(x)
-			if err != nil {
-				// could log a message, but discarding the
-				// bad values might also be ok
-			} else {
-				c <- x1
-			}
-		}
-	}()
-	return c
-}
-
-func (v transformedValue) Type() reflect.Type {
+func (v *transformedValue) Type() reflect.Type {
 	return v.m.Type1()
 }
 
-func (v transformedValue) Set(x1 interface{}) os.Error {
+func (v *transformedValue) Set(x1 interface{}) os.Error {
 	x, err := v.m.Reverse().Transform(x1)
 	if err != nil {
 		return err
 	}
-	v.v.Set(x)
-	return nil
+	return v.v.Set(x)
+}
+
+func (v *transformedValue) Getter() Getter {
+	return &transformedGetter{v.v.Getter(), v.m}
+}
+
+func (g *transformedGetter) Get() interface{} {
+	// loop until we get a valid value.
+	for {
+		x1, err := g.m.Transform(g.g.Get())
+		if err == nil {
+			return x1
+		}
+	}
+	panic("not reached")
+}
+
+func (g *transformedGetter) Type() reflect.Type {
+	return g.m.Type1()
 }

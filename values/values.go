@@ -7,186 +7,115 @@
 package values
 
 import (
-	"fmt"
 	"os"
 	"reflect"
+	"sync"
 )
 
-// A Value represents a changing value of
-// a given type.
-// It can be watched for changes by receiving
-// on a channel returned by Iter. If a reader
-// is slow to read, it may miss intermediate
-// values.
-// Set changes the value; it never blocks.
-// Close marks the channel as closed.
-// Type returns the type associated with the Value.
-// Note that watchers should not change
-// a Value in response to a value received from
-// that channel - this could lead to an infinite
-// loop.
+// A Value represents a changing value of a given type.  Note that
+// watchers should not change a Value in response to a value received
+// from that channel - this could lead to an infinite loop.
 //
 type Value interface {
+	// Set changes the value. It never blocks; it will panic if
+	// the value is not assignable to the Value's type.
 	Set(val interface{}) os.Error
-//	CloseIter(c <-chan interface{})
-	Iter() <-chan interface{}
-	Close()
+
+	// Getter returns a Getter that can be used to listen
+	// for changes to the value.
+	Getter() Getter
+
+	// Get gets the most recently set value.
+	Get() interface{}
+
+	// Type returns the type associated with the Value.
 	Type() reflect.Type
 }
 
-// always accept a value from a Value channel - never
-// Set in response to a receive.
-//
+type Getter interface {
+	// Get gets the most recent value. If the value has not been Set
+	// since Get was last called, it blocks until it is.
+	Get() interface{}
+
+	// Type returns the type associated with the Getter (and its Value)
+	Type() reflect.Type
+}
+
 type value struct {
-	readyc chan *reader
-	setc   chan interface{}
-	vtype  reflect.Type
-
-	// closed contains a single value which is true
-	// when Close has been called on the Value
-	// and the receiver goroutine has exited.
-	closed chan bool
-}
-
-type reader struct {
+	mu sync.Mutex
+	wait sync.Cond
+	val reflect.Value
 	version int
-	in      chan interface{}
-	out     chan<- interface{}
-	closed chan bool
 }
 
-func (r *reader) Close() {
-	if r != nil {
-		select {
-		case r.closed <- true:
-		default:
-		}
-	}
+type getter struct {
+	v *value
+	version int
 }
 
 // NewValue creates a new Value with its
 // initial value and type given by initial. If initial
 // is nil, the type is taken to be interface{},
-// and the initial value is
-// not set.
+// and the initial value is not set.
 //
 func NewValue(initial interface{}) Value {
-	v := new(value)
-	v.readyc = make(chan *reader)
-	v.setc = make(chan interface{})
-	version := 0
-	if initial != nil {
-		v.vtype = reflect.Typeof(initial)
-		version++
-	}else{
-		v.vtype = interfaceType
+	val := reflect.ValueOf(initial)
+	v := newValue(val.Type())
+	v.version = 1
+	v.val.Set(val)
+	return v
+}
+
+func NewValueWithType(t reflect.Type) Value {
+	v := newValue(t)
+	v.version = 0
+	return v
+}
+
+func newValue(t reflect.Type) *value {
+	v := &value{
+		val: reflect.New(t).Elem(),
 	}
-	v.closed = make(chan bool, 1)
-	v.closed <- false
-	go v.receiver(initial, version)
+	v.wait.L = &v.mu
 	return v
 }
 
 func (v *value) Type() reflect.Type {
-	return v.vtype
+	return v.val.Type()
 }
 
 func (v *value) Set(val interface{}) os.Error {
-	if v.vtype != interfaceType && reflect.Typeof(val) != v.vtype {
-		panic(fmt.Sprintf("wrong type set on Value[%v]: %T", v.vtype, val))
-	}
-	v.setc <- val
+	v.mu.Lock()
+	v.val.Set(reflect.ValueOf(val))
+	v.version++
+	v.mu.Unlock()
+	v.wait.Broadcast()
 	return nil
 }
 
-func (v *value) Close() {
-	close(v.setc)
+func (v *value) Get() interface{} {
+	v.mu.Lock()
+	val := v.val
+	v.mu.Unlock()
+	return val.Interface()
 }
 
-func (v *value) Iter() <-chan interface{}  {
-	out := make(chan interface{})
-	closed := <-v.closed
-	var r *reader
-	if closed {
-		close(out)
-	} else {
-		r = &reader{0, make(chan interface{}, 1), out, make(chan bool, 1)}
-		go r.sender(v.readyc)
-
-		// send the first ready signal synchronously,
-		// so we know that the value hasn't been
-		// Closed between starting the sender
-		// and it sending on readyc.
-		v.readyc <- r
-	}
-	v.closed <- closed
-	return out
+func (v *value) Getter() Getter {
+	return &getter{v: v}
 }
 
-func (r *reader) sender(readyc chan<- *reader) {
-loop:
-	for {
-		v := <-r.in
-		if closed(r.in) {
-			break loop
-		}
-		select{
-		case r.out <- v:
-
-		case <-r.closed:
-			break loop
-		}
-		readyc <- r
+func (g *getter) Get() interface{} {
+	v := g.v
+	v.mu.Lock()
+	if g.version == v.version {
+		v.wait.Wait()
 	}
-	close(r.out)
+	val := v.val
+	g.version = v.version
+	v.mu.Unlock()
+	return val.Interface()
 }
 
-func (v *value) receiver(val interface{}, version int) {
-	ready := make([]*reader, 0, 2)
-
-	for {
-		select {
-		case nval := <-v.setc:
-			if closed(v.setc) {
-				// to close, we first notify all known readers,
-				// then we set closed to true, acknowledging
-				// new readers at the same time, to guard
-				// against race between Close and Iter.
-				for _, r := range ready {
-					close(r.in)
-				}
-				for {
-					select {
-					case <-v.closed:
-						v.closed <- true
-						return
-					case r := <-v.readyc:
-						close(r.in)
-					}
-				}
-			}
-
-			version++
-			for _, r := range ready {
-				r.in <- nval
-				r.version = version
-			}
-			val = nval
-			ready = ready[0:0]
-
-		case r := <-v.readyc:
-			if r.version == version {
-				if len(ready) == cap(ready) {
-					nr := make([]*reader, len(ready), cap(ready)+2)
-					copy(nr, ready)
-					ready = nr
-				}
-				ready = ready[0 : len(ready)+1]
-				ready[len(ready)-1] = r
-			} else {
-				r.in <- val
-				r.version = version
-			}
-		}
-	}
+func (g *getter) Type() reflect.Type {
+	return g.v.Type()
 }
