@@ -25,17 +25,25 @@ type Value interface {
 	// for changes to the value.
 	Getter() Getter
 
-	// Get gets the most recently set value.
-	Get() interface{}
+	// Get gets the most recently set value. If the Value
+	// has been Closed, ok will be false, but, unlike channels,
+	// the value will still be the last set value.
+	Get() (x interface{}, ok bool)
 
 	// Type returns the type associated with the Value.
 	Type() reflect.Type
+
+	// Close marks the value as closed; all blocked Getters
+	// will return.
+	Close() os.Error
 }
 
 type Getter interface {
-	// Get gets the most recent value. If the value has not been Set
+	// Get gets the most recent value. If the Value has not been Set
 	// since Get was last called, it blocks until it is.
-	Get() interface{}
+	// When the Value has been closed and the final
+	// value has been got, ok will be false and x nil.
+	Get() (x interface{}, ok bool)
 
 	// Type returns the type associated with the Getter (and its Value)
 	Type() reflect.Type
@@ -46,6 +54,7 @@ type value struct {
 	wait sync.Cond
 	val reflect.Value
 	version int
+	closed bool
 }
 
 type getter struct {
@@ -53,30 +62,27 @@ type getter struct {
 	version int
 }
 
-// NewValue creates a new Value with its
-// initial value and type given by initial. If initial
-// is nil, the type is taken to be interface{},
-// and the initial value is not set.
-//
-func NewValue(initial interface{}) Value {
-	val := reflect.ValueOf(initial)
-	v := newValue(val.Type())
-	v.version = 1
-	v.val.Set(val)
-	return v
-}
-
-func NewValueWithType(t reflect.Type) Value {
-	v := newValue(t)
-	v.version = 0
-	return v
-}
-
-func newValue(t reflect.Type) *value {
-	v := &value{
-		val: reflect.New(t).Elem(),
-	}
+// NewValue creates a new Value with the
+// given initial value and type.
+// If t is nil, the type will be taken from initial;
+// if initial is also nil, the type will be interface{}.
+// If initial is nil, any Getter will block until
+// a value is first set.
+func NewValue(initial interface{}, t reflect.Type) Value {
+	v := new(value)
 	v.wait.L = &v.mu
+	if t == nil {
+		if initial != nil {
+			t = reflect.TypeOf(initial)
+		}else{
+			t = interfaceType
+		}
+	}
+	v.val = reflect.New(t).Elem()
+	if initial != nil {
+		v.val.Set(reflect.ValueOf(initial))
+		v.version++
+	}
 	return v
 }
 
@@ -93,29 +99,63 @@ func (v *value) Set(val interface{}) os.Error {
 	return nil
 }
 
-func (v *value) Get() interface{} {
+func (v *value) Close() os.Error {
 	v.mu.Lock()
-	val := v.val
+	v.closed = true
 	v.mu.Unlock()
-	return val.Interface()
+	v.wait.Broadcast()
+	return nil
+}
+
+func (v *value) Get() (interface{}, bool) {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	return v.val.Interface(), !v.closed
 }
 
 func (v *value) Getter() Getter {
 	return &getter{v: v}
 }
 
-func (g *getter) Get() interface{} {
-	v := g.v
-	v.mu.Lock()
-	if g.version == v.version {
-		v.wait.Wait()
+func (g *getter) Get() (interface{}, bool) {
+	g.v.mu.Lock()
+	defer g.v.mu.Unlock()
+
+	// We should never go around this loop more than twice.
+	for {
+		if g.version != g.v.version {
+			g.version = g.v.version
+			return g.v.val.Interface(), true
+		}
+		if g.v.closed {
+			return nil, false
+		}
+		g.v.wait.Wait()
 	}
-	val := v.val
-	g.version = v.version
-	v.mu.Unlock()
-	return val.Interface()
+	panic("not reached")
 }
 
 func (g *getter) Type() reflect.Type {
 	return g.v.Type()
+}
+
+// Sender sends values from v down
+// the channel c, which must be of type T
+// where T is v.Type().
+// When the Value is closed, the channel
+// is closed.
+func Sender(v Value, c interface{}) {
+	cv := reflect.ValueOf(c)
+	if cv.Kind() != reflect.Chan || cv.Type().Elem() != v.Type() {
+		panic("expected chan "+v.Type().String()+"; got "+cv.Type().String())
+	}
+	g := v.Getter()
+	for {
+		x, ok := g.Get()
+		if !ok {
+			break
+		}
+		cv.Send(reflect.ValueOf(x))
+	}
+	cv.Close()
 }

@@ -15,18 +15,6 @@ type Lens struct {
 	t, t1   reflect.Type
 }
 
-// caller converts from an actual function to a function type
-// that we can construct on the fly.
-func caller(f reflect.Value) func(reflect.Value) (reflect.Value, os.Error) {
-	return func(v reflect.Value) (reflect.Value, os.Error) {
-		r := f.Call([]reflect.Value{v})
-		if r[1].IsNil() {
-			return r[0], nil
-		}
-		return r[0], r[1].Interface().(os.Error)
-	}
-}
-
 func okTransform(f reflect.Type) bool {
 	return f.Kind() == reflect.Func &&
 		f.NumIn() == 1 &&
@@ -60,6 +48,28 @@ func NewLens(f, finv interface{}) *Lens {
 		caller(finvv),
 		ft.In(0),
 		ft.Out(0),
+	}
+}
+
+// NewReflectiveLens creates a Lens from two dynamically typed functions.
+// f should convert from type t to type t1;
+// finv should convert in the other direction.
+// The uses for this function are fairly esoteric, and can
+// be used to break the type safety of the Value if used without care.
+func NewReflectiveLens(f, finv func(reflect.Value) (reflect.Value, os.Error), t, t1 reflect.Type) *Lens {
+	return &Lens{f, finv, t, t1}
+}
+	
+
+// caller converts from an actual function to a function type
+// that we can construct on the fly.
+func caller(f reflect.Value) func(reflect.Value) (reflect.Value, os.Error) {
+	return func(v reflect.Value) (reflect.Value, os.Error) {
+		r := f.Call([]reflect.Value{v})
+		if r[1].IsNil() {
+			return r[0], nil
+		}
+		return r[0], r[1].Interface().(os.Error)
 	}
 }
 
@@ -145,13 +155,19 @@ func Transform(v Value, m *Lens) (v1 Value) {
 	return &transformedValue{v, m}
 }
 
-func (v *transformedValue) Get() interface{} {
-	x1, _ := v.m.Transform(v.v.Get())
-	return x1
+func (v *transformedValue) Get() (interface{}, bool) {
+	x, ok := v.v.Get()
+	// TODO what should we do with an error here?
+	x1, _ := v.m.Transform(x)
+	return x1, ok
 }
 
 func (v *transformedValue) Type() reflect.Type {
 	return v.m.Type1()
+}
+
+func (v *transformedValue) Close() os.Error {
+	return v.v.Close()
 }
 
 func (v *transformedValue) Set(x1 interface{}) os.Error {
@@ -166,12 +182,13 @@ func (v *transformedValue) Getter() Getter {
 	return &transformedGetter{v.v.Getter(), v.m}
 }
 
-func (g *transformedGetter) Get() interface{} {
+func (g *transformedGetter) Get() (interface{}, bool) {
 	// loop until we get a valid value.
 	for {
-		x1, err := g.m.Transform(g.g.Get())
-		if err == nil {
-			return x1
+		x, ok := g.g.Get()
+		x1, err := g.m.Transform(x)
+		if err == nil || !ok {
+			return x1, ok
 		}
 	}
 	panic("not reached")
