@@ -74,7 +74,7 @@ func (fs *Fsys) Create(name string, mode uint8, perm plan9.Perm) (*Fid, os.Error
 	path := Elements(name)
 	n := len(path)
 	if n == 0 {
-		return nil, os.ErrorString("create: empty path")
+		return nil, os.NewError("create: empty path")
 	}
 	path, elem := path[0:n-1], path[n-1]
 

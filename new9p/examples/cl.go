@@ -557,11 +557,8 @@ func cmdread(ns *g9pc.Ns, s []string) {
 	sq, results := seq.NewSequencer()
 	go func() {
 		r := <-results // walk result
-		log.Printf("cmdread: got1 %#v", r)
 		r = <-results // open result
-		log.Printf("cmdread: got2 %#v", r)
 		r = <-results // readstream result
-		log.Printf("cmdread: got3 %#v", r)
 		_, ok := <-results
 		if ok {
 			panic("expected closed")
@@ -615,7 +612,7 @@ func interactive(ns *g9pc.Ns) {
 		}
 		str := strings.TrimSpace(string(line))
 		// TODO: handle larger input lines by doubling buffer
-		in := strings.Split(str, "\n", -1)
+		in := strings.Split(str, "\n")
 		for i := range in {
 			if len(in[i]) > 0 {
 				cmd(ns, in[i])
@@ -630,7 +627,6 @@ func init() {
 }
 
 func main() {
-	log.Printf("hello\n")
 	flag.Parse()
 
 	naddr := *addr
@@ -638,12 +634,10 @@ func main() {
 		naddr = naddr + ":5640"
 	}
 
-	log.Printf("mount")
 	c, err := g9pc.Mount("tcp", naddr, "")
 	if err != nil {
 		log.Fatalf("error mounting %s: %v", naddr, err)
 	}
-	log.Printf("mounted")
 
 	ns := new(g9pc.Ns)
 	root, err := c.Walk("")
@@ -677,12 +671,9 @@ func Copy(dst io.Writer, src io.Reader) (written int64, err os.Error) {
 	}
 	buf := make([]byte, 32*1024)
 	for {
-		fmt.Printf("reading from %T\n", src)
 		nr, er := src.Read(buf)
-		fmt.Printf("read %v, %v\n", nr, er)
 		if nr > 0 {
 			nw, ew := dst.Write(buf[0:nr])
-			fmt.Printf("write(%d bytes) returned %v, %v\n", nr, nw, ew)
 			if nw > 0 {
 				written += int64(nw)
 			}

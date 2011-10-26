@@ -40,7 +40,7 @@ type Sequence interface {
 	FileSys() FileSys
 	Error() os.Error
 }
-const Eaborted = os.ErrorString("sequence aborted")
+var Eaborted = os.NewError("sequence aborted")
 
 type basicReq int
 const (

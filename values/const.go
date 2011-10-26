@@ -32,11 +32,11 @@ func (v *constValue) Type() reflect.Type {
 }
 
 func (v *constValue) Set(_ interface{}) os.Error {
-	return os.ErrorString("cannot set constant value")
+	return os.NewError("cannot set constant value")
 }
 
 func (v *constValue) Close() os.Error {
-	return os.ErrorString("const is already closed")
+	return os.NewError("const is already closed")
 }
 
 type constGetter struct {

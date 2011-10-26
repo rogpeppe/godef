@@ -22,7 +22,7 @@ func goodOSArch(filename string) (ok bool) {
 	if dot := strings.Index(filename, "."); dot != -1 {
 		filename = filename[:dot]
 	}
-	l := strings.Split(filename, "_", -1)
+	l := strings.Split(filename, "_")
 	n := len(l)
 	if n == 0 {
 		return true

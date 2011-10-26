@@ -157,7 +157,7 @@ func (fid *Fid) ReadFull(b []byte) (n int, err os.Error) {
 func (fid *Fid) Remove() os.Error {
 	checkSeq(nil, fid)
 	if fid.c == nil || fid.flags&fAlloc == 0 {
-		return os.ErrorString("no such fid")
+		return os.NewError("no such fid")
 	}
 	tx := &plan9.Fcall{Type: plan9.Tremove, Fid: fid.fid}
 	_, err := fid.c.rpc(tx)

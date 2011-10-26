@@ -74,7 +74,7 @@ func (sq *seq9p) Do(f seq.File, op seq.BasicReq) os.Error {
 		fid = (*Fid)(f.(*file9p))
 		if fid.c != sq.c {
 //log.Printf("fs mismatch")
-			return os.ErrorString("mismatched filesys")
+			return os.NewError("mismatched filesys")
 		}
 		checkSeq(sq, fid)
 //log.Printf("seq9p.Do(seq %p, %p(%d, seq %p), %#v) (callers %s)", sq, fid, fid.fid, fid.seq, op, callers(1))
@@ -85,7 +85,7 @@ func (sq *seq9p) Do(f seq.File, op seq.BasicReq) os.Error {
 	defer sq.c.w.Unlock()
 	if sq.doEOF || (sq.replyEOF && op != nil) {
 //log.Printf("sequence has already terminated")
-		return os.ErrorString("sequence has terminated")
+		return os.NewError("sequence has terminated")
 	}
 	var tx *plan9.Fcall
 	switch op := op.(type) {
@@ -187,7 +187,7 @@ func (sq *seq9p) fcall2result(rxc <-chan *plan9.Fcall, resultc chan<- seq.Result
 				sq.putfid(newfid)
 				newfid.Close()
 			}
-			sq.err = os.ErrorString(rx.Ename)
+			sq.err = os.NewError(rx.Ename)
 			return
 		case plan9.Rwalk:
 			switch len(rx.Wqid) {

@@ -219,7 +219,7 @@ func (ns *Ns) Chdir(name string) os.Error {
 	}
 	if !f.IsDir() {
 		f.Close()
-		return os.ErrorString("cannot chdir to non-directory")
+		return os.NewError("cannot chdir to non-directory")
 	}
 	ns.Dot.Close()
 	ns.Dot = f
@@ -304,7 +304,7 @@ func (f *NsFile) Remove() os.Error {
 
 func (f *NsFile) Open(mode uint8) os.Error {
 	if f.IsOpen() {
-		return os.ErrorString("file is already opened")
+		return os.NewError("file is already opened")
 	}
 	_, err := f.f.Do(seq.OpenReq{mode})
 	return err
@@ -334,7 +334,7 @@ func (f *NsFile) Read(buf []byte) (int, os.Error) {
 
 func (f *NsFile) ReadAt(buf []byte, at int64) (int, os.Error) {
 	if !f.IsOpen() {
-		return 0, os.ErrorString("file is not opened")
+		return 0, os.NewError("file is not opened")
 	}
 	r, err := f.f.Do(seq.ReadReq{buf, f.offset})
 	if err != nil {
@@ -358,7 +358,7 @@ func (f *NsFile) Write(data []byte) (n int, err os.Error) {
 
 func (f *NsFile) WriteAt(data []byte, offset int64) (int, os.Error) {
 	if !f.IsOpen() {
-		return 0, os.ErrorString("file is not opened")
+		return 0, os.NewError("file is not opened")
 	}
 	r, err := f.f.Do(seq.WriteReq{data, f.offset})
 	if err != nil {
@@ -370,7 +370,7 @@ func (f *NsFile) WriteAt(data []byte, offset int64) (int, os.Error) {
 
 func (f *NsFile) Dirread() ([]*plan9.Dir, os.Error) {
 	if !f.IsDir() {
-		return nil, os.ErrorString("not a directory")
+		return nil, os.NewError("not a directory")
 	}
 	buf := make([]byte, plan9.STATMAX)
 	n, err := f.Read(buf)
