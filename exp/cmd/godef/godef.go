@@ -28,6 +28,19 @@ func fail(s string, a ...interface{}) {
 	os.Exit(2)
 }
 
+func init() {
+	// take GOPATH, set types.GoPath to it if it's not empty.
+	p := os.Getenv("GOPATH")
+	if p == "" {
+		return
+	}
+	gopath := strings.Split(p, ":")
+	for i, d := range gopath {
+		gopath[i] = filepath.Join(d, "src/pkg")
+	}
+	types.GoPath = gopath
+}
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: godef [flags] file [expr]\n")
@@ -216,7 +229,7 @@ func runeOffset2ByteOffset(b []byte, off int) int {
 	return len(b)
 }
 
-var errNoPkgFiles = os.ErrorString("no more package files found")
+var errNoPkgFiles = os.NewError("no more package files found")
 // parseLocalPackage reads and parses all go files from the
 // current directory that implement the same package name
 // the principal source file, except the original source file
