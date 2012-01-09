@@ -2019,7 +2019,7 @@ func parseImportSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, _ int)
 	}
 	p.expectSemi() // call before accessing p.linecomment
 
-	spec := &ast.ImportSpec{doc, ident, path, p.lineComment}
+	spec := &ast.ImportSpec{doc, ident, path, p.lineComment, 0}
 	if declIdent != nil && declIdent.Name != "." {
 		p.declare(spec, p.topScope, ast.Pkg, declIdent)
 	}

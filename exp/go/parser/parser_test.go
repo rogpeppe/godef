@@ -10,7 +10,6 @@ import (
 	"testing"
 )
 
-
 var fset = token.NewFileSet()
 
 var illegalInputs = []interface{}{
@@ -23,7 +22,6 @@ var illegalInputs = []interface{}{
 	`package p; func f() { if f(); /* should have condition */ {} };`,
 }
 
-
 func TestParseIllegalInputs(t *testing.T) {
 	for _, src := range illegalInputs {
 		_, err := ParseFile(fset, "", src, 0, nil)
@@ -32,7 +30,6 @@ func TestParseIllegalInputs(t *testing.T) {
 		}
 	}
 }
-
 
 var validPrograms = []interface{}{
 	"package p\n",
@@ -54,7 +51,6 @@ var validPrograms = []interface{}{
 	`package p; func f() { switch ; {} };`,
 }
 
-
 func TestParseValidPrograms(t *testing.T) {
 	for _, src := range validPrograms {
 		_, err := ParseFile(fset, "", src, 0, nil)
@@ -64,12 +60,10 @@ func TestParseValidPrograms(t *testing.T) {
 	}
 }
 
-
 var validFiles = []string{
 	"parser.go",
 	"parser_test.go",
 }
-
 
 func TestParse3(t *testing.T) {
 	for _, filename := range validFiles {
@@ -79,7 +73,6 @@ func TestParse3(t *testing.T) {
 		}
 	}
 }
-
 
 func nameFilter(filename string) bool {
 	switch filename {
@@ -92,9 +85,7 @@ func nameFilter(filename string) bool {
 	return true
 }
 
-
-func dirFilter(f *os.FileInfo) bool { return nameFilter(f.Name) }
-
+func dirFilter(f os.FileInfo) bool { return nameFilter(f.Name()) }
 
 func TestParse4(t *testing.T) {
 	path := "."

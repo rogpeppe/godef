@@ -2,17 +2,17 @@ package types
 
 import (
 	"bytes"
-	"exec"
+	"code.google.com/p/rog-go/exp/go/parser"
 	"go/ast"
 	"go/token"
 	"io"
+	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
-	"rog-go.googlecode.com/hg/exp/go/parser"
 	"strings"
 	"testing"
 	"unicode"
-"log"
 )
 
 // TODO recursive types avoiding infinite loop.
@@ -22,12 +22,12 @@ import (
 // }
 // var x *A
 
-type dirVisitor func(path string, f *os.FileInfo) bool
+type dirVisitor func(path string, f os.FileInfo) bool
 
-func (v dirVisitor) VisitDir(path string, f *os.FileInfo) bool {
+func (v dirVisitor) VisitDir(path string, f os.FileInfo) bool {
 	return v(path, f)
 }
-func (v dirVisitor) VisitFile(path string, f *os.FileInfo) {
+func (v dirVisitor) VisitFile(path string, f os.FileInfo) {
 }
 
 type astVisitor func(n ast.Node) bool
@@ -44,7 +44,7 @@ func parseDir(dir string) *ast.Package {
 	if len(pkgs) == 0 {
 		return nil
 	}
-	pkgs["documentation"] = nil, false
+	delete(pkgs, "documentation")
 	for name, pkg := range pkgs {
 		if len(pkgs) == 1 || name != "main" {
 			return pkg
@@ -78,7 +78,7 @@ func checkExprs(t *testing.T, pkg *ast.File, importer Importer) {
 				n.Name.Obj = ast.NewObj(ast.Fun, "init")
 			}
 			return true
-	
+
 		case *ast.Ident:
 			if n.Name == "_" {
 				return false
@@ -128,11 +128,11 @@ func checkExprs(t *testing.T, pkg *ast.File, importer Importer) {
 
 func TestSourceTree(t *testing.T) {
 	Panic = false
-	defer func(){
+	defer func() {
 		Panic = true
 	}()
 	root := os.Getenv("GOROOT") + "/src"
-	cache := make(map[string] *ast.Package)
+	cache := make(map[string]*ast.Package)
 	importer := func(path string) *ast.Package {
 		p := filepath.Join(root, "pkg", path)
 		if pkg := cache[p]; pkg != nil {
@@ -145,7 +145,7 @@ func TestSourceTree(t *testing.T) {
 	excluded := map[string]bool{
 		filepath.Join(root, "pkg/exp/wingui"): true,
 	}
-	visitDir := func(path string, f *os.FileInfo) bool {
+	visitDir := func(path string, f os.FileInfo) bool {
 		isExternal, _ := filepath.Match(filepath.Join(root, "pkg/*.*"), path)
 		if isExternal || excluded[path] {
 			return false
@@ -156,13 +156,13 @@ func TestSourceTree(t *testing.T) {
 		}
 		if pkg != nil {
 			for _, f := range pkg.Files {
-log.Printf("doing %s\n", FileSet.Position(f.Package).Filename)
+				log.Printf("doing %s\n", FileSet.Position(f.Package).Filename)
 				checkExprs(t, f, importer)
 			}
 		}
 		return true
 	}
-		
+
 	filepath.Walk(root, dirVisitor(visitDir), nil)
 }
 
@@ -186,7 +186,6 @@ func TestCompile(t *testing.T) {
 		t.Fatal("compile failed")
 	}
 }
-
 
 func TestOneFile(t *testing.T) {
 	code, offsetMap := translateSymbols(testCode)
@@ -350,7 +349,7 @@ func translateSymbols(code []byte) (result []byte, offsetMap map[int]*sym) {
 }
 
 var testCode = []byte(
-`package main
+	`package main
 
 import "os"
 

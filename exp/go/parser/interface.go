@@ -8,6 +8,7 @@ package parser
 
 import (
 	"bytes"
+	"errors"
 	"go/ast"
 	"go/scanner"
 	"go/token"
@@ -17,12 +18,11 @@ import (
 	"path/filepath"
 )
 
-
 // If src != nil, readSource converts src to a []byte if possible;
 // otherwise it returns an error. If src == nil, readSource returns
 // the result of reading the file specified by filename.
 //
-func readSource(filename string, src interface{}) ([]byte, os.Error) {
+func readSource(filename string, src interface{}) ([]byte, error) {
 	if src != nil {
 		switch s := src.(type) {
 		case string:
@@ -42,19 +42,17 @@ func readSource(filename string, src interface{}) ([]byte, os.Error) {
 			}
 			return buf.Bytes(), nil
 		default:
-			return nil, os.NewError("invalid source")
+			return nil, errors.New("invalid source")
 		}
 	}
 
 	return ioutil.ReadFile(filename)
 }
 
-
-func (p *parser) parseEOF() os.Error {
+func (p *parser) parseEOF() error {
 	p.expect(token.EOF)
 	return p.GetError(scanner.Sorted)
 }
-
 
 // ParseExpr parses a Go expression and returns the corresponding
 // AST node. The fset, filename, and src arguments have the same interpretation
@@ -63,7 +61,7 @@ func (p *parser) parseEOF() os.Error {
 //
 // if scope is non-nil, it will be used as the scope for the expression.
 //
-func ParseExpr(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope) (ast.Expr, os.Error) {
+func ParseExpr(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope) (ast.Expr, error) {
 	data, err := readSource(filename, src)
 	if err != nil {
 		return nil, err
@@ -78,7 +76,6 @@ func ParseExpr(fset *token.FileSet, filename string, src interface{}, scope *ast
 	return x, p.parseEOF()
 }
 
-
 // ParseStmtList parses a list of Go statements and returns the list
 // of corresponding AST nodes. The fset, filename, and src arguments have the same
 // interpretation as for ParseFile. If there is an error, the node
@@ -86,7 +83,7 @@ func ParseExpr(fset *token.FileSet, filename string, src interface{}, scope *ast
 //
 // if scope is non-nil, it will be used as the scope for the statements.
 //
-func ParseStmtList(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope) ([]ast.Stmt, os.Error) {
+func ParseStmtList(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope) ([]ast.Stmt, error) {
 	data, err := readSource(filename, src)
 	if err != nil {
 		return nil, err
@@ -97,7 +94,6 @@ func ParseStmtList(fset *token.FileSet, filename string, src interface{}, scope 
 	return p.parseStmtList(), p.parseEOF()
 }
 
-
 // ParseDeclList parses a list of Go declarations and returns the list
 // of corresponding AST nodes. The fset, filename, and src arguments have the same
 // interpretation as for ParseFile. If there is an error, the node
@@ -105,7 +101,7 @@ func ParseStmtList(fset *token.FileSet, filename string, src interface{}, scope 
 //
 // If scope is non-nil, it will be used for declarations.
 //
-func ParseDeclList(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope) ([]ast.Decl, os.Error) {
+func ParseDeclList(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope) ([]ast.Decl, error) {
 	data, err := readSource(filename, src)
 	if err != nil {
 		return nil, err
@@ -117,7 +113,6 @@ func ParseDeclList(fset *token.FileSet, filename string, src interface{}, scope 
 	p.fileScope = scope
 	return p.parseDeclList(), p.parseEOF()
 }
-
 
 // ParseFile parses the source code of a single Go source file and returns
 // the corresponding ast.File node. The source code may be provided via
@@ -139,7 +134,7 @@ func ParseDeclList(fset *token.FileSet, filename string, src interface{}, scope 
 // representing the fragments of erroneous source code). Multiple errors
 // are returned via a scanner.ErrorList which is sorted by file position.
 //
-func ParseFile(fset *token.FileSet, filename string, src interface{}, mode uint, pkgScope *ast.Scope) (*ast.File, os.Error) {
+func ParseFile(fset *token.FileSet, filename string, src interface{}, mode uint, pkgScope *ast.Scope) (*ast.File, error) {
 	data, err := readSource(filename, src)
 	if err != nil {
 		return nil, err
@@ -153,7 +148,7 @@ func ParseFile(fset *token.FileSet, filename string, src interface{}, mode uint,
 	return p.parseFile(), p.GetError(scanner.NoMultiples) // parseFile() reads to EOF
 }
 
-func parseFileInPkg(fset *token.FileSet, pkgs map[string]*ast.Package, filename string, mode uint) (err os.Error) {
+func parseFileInPkg(fset *token.FileSet, pkgs map[string]*ast.Package, filename string, mode uint) (err error) {
 	data, err := readSource(filename, nil)
 	if err != nil {
 		return err
@@ -178,7 +173,6 @@ func parseFileInPkg(fset *token.FileSet, pkgs map[string]*ast.Package, filename 
 	return
 }
 
-
 // ParseFiles calls ParseFile for each file in the filenames list and returns
 // a map of package name -> package AST with all the packages found. The mode
 // bits are passed to ParseFile unchanged. Position information is recorded
@@ -188,7 +182,7 @@ func parseFileInPkg(fset *token.FileSet, pkgs map[string]*ast.Package, filename 
 // be incomplete (missing packages and/or incomplete packages) and the first
 // error encountered is returned.
 //
-func ParseFiles(fset *token.FileSet, filenames []string, mode uint) (pkgs map[string]*ast.Package, first os.Error) {
+func ParseFiles(fset *token.FileSet, filenames []string, mode uint) (pkgs map[string]*ast.Package, first error) {
 	pkgs = make(map[string]*ast.Package)
 	for _, filename := range filenames {
 		if err := parseFileInPkg(fset, pkgs, filename, mode); err != nil && first == nil {
@@ -197,7 +191,6 @@ func ParseFiles(fset *token.FileSet, filenames []string, mode uint) (pkgs map[st
 	}
 	return
 }
-
 
 // ParseDir calls ParseFile for the files in the directory specified by path and
 // returns a map of package name -> package AST with all the packages found. If
@@ -209,7 +202,7 @@ func ParseFiles(fset *token.FileSet, filenames []string, mode uint) (pkgs map[st
 // returned. If a parse error occurred, a non-nil but incomplete map and the
 // error are returned.
 //
-func ParseDir(fset *token.FileSet, path string, filter func(*os.FileInfo) bool, mode uint) (map[string]*ast.Package, os.Error) {
+func ParseDir(fset *token.FileSet, path string, filter func(os.FileInfo) bool, mode uint) (map[string]*ast.Package, error) {
 	fd, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -224,9 +217,9 @@ func ParseDir(fset *token.FileSet, path string, filter func(*os.FileInfo) bool, 
 	filenames := make([]string, len(list))
 	n := 0
 	for i := 0; i < len(list); i++ {
-		d := &list[i]
+		d := list[i]
 		if filter == nil || filter(d) {
-			filenames[n] = filepath.Join(path, d.Name)
+			filenames[n] = filepath.Join(path, d.Name())
 			n++
 		}
 	}

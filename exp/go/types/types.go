@@ -4,6 +4,7 @@ package types
 
 import (
 	"bytes"
+	"code.google.com/p/rog-go/exp/go/parser"
 	"container/list"
 	"fmt"
 	"go/ast"
@@ -13,7 +14,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"rog-go.googlecode.com/hg/exp/go/parser"
 	"runtime"
 	"strconv"
 	"strings"
@@ -87,7 +87,7 @@ func DefaultImporter(path string) *ast.Package {
 						debugp("\t%v: %s", e.Pos, e.Msg)
 					}
 				default:
-					debugp("\terror parsing %s: %d", dir, err.String())
+					debugp("\terror parsing %s: %v", dir, err)
 				}
 			}
 			continue
@@ -95,7 +95,7 @@ func DefaultImporter(path string) *ast.Package {
 		if pkg := pkgs[parser.ImportPathToName(path)]; pkg != nil {
 			return pkg
 		}
-		pkgs["documentation"] = nil, false
+		delete(pkgs, "documentation")
 		for name, pkg := range pkgs {
 			if len(pkgs) == 1 || name != "main" {
 				return pkg
@@ -110,8 +110,8 @@ func DefaultImporter(path string) *ast.Package {
 // Including _test.go here isn't quite right, but what
 // else can we do?
 //
-func isGoFile(d *os.FileInfo) bool {
-	return strings.HasSuffix(d.Name, ".go") && !strings.HasSuffix(d.Name, "_test.go") && goodOSArch(d.Name)
+func isGoFile(d os.FileInfo) bool {
+	return strings.HasSuffix(d.Name(), ".go") && !strings.HasSuffix(d.Name(), "_test.go") && goodOSArch(d.Name())
 }
 
 // When Debug is true, log messages will be printed.
@@ -459,7 +459,7 @@ func exprType(n ast.Node, expectTuple bool, pkg string, importer Importer) (xobj
 		if t.Kind != ast.Bad {
 			return nil, Type{&ast.ArrayType{n.Pos(), nil, t.Node.(ast.Expr)}, ast.Var, t.Pkg}
 		}
-		
+
 	default:
 		panic(fmt.Sprintf("unknown type %T", n))
 	}
@@ -537,7 +537,7 @@ func doInterfaceMembers(fields []*ast.Field, pkg string, importer Importer, fn f
 			for _, fname := range f.Names {
 				fn(fname.Obj)
 			}
-		}else{
+		} else {
 			_, typ := exprType(f.Type, false, pkg, importer)
 			typ = typ.Underlying(true, importer)
 			switch n := typ.Node.(type) {
@@ -549,7 +549,7 @@ func doInterfaceMembers(fields []*ast.Field, pkg string, importer Importer, fn f
 		}
 	}
 }
-				
+
 func doStructMembers(fields []*ast.Field, pkg string, importer Importer, fn func(*ast.Object), q *list.List) {
 	// Go Spec: For a value x of type T or *T where T is not an interface type, x.f
 	// denotes the field or method at the shallowest depth in T where there
@@ -878,5 +878,3 @@ func (p pretty) String() string {
 	printer.Fprint(&b, FileSet, p.n)
 	return b.String()
 }
-
-

@@ -2,6 +2,9 @@ package main
 
 import (
 	"bytes"
+	"code.google.com/p/rog-go/exp/go/parser"
+	"code.google.com/p/rog-go/exp/go/types"
+	"errors"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -9,8 +12,6 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
-	"rog-go.googlecode.com/hg/exp/go/parser"
-	"rog-go.googlecode.com/hg/exp/go/types"
 	"runtime"
 	"sort"
 	"strings"
@@ -195,7 +196,6 @@ func typeStr(obj *ast.Object, typ types.Type) string {
 	return fmt.Sprintf("unknown %s %v\n", obj.Name, typ.Kind)
 }
 
-
 func parseExpr(s *ast.Scope, expr string) ast.Expr {
 	n, err := parser.ParseExpr(types.FileSet, "<arg>", expr, s)
 	if err != nil {
@@ -229,13 +229,14 @@ func runeOffset2ByteOffset(b []byte, off int) int {
 	return len(b)
 }
 
-var errNoPkgFiles = os.NewError("no more package files found")
+var errNoPkgFiles = errors.New("no more package files found")
+
 // parseLocalPackage reads and parses all go files from the
 // current directory that implement the same package name
 // the principal source file, except the original source file
 // itself, which will already have been parsed.
 //
-func parseLocalPackage(filename string, src *ast.File, pkgScope *ast.Scope) (*ast.Package, os.Error) {
+func parseLocalPackage(filename string, src *ast.File, pkgScope *ast.Scope) (*ast.Package, error) {
 	pkg := &ast.Package{src.Name.Name, pkgScope, nil, map[string]*ast.File{filename: src}}
 	d, f := filepath.Split(filename)
 	if d == "" {
@@ -269,7 +270,6 @@ func parseLocalPackage(filename string, src *ast.File, pkgScope *ast.Scope) (*as
 	}
 	return pkg, nil
 }
-
 
 // pkgName returns the package name implemented by the
 // go source filename.
