@@ -1,6 +1,7 @@
 package values
+
 import (
-	"os"
+	"errors"
 	"reflect"
 )
 
@@ -31,16 +32,16 @@ func (v *constValue) Type() reflect.Type {
 	return v.val.Type()
 }
 
-func (v *constValue) Set(_ interface{}) os.Error {
-	return os.NewError("cannot set constant value")
+func (v *constValue) Set(_ interface{}) error {
+	return errors.New("cannot set constant value")
 }
 
-func (v *constValue) Close() os.Error {
-	return os.NewError("const is already closed")
+func (v *constValue) Close() error {
+	return errors.New("const is already closed")
 }
 
 type constGetter struct {
-	val reflect.Value
+	val  reflect.Value
 	done bool
 }
 

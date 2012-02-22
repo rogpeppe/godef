@@ -37,7 +37,11 @@ func init() {
 	}
 	gopath := strings.Split(p, ":")
 	for i, d := range gopath {
-		gopath[i] = filepath.Join(d, "src/pkg")
+		gopath[i] = filepath.Join(d, "src")
+	}
+	r := os.Getenv("GOROOT")
+	if r != "" {
+		gopath = append(gopath, r + "/src/pkg")
 	}
 	types.GoPath = gopath
 }

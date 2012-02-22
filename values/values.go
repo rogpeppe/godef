@@ -7,7 +7,6 @@
 package values
 
 import (
-	"os"
 	"reflect"
 	"sync"
 )
@@ -19,7 +18,7 @@ import (
 type Value interface {
 	// Set changes the value. It never blocks; it will panic if
 	// the value is not assignable to the Value's type.
-	Set(val interface{}) os.Error
+	Set(val interface{}) error
 
 	// Getter returns a Getter that can be used to listen
 	// for changes to the value.
@@ -35,7 +34,7 @@ type Value interface {
 
 	// Close marks the value as closed; all blocked Getters
 	// will return.
-	Close() os.Error
+	Close() error
 }
 
 type Getter interface {
@@ -50,15 +49,15 @@ type Getter interface {
 }
 
 type value struct {
-	mu sync.Mutex
-	wait sync.Cond
-	val reflect.Value
+	mu      sync.Mutex
+	wait    sync.Cond
+	val     reflect.Value
 	version int
-	closed bool
+	closed  bool
 }
 
 type getter struct {
-	v *value
+	v       *value
 	version int
 }
 
@@ -74,7 +73,7 @@ func NewValue(initial interface{}, t reflect.Type) Value {
 	if t == nil {
 		if initial != nil {
 			t = reflect.TypeOf(initial)
-		}else{
+		} else {
 			t = interfaceType
 		}
 	}
@@ -90,7 +89,7 @@ func (v *value) Type() reflect.Type {
 	return v.val.Type()
 }
 
-func (v *value) Set(val interface{}) os.Error {
+func (v *value) Set(val interface{}) error {
 	v.mu.Lock()
 	v.val.Set(reflect.ValueOf(val))
 	v.version++
@@ -99,7 +98,7 @@ func (v *value) Set(val interface{}) os.Error {
 	return nil
 }
 
-func (v *value) Close() os.Error {
+func (v *value) Close() error {
 	v.mu.Lock()
 	v.closed = true
 	v.mu.Unlock()
@@ -147,7 +146,7 @@ func (g *getter) Type() reflect.Type {
 func Sender(v Value, c interface{}) {
 	cv := reflect.ValueOf(c)
 	if cv.Kind() != reflect.Chan || cv.Type().Elem() != v.Type() {
-		panic("expected chan "+v.Type().String()+"; got "+cv.Type().String())
+		panic("expected chan " + v.Type().String() + "; got " + cv.Type().String())
 	}
 	g := v.Getter()
 	for {

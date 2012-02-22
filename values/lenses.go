@@ -1,7 +1,8 @@
 package values
+
 import (
+	"errors"
 	"fmt"
-	"os"
 )
 
 // Float64ToString returns a Lens which transforms from float64
@@ -19,10 +20,10 @@ func Float64ToString(printf, scanf string) *Lens {
 		panic(fmt.Sprintf("non-reversible format %#v<->%#v (got %#v), err %v", printf, scanf, s, err))
 	}
 	return NewLens(
-		func(f float64) (string, os.Error) {
+		func(f float64) (string, error) {
 			return fmt.Sprintf(printf, f), nil
 		},
-		func(s string) (float64, os.Error) {
+		func(s string) (float64, error) {
 			var f float64
 			_, err := fmt.Sscanf(s, scanf, &f)
 			return f, err
@@ -41,10 +42,10 @@ func round(f float64) int {
 // value to the nearest int.
 func Float64ToInt() *Lens {
 	return NewLens(
-		func(f float64) (int, os.Error) {
+		func(f float64) (int, error) {
 			return round(f), nil
 		},
-		func(i int) (float64, os.Error) {
+		func(i int) (float64, error) {
 			return float64(i), nil
 		},
 	)
@@ -56,21 +57,21 @@ func Float64ToInt() *Lens {
 //
 func UnitFloat64ToRangedFloat64(lo, hi float64) *Lens {
 	return NewLens(
-		func(uf float64) (float64, os.Error) {
+		func(uf float64) (float64, error) {
 			if uf > 1 {
-				return 0, os.NewError("value too high")
+				return 0, errors.New("value too high")
 			}
 			if uf < 0 {
-				return 0, os.NewError("value too low")
+				return 0, errors.New("value too low")
 			}
 			return lo + (uf * (hi - lo)), nil
 		},
-		func(rf float64) (float64, os.Error) {
+		func(rf float64) (float64, error) {
 			if rf > hi {
-				return 0, os.NewError("value too high")
+				return 0, errors.New("value too high")
 			}
 			if rf < lo {
-				return 0, os.NewError("value too low")
+				return 0, errors.New("value too low")
 			}
 			return (rf - lo) / (hi - lo), nil
 		},
@@ -81,10 +82,10 @@ func UnitFloat64ToRangedFloat64(lo, hi float64) *Lens {
 //
 func Float64Multiply(x float64) *Lens {
 	return NewLens(
-		func(f float64) (float64, os.Error) {
+		func(f float64) (float64, error) {
 			return f * x, nil
 		},
-		func(rf float64) (float64, os.Error) {
+		func(rf float64) (float64, error) {
 			return rf / x, nil
 		},
 	)

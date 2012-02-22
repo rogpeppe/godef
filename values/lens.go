@@ -2,7 +2,6 @@ package values
 
 import (
 	"fmt"
-	"os"
 	"reflect"
 )
 
@@ -11,7 +10,7 @@ import (
 // other direction, and be combined with other Lenses.
 //
 type Lens struct {
-	f, finv func(reflect.Value) (reflect.Value, os.Error)
+	f, finv func(reflect.Value) (reflect.Value, error)
 	t, t1   reflect.Type
 }
 
@@ -56,20 +55,19 @@ func NewLens(f, finv interface{}) *Lens {
 // finv should convert in the other direction.
 // The uses for this function are fairly esoteric, and can
 // be used to break the type safety of the Value if used without care.
-func NewReflectiveLens(f, finv func(reflect.Value) (reflect.Value, os.Error), t, t1 reflect.Type) *Lens {
+func NewReflectiveLens(f, finv func(reflect.Value) (reflect.Value, error), t, t1 reflect.Type) *Lens {
 	return &Lens{f, finv, t, t1}
 }
-	
 
 // caller converts from an actual function to a function type
 // that we can construct on the fly.
-func caller(f reflect.Value) func(reflect.Value) (reflect.Value, os.Error) {
-	return func(v reflect.Value) (reflect.Value, os.Error) {
+func caller(f reflect.Value) func(reflect.Value) (reflect.Value, error) {
+	return func(v reflect.Value) (reflect.Value, error) {
 		r := f.Call([]reflect.Value{v})
 		if r[1].IsNil() {
 			return r[0], nil
 		}
-		return r[0], r[1].Interface().(os.Error)
+		return r[0], r[1].Interface().(error)
 	}
 }
 
@@ -88,14 +86,14 @@ func (m *Lens) Combine(m1 *Lens) *Lens {
 		panic("incompatible Lens combination")
 	}
 	return &Lens{
-		func(x reflect.Value) (reflect.Value, os.Error) {
+		func(x reflect.Value) (reflect.Value, error) {
 			x1, err := m.f(x)
 			if err != nil {
 				return x1, err
 			}
 			return m1.f(x1)
 		},
-		func(x2 reflect.Value) (reflect.Value, os.Error) {
+		func(x2 reflect.Value) (reflect.Value, error) {
 			x1, err := m1.finv(x2)
 			if err != nil {
 				return x1, err
@@ -109,7 +107,7 @@ func (m *Lens) Combine(m1 *Lens) *Lens {
 
 // Transform transforms a value of type T into a value of type T1.
 // The value val must be assignable to T.
-func (m *Lens) Transform(val interface{}) (interface{}, os.Error) {
+func (m *Lens) Transform(val interface{}) (interface{}, error) {
 	x, err := m.f(reflect.ValueOf(val))
 	if err != nil {
 		return nil, err
@@ -139,7 +137,7 @@ type transformedGetter struct {
 	m *Lens
 }
 
-var osErrorType = reflect.TypeOf((*os.Error)(nil)).Elem()
+var osErrorType = reflect.TypeOf((*error)(nil)).Elem()
 var interfaceType = reflect.TypeOf((*interface{})(nil)).Elem()
 
 // Transform returns a Value, v1, that mirrors an existing Value, v,
@@ -166,11 +164,11 @@ func (v *transformedValue) Type() reflect.Type {
 	return v.m.Type1()
 }
 
-func (v *transformedValue) Close() os.Error {
+func (v *transformedValue) Close() error {
 	return v.v.Close()
 }
 
-func (v *transformedValue) Set(x1 interface{}) os.Error {
+func (v *transformedValue) Set(x1 interface{}) error {
 	x, err := v.m.Reverse().Transform(x1)
 	if err != nil {
 		return err
