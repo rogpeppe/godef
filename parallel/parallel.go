@@ -10,9 +10,7 @@ import (
 
 // Run represents a number of functions running concurrently.
 type Run struct {
-	n int
-	max int
-	work chan func() error
+	limiter chan struct{}
 	done chan error
 	err chan error
 	wg sync.WaitGroup
@@ -36,17 +34,14 @@ func (errs Errors) Error() string {
 // functions concurrently.
 func NewRun(maxPar int) *Run {
 	r := &Run{
-		max: maxPar,
-		work: make(chan func() error),
+		limiter: make(chan struct{}, maxPar),
 		done: make(chan error),
 		err: make(chan error),
 	}
 	go func() {
 		var errs Errors
 		for e := range r.done {
-			if e != nil {
-				errs = append(errs, e)
-			}
+			errs = append(errs, e)
 		}
 		// TODO sort errors by original order of Do request?
 		if len(errs) > 0 {
@@ -60,26 +55,25 @@ func NewRun(maxPar int) *Run {
 
 // Do requests that r run f concurrently.  If there are already the maximum
 // number of functions running concurrently, it will block until one of
-// them has completed.
+// them has completed. Do may itself be called concurrently.
 func (r *Run) Do(f func() error) {
-	if r.n < r.max {
-		r.wg.Add(1)
-		go func(){
-			for f := range r.work {
-				r.done <- f()
-			}
+	r.limiter <- struct{}{}
+	r.wg.Add(1)
+	go func() {
+		defer func() {
 			r.wg.Done()
+			<-r.limiter
 		}()
-	}
-	r.work <- f
-	r.n++
+		if err := f(); err != nil {
+			r.done <- err
+		}
+	}()
 }
 
 // Wait marks the parallel instance as complete and waits for all the
 // functions to complete.  If any errors were encountered, it returns an
 // Errors value describing all the errors in arbitrary order.
 func (r *Run) Wait() error {
-	close(r.work)
 	r.wg.Wait()
 	close(r.done)
 	return <-r.err
