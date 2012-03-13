@@ -3,255 +3,94 @@ package main
 import (
 	"errors"
 	"fmt"
-	"math"
 	"math/big"
 	"os"
 	"reflect"
 	"regexp"
-	"strconv"
 	"strings"
 )
 
 // TODO:
 // 	testing
-//	subexpressions
 //	parse type[value]
 //	formatting with /x, /%.5d etc
 
+const debug = false
 
-func subexpr(a []string, stop string) (expr, rest []string) {
-	start := a[0]
-	depth := 1
-	for i, s := range a {
-		switch s {
-		case start:
-			depth++
-		case stop:
-			if depth--; depth == 0 {
-				return a[1:i], a[i+1:]
-			}
-		}
-	}
-	fatalf("mismatched " + start)
-	panic("not reached")
+type genericOp struct {
+	numIn, numOut int
+	f func(s *stack, name string)
 }
 
-//sub-expressions:
-//
-//	[ operations ]
-//		operations must reduce the size of the stack.
-//		they're repeated until there are no elements in the stack.
-//	[[ operations ]]
-//		operations are repeated for each set of items that
-//		hasn't been touched by the previous operations.
-//
-//with both forms, it's an error if there are items left untouched.
-//
-//so:
-//
-//fc 2 3 4 5 [ x ]
-//-> 24
-//
-//fc 2 [ x ]
-//-> error
-//
-//fc 2 3 4 5 [[ x ]]
-//-> 6 20
-//
-//fc 2 3 4 [[ x ]]
-//-> error
-//
-//executes operations repeatedly.
-//if the stack size goes down, just do repeatedly.
-//if the stack size goes up, it's an error.
-//if the stack size stays the same, repeat for items left in stack that haven't been touched.
-//
-//for sub-expressions, execute once; if there's a 'stack too empty' error, ignore it.
-
-type pattern struct {
-	pat *regexp.Regexp
-	f   func(s *stack, p string)
-}
-
-const floatPat = `(([0-9]+(\.[0-9]+)?)|([0-9]*(\.[0-9]+)))([eE]-?[0-9]+)?`
-
-var patterns = []pattern{
-	// format specifier
-	{
-		regex("%.*[fgvexXoObB]"),
-		func(s *stack, p string) {
-			// % has a special case - if the stack is empty, it sets
-			// the default format output.
-			if len(s.items) == 0 {
-				s.format = p
-			} else {
-				v := s.pop()
-				v.format = p
-				s.push(v, v.v)
-			}
-		},
-	},
-	// integer literal
-	{
-		regex("0[bB][01]+|0[xX][0-9a-fA-F]+|0[0-9]+|[0-9]+"),
-		func(s *stack, p string) {
-			i, ok := new(big.Int).SetString(p, 0)
-			if !ok {
-				fatalf("cannot convert %q to int", p)
-			}
-			s.pushX(i)
-		},
-	},
-	// rational literal
-	{
-		regex(floatPat + "/" + floatPat),
-		func(s *stack, p string) {
-			i := strings.Index(p, "/")
-			r0, ok0 := new(big.Rat).SetString(p[0 : i])
-			r1, ok1 := new(big.Rat).SetString(p[i+1:])
-			if !ok0 || !ok1 {
-				fatalf("bad rational %q", p)
-			}
-			s.pushX(r0.Quo(r0, r1))
-		},
-	},
-	// float literal
-	{
-		regex(floatPat),
-		func(s *stack, p string) {
-			v, err := strconv.ParseFloat(p, 64)
-			if err != nil {
-				fatalf("bad float number %q", p)
-			}
-			s.pushX(v)
-		},
-	},
-	// rune literal
-	{
-		regex("@."),
-		func(s *stack, p string) {
-			for _, c := range p[1:] {
-				s.pushX(big.NewInt(int64(c)))
-				break
-			}
-		},
-	},
-}
-
-var ops = map[string][]interface{}{
-	// constants
-	"pi":       {math.Pi},
-	"e":        {math.E},
-	"phi":      {math.Phi},
-	"nan":      {math.NaN()},
-	"infinity": {math.Inf(1)},
-
-	// functions from math package.
-	"abs":       {math.Abs},
-	"acos":      {math.Acos},
-	"acosh":     {math.Acosh},
-	"asin":      {math.Asin},
-	"asinh":     {math.Asinh},
-	"atan":      {math.Atan},
-	"atan2":     {math.Atan2},
-	"atanh":     {math.Atanh},
-	"cbrt":      {math.Cbrt},
-	"ceil":      {math.Ceil},
-	"copysign":  {math.Copysign},
-	"cos":       {math.Cos},
-	"cosh":      {math.Cosh},
-	"dim":       {math.Dim},
-	"erf":       {math.Erf},
-	"erfc":      {math.Erfc},
-	"exp":       {math.Exp},
-	"exp2":      {math.Exp2},
-	"expm1":     {math.Expm1},
-	"floor":     {math.Floor},
-	"gamma":     {math.Gamma},
-	"hypot":     {math.Hypot},
-	"ilogb":     {math.Ilogb},
-	"j0":        {math.J0},
-	"j1":        {math.J1},
-	"log":       {math.Log},
-	"log10":     {math.Log10},
-	"log1p":     {math.Log1p},
-	"log2":      {math.Log2},
-	"logb":      {math.Logb},
-	"max":       {math.Max},
-	"min":       {math.Min},
-	"mod":       {math.Mod},
-	"nextafter": {math.Nextafter},
-	"pow":       {math.Pow},
-	"remainder": {math.Remainder},
-	"signbit":   {math.Signbit},
-	"sin":       {math.Sin},
-	"sinh":      {math.Sinh},
-	"sqrt":      {math.Sqrt},
-	"tan":       {math.Tan},
-	"tanh":      {math.Tanh},
-	"trunc":     {math.Trunc},
-	"y0":        {math.Y0},
-	"y1":        {math.Y1},
-
-	// float64 functions we add.
-	"quo": {mathQuo},
-	"mul": {mathMul},
-	"rem": {math.Remainder},
-	"neg": {mathNeg},
-	"add": {mathAdd},
-	"sub": {mathSub},
-
-	// conversion functions
-	"int":   {cvtInt},
-	"float": {cvtFloat},
-	"rat":   {cvtRat},
-}
-
-var alias = map[string]string{
-	"_": "neg",
-	"-": "sub",
-	"+": "add",
-	"/": "quo",
-	"x": "mul",
-	"%": "rem",
-	"!": "factorial",
-}
+var errStackUnderflow = errors.New("stack underflow")
 
 func main() {
-	addMethods(reflect.ValueOf((*big.Int)(nil)).Type())
-	addMethods(reflect.ValueOf((*big.Rat)(nil)).Type())
-
+	// sanity check ops table
+	for _, vs := range ops {
+		for _, v := range vs {
+			argCount(v)
+		}
+	}
 	s := &stack{format: "%v"}
-	s.interp(os.Args[1:])
+	arg, _ := parseArgs(os.Args[1:], "")
+	if debug {
+		fmt.Printf("parsed %v\n", words(arg))
+	}
+	s.interp(arg)
 	for _, v := range s.items {
 		fmt.Println(v)
 	}
 }
 
-func addMethods(t reflect.Type) {
-	for i := 0; i < t.NumMethod(); i++ {
-		addMethod(t.Method(i))
-	}
+type op struct {
+	name string
+	body []op
 }
 
-func addMethod(m reflect.Method) {
-	if m.PkgPath != "" {
-		return
+func (o op) String() string {
+	switch o.name {
+	case "[":
+		return fmt.Sprintf("[ %s ]", words(o.body))
+	case "[[":
+		return fmt.Sprintf("[[ %s ]]", words(o.body))
 	}
-	ft := m.Type
-	rcvr := ft.In(0)
-	for j := 1; j < ft.NumIn(); j++ {
-		if ft.In(j) != rcvr {
-			return
+	return o.name
+}
+
+func words(arg []op) string {
+	if len(arg) == 0 {
+		return ""
+	}
+	b := []byte(arg[0].String())
+	for _, a := range arg[1:] {
+		b = append(b, ' ')
+		b = append(b, a.String()...)
+	}
+	return string(b)
+}
+
+func parseArgs(arg []string, end string) (ops []op, rest []string) {
+	for len(arg) > 0 {
+		o := op{name: arg[0]}
+		switch o.name {
+		case "[":
+			o.body, arg = parseArgs(arg[1:], "]")
+		case "[[":
+			o.body, arg = parseArgs(arg[1:], "]]")
+		case "]", "]]":
+			if o.name != end {
+				fatalf("unexpected %q", o.name)
+			}
+			return ops, arg[1:]
+		default:
+			arg = arg[1:]
 		}
+		ops = append(ops, o)
 	}
-	for j := 0; j < ft.NumOut(); j++ {
-		if ft.Out(j) != rcvr {
-			return
-		}
+	if end != "" {
+		fatalf("expected %q but did not find it", end)
 	}
-	name := strings.ToLower(m.Name)
-	ops[name] = append(ops[name], m.Func.Interface())
+	return ops, arg
 }
 
 var bigOne = big.NewInt(1)
@@ -260,6 +99,17 @@ type stack struct {
 	format   string
 	minDepth int
 	items    []value
+	callDepth int
+}
+
+func (s *stack) logf(f string, a ...interface{}) {
+	if !debug {
+		return
+	}
+	if f[len(f)-1] == '\n' {
+		f = f[0:len(f)-1]
+	}
+	fmt.Printf("%s%s\n", strings.Repeat("\t", s.callDepth), fmt.Sprintf(f, a...))
 }
 
 func (s *stack) push(old value, new interface{}) {
@@ -277,12 +127,10 @@ func (s *stack) pop() value {
 	return s.popN(1)[0]
 }
 
-var errStackEmpty = errors.New("stack empty")
-
 func (s *stack) popN(n int) []value {
 	d := len(s.items) - n
 	if d < 0 {
-		panic(errStackEmpty)
+		panic(errStackUnderflow)
 	}
 	v := s.items[d:]
 	s.items = s.items[0:d]
@@ -292,29 +140,40 @@ func (s *stack) popN(n int) []value {
 	return v
 }
 
-func (s *stack) interp(args []string) {
-nextArg:
-	for _, a := range args {
-		// TODO if a == "[" ... repetition op
-		// operators
-		if vs := ops[a]; vs != nil {
-			s.exec(a, vs)
-			continue nextArg
+func (s *stack) interp(arg []op) {
+	for _, a := range arg {
+		s.logf("interp %v\n", a)
+		switch a.name {
+		case "[":
+			s.reduce(a)
+		case "[[":
+			s.repeat(a)
+		default:
+			s.interp1(a.name)
 		}
-		// aliases
-		if b := alias[a]; b != "" {
-			s.exec(a, ops[b])
-			continue nextArg
-		}
-		// patterns
-		for _, p := range patterns {
-			if p.pat.MatchString(a) {
-				s.exec(a, []interface{}{p.f})
-				continue nextArg
-			}
-		}
-		fatalf("unknown argument %q", a)
+		s.logf("-- (min %d) %v\n", s.minDepth, s.items)
 	}
+}
+
+func (s *stack) interp1(a string) {
+	// operators and constants
+	if vs := ops[a]; vs != nil {
+		s.exec(a, vs)
+		return
+	}
+	// aliases
+	if b := alias[a]; b != "" {
+		s.exec(a, ops[b])
+		return
+	}
+	// patterns
+	for _, p := range patterns {
+		if p.pat.MatchString(a) {
+			s.exec(a, []interface{}{p.f})
+			return
+		}
+	}
+	s.fatalf("unknown argument %q", a)
 }
 
 func (s *stack) exec(name string, vs []interface{}) {
@@ -323,37 +182,29 @@ func (s *stack) exec(name string, vs []interface{}) {
 		if e == nil {
 			return
 		}
-		if e == errStackEmpty {
+		if e == errStackUnderflow {
 			fatalf("stack underflow on %q", name)
 		}
 		panic(e)
 	}()
-	// Check whether operator is a constant or is
-	// generic, in which case we just call it.
+	// Check whether operator is a constant or is generic, in which case we just call it.
 	switch v := vs[0].(type) {
 	case *big.Int, *big.Rat, float64:
 		s.pushX(v)
 		return
-	case func(*stack, string):
-		v(s, name)
+	case genericOp:
+		v.f(s, name)
 		return
 	}
 
-	t0 := reflect.ValueOf(vs[0]).Type()
-	numIn := t0.NumIn()
-	if t0.In(0).Kind() == reflect.Ptr {
-		// methods of *big.Int and *big.Rat have their first argument
-		// as receiver.
-		numIn--
-	}
-	arg := s.popN(numIn)
+	arg := s.popN(argCount(vs[0]))
 	f := vs[0]
 	if len(vs) > 0 {
 		argt := reflect.TypeOf(arg[0].v)
 		// The first argument determines the operator to use if there's
 		// more than one, but we default to the first operator if
 		// none matches.
-		for _, v := range vs[1:] {
+		for _, v := range vs {
 			if reflect.TypeOf(v).In(0) == argt {
 				f = v
 				break
@@ -367,6 +218,9 @@ func (s *stack) exec(name string, vs []interface{}) {
 	case func(*big.Int, *big.Int, *big.Int) *big.Int:
 		r := arg[0].toInt()
 		s.push(arg[0], f(r, r, arg[1].toInt()))
+	case func(*big.Int, *big.Int, *big.Int, *big.Int) *big.Int:
+		r := arg[0].toInt()
+		s.push(arg[0], f(r, r, arg[1].toInt(), arg[2].toInt()))
 	case func(*big.Rat, *big.Rat) *big.Rat:
 		r := arg[0].toRat()
 		s.push(arg[0], f(r, r))
@@ -382,13 +236,104 @@ func (s *stack) exec(name string, vs []interface{}) {
 	}
 }
 
+// argCount returns the number of arguments consumed
+// by a function. It also checks that the function is well formed.
+func argCount(f interface{}) int {
+	t := reflect.TypeOf(f)
+	switch f := f.(type) {
+	case *big.Int, *big.Rat, float64:
+		return 0
+	case genericOp:
+		return f.numIn
+	}
+	n := t.NumIn()
+	rcvr := t.In(0)
+	if rcvr.Kind() == reflect.Ptr {
+		// The first argument of methods of *big.Int and *big.Rat is the receiver.
+		n--
+	}
+	for i := t.NumOut()-1; i >= 0; i-- {
+		if t.Out(i) != rcvr {
+			printAll()
+			panic(fmt.Errorf("unexpected return value in %T", f))
+		}
+	}
+	for i := t.NumOut()-1; i >= 1; i-- {
+		if t.Out(i) != rcvr {
+			printAll()
+			panic(fmt.Errorf("unexpected return value in %T", f))
+		}
+	}
+	return n
+}
+
+func (s *stack) reduce(o op) {
+	t := s.subexprStack()
+	nin, nout := t.runOneSubexpr(o.body)
+	if nout >= nin {
+		s.fatalf("operations inside %v must reduce the size of the stack (nin %d, nout %d)", o, nin, nout)
+	}
+
+	for len(t.items) >= nin {
+		t.interp(o.body)
+	}
+	s.items = append(s.items, t.items...)
+}
+
+func (s *stack) repeat(o op) {
+	t := s.subexprStack()
+	nin, nout := t.runOneSubexpr(o.body)
+	if nin <= 0 {
+		s.fatalf("%v uses no items from stack", o)
+	}
+	if (len(t.items) - nout) % nin != 0 {
+		s.fatalf("extra items on stack after %v", o)
+	}
+	origOut := t.items[len(t.items)-nout:]
+	origItems := t.items[0:len(t.items)-nout]
+	t.items = nil
+	for i := 0; i < len(origItems); i += nin {
+		t.items = append(t.items, origItems[i:i+nin]...)
+		t.interp(o.body)
+	}
+	// N.B. append origOut to t.items before appending to s.items
+	// because origOut aliases s.items.
+	t.items = append(t.items, origOut...)
+	s.items = append(s.items, t.items...)
+}
+
+// subexprStack makes a partial clone of s to be used
+// for executing a subexpression, The new stack
+// holds values from the minimum used depth (i.e. values used by the
+// enclosing [] or [[]] block). It pops all those
+// values off s, to be replaced later.
+func (s *stack) subexprStack() *stack {
+	t := *s
+	t.items = t.items[s.minDepth:]
+	t.callDepth++
+	s.items = s.items[0:s.minDepth]
+	s.minDepth = len(s.items)
+	return &t
+}
+
+// runOneSubexpr runs a subexpression once
+// to determine its input and output count.
+func (s *stack) runOneSubexpr(arg []op) (nin, nout int) {
+	s.minDepth = len(s.items)
+	origDepth := len(s.items)
+	s.interp(arg)
+	nin = origDepth - s.minDepth
+	nout = len(s.items) - s.minDepth
+	return
+}
+
 type value struct {
 	v      interface{}
 	format string
 }
 
 func (v value) Format(f fmt.State, c rune) {
-	if true || f.Flag('#') {
+	if debug || f.Flag('#') {
 		fmt.Fprintf(f, "%s[" + v.format +"]", typeName(v.v), v.v)
 	} else {
 		fmt.Fprintf(f, v.format, v.v)
@@ -452,6 +397,12 @@ func (v value) toRat() *big.Rat {
 	panic(fmt.Errorf("unexpected type %T", v.v))
 }
 
+// We define intPow here because there's a naming
+// clash between math (e ** x) and big (x ** y ^ m)
+func intPow(z, x, y *big.Int) *big.Int {
+	return z.Exp(x, y, nil)
+}
+
 func mathAdd(x, y float64) float64 {
 	return x + y
 }
@@ -472,19 +423,24 @@ func mathNeg(x float64) float64 {
 	return -x
 }
 
-func cvtInt(s *stack, _ string) {
+var cvtInt = genericOp{1, 1, func(s *stack, _ string) {
 	v := s.pop()
 	s.push(v, v.toInt())
-}
+}}
 
-func cvtFloat(s *stack, _ string) {
+var cvtFloat = genericOp{1, 1, func(s *stack, _ string) {
 	v := s.pop()
 	s.push(v, v.toFloat())
-}
+}}
 
-func cvtRat(s *stack, _ string) {
+var cvtRat = genericOp{1, 1, func(s *stack, _ string) {
 	v := s.pop()
 	s.push(v, v.toRat())
+}}
+
+func (s *stack) fatalf(format string, args ...interface{}) {
+	format = strings.Repeat("\t", s.callDepth) + format
+	fatalf(format, args...)
 }
 
 func fatalf(format string, args ...interface{}) {
