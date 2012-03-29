@@ -107,7 +107,7 @@ const floatPat = `(([0-9]+(\.[0-9]+)?)|([0-9]*(\.[0-9]+)))([eE]-?[0-9]+)?`
 var patterns = []pattern{
 	// format specifier
 	{
-		regex("%.*[fgvexXoObB]"),
+		regex("%.*[fgvedxXoObB]"),
 		genericOp{1, 1, func(s *stack, p string) {
 			// % has a special case - if the stack is empty, it sets
 			// the default format output.

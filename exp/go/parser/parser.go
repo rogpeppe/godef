@@ -36,7 +36,7 @@ const (
 type parser struct {
 	fset *token.FileSet
 	file *token.File
-	scanner.ErrorVector
+//	scanner.ErrorVector
 	scanner scanner.Scanner
 
 	// Tracing/debugging

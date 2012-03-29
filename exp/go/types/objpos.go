@@ -1,7 +1,7 @@
 package types
 import (
-	"go/ast"
-	"go/token"
+	"code.google.com/p/rog-go/exp/go/ast"
+	"code.google.com/p/rog-go/exp/go/token"
 )
 func declPos(name string, decl ast.Node) token.Pos {
 	switch d := decl.(type) {
