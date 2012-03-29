@@ -6,7 +6,6 @@ import (
 	"math/big"
 	"os"
 	"reflect"
-	"regexp"
 	"strings"
 )
 
@@ -19,7 +18,7 @@ const debug = false
 
 type genericOp struct {
 	numIn, numOut int
-	f func(s *stack, name string)
+	f             func(s *stack, name string)
 }
 
 var errStackUnderflow = errors.New("stack underflow")
@@ -96,9 +95,9 @@ func parseArgs(arg []string, end string) (ops []op, rest []string) {
 var bigOne = big.NewInt(1)
 
 type stack struct {
-	format   string
-	minDepth int
-	items    []value
+	format    string
+	minDepth  int
+	items     []value
 	callDepth int
 }
 
@@ -107,7 +106,7 @@ func (s *stack) logf(f string, a ...interface{}) {
 		return
 	}
 	if f[len(f)-1] == '\n' {
-		f = f[0:len(f)-1]
+		f = f[0 : len(f)-1]
 	}
 	fmt.Printf("%s%s\n", strings.Repeat("\t", s.callDepth), fmt.Sprintf(f, a...))
 }
@@ -252,13 +251,13 @@ func argCount(f interface{}) int {
 		// The first argument of methods of *big.Int and *big.Rat is the receiver.
 		n--
 	}
-	for i := t.NumOut()-1; i >= 0; i-- {
+	for i := t.NumOut() - 1; i >= 0; i-- {
 		if t.Out(i) != rcvr {
 			printAll()
 			panic(fmt.Errorf("unexpected return value in %T", f))
 		}
 	}
-	for i := t.NumOut()-1; i >= 1; i-- {
+	for i := t.NumOut() - 1; i >= 1; i-- {
 		if t.Out(i) != rcvr {
 			printAll()
 			panic(fmt.Errorf("unexpected return value in %T", f))
@@ -286,11 +285,11 @@ func (s *stack) repeat(o op) {
 	if nin <= 0 {
 		s.fatalf("%v uses no items from stack", o)
 	}
-	if (len(t.items) - nout) % nin != 0 {
+	if (len(t.items)-nout)%nin != 0 {
 		s.fatalf("extra items on stack after %v", o)
 	}
 	origOut := t.items[len(t.items)-nout:]
-	origItems := t.items[0:len(t.items)-nout]
+	origItems := t.items[0 : len(t.items)-nout]
 	t.items = nil
 	for i := 0; i < len(origItems); i += nin {
 		t.items = append(t.items, origItems[i:i+nin]...)
@@ -334,7 +333,7 @@ type value struct {
 
 func (v value) Format(f fmt.State, c rune) {
 	if debug || f.Flag('#') {
-		fmt.Fprintf(f, "%s[" + v.format +"]", typeName(v.v), v.v)
+		fmt.Fprintf(f, "%s["+v.format+"]", typeName(v.v), v.v)
 	} else {
 		fmt.Fprintf(f, v.format, v.v)
 	}
@@ -397,47 +396,6 @@ func (v value) toRat() *big.Rat {
 	panic(fmt.Errorf("unexpected type %T", v.v))
 }
 
-// We define intPow here because there's a naming
-// clash between math (e ** x) and big (x ** y ^ m)
-func intPow(z, x, y *big.Int) *big.Int {
-	return z.Exp(x, y, nil)
-}
-
-func mathAdd(x, y float64) float64 {
-	return x + y
-}
-
-func mathSub(x, y float64) float64 {
-	return x - y
-}
-
-func mathMul(x, y float64) float64 {
-	return x * y
-}
-
-func mathQuo(x, y float64) float64 {
-	return x / y
-}
-
-func mathNeg(x float64) float64 {
-	return -x
-}
-
-var cvtInt = genericOp{1, 1, func(s *stack, _ string) {
-	v := s.pop()
-	s.push(v, v.toInt())
-}}
-
-var cvtFloat = genericOp{1, 1, func(s *stack, _ string) {
-	v := s.pop()
-	s.push(v, v.toFloat())
-}}
-
-var cvtRat = genericOp{1, 1, func(s *stack, _ string) {
-	v := s.pop()
-	s.push(v, v.toRat())
-}}
-
 func (s *stack) fatalf(format string, args ...interface{}) {
 	format = strings.Repeat("\t", s.callDepth) + format
 	fatalf(format, args...)
@@ -447,8 +405,4 @@ func fatalf(format string, args ...interface{}) {
 	m := fmt.Sprintf(format, args...)
 	fmt.Fprintf(os.Stderr, "fc: %s\n", m)
 	os.Exit(2)
-}
-
-func regex(s string) *regexp.Regexp {
-	return regexp.MustCompile("^(" + s + ")$")
 }

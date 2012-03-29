@@ -1,7 +1,8 @@
 package main
+
 import (
-	"sort"
 	"fmt"
+	"sort"
 )
 
 var help = genericOp{0, 0, func(*stack, string) {

@@ -1,4 +1,5 @@
 package main
+
 import (
 	"math"
 	"math/big"
@@ -16,74 +17,74 @@ var ops = map[string][]interface{}{
 	"infinity": {math.Inf(1)},
 
 	// functions from math package.
-	"abs": {math.Abs, (*big.Int).Abs, (*big.Rat).Abs},
-	"acosh":     {math.Acosh},
-	"acos":      {math.Acos},
-	"add": {mathAdd, (*big.Int).Add, (*big.Rat).Add},
-	"and": {(*big.Int).And},
-	"andnot": {(*big.Int).AndNot},
-	"asinh":     {math.Asinh},
-	"asin":      {math.Asin},
-	"atan2":     {math.Atan2},
-	"atanh":     {math.Atanh},
-	"atan":      {math.Atan},
-	"cbrt":      {math.Cbrt},
-	"ceil":      {math.Ceil},
-	"copysign":  {math.Copysign},
-	"cosh":      {math.Cosh},
-	"cos":       {math.Cos},
-	"dim":       {math.Dim},
-	"div": {(*big.Int).Div},
-	"divmod": {(*big.Int).DivMod},
-	"erfc":      {math.Erfc},
-	"erf":       {math.Erf},
-	"exp2":      {math.Exp2},
-	"expm1":     {math.Expm1},
-	"exp":       {math.Exp},
-	"expmod": {(*big.Int).Exp},			// see also "pow", below
-	"float": {cvtFloat},
-	"floor":     {math.Floor},
-	"gamma":     {math.Gamma},
-	"gcd": {(*big.Int).GCD},
-	"hypot":     {math.Hypot},
-	"int":   {cvtInt},
-	"inv": {(*big.Rat).Inv},
-	"j0":        {math.J0},
-	"j1":        {math.J1},
-	"log10":     {math.Log10},
-	"log1p":     {math.Log1p},
-	"log2":      {math.Log2},
-	"logb":      {math.Logb},
-	"log":       {math.Log},
-	"max":       {math.Max},
-	"min":       {math.Min},
-	"mod": {math.Mod, (*big.Int).Mod},
+	"abs":        {math.Abs, (*big.Int).Abs, (*big.Rat).Abs},
+	"acosh":      {math.Acosh},
+	"acos":       {math.Acos},
+	"add":        {mathAdd, (*big.Int).Add, (*big.Rat).Add},
+	"and":        {(*big.Int).And},
+	"andnot":     {(*big.Int).AndNot},
+	"asinh":      {math.Asinh},
+	"asin":       {math.Asin},
+	"atan2":      {math.Atan2},
+	"atanh":      {math.Atanh},
+	"atan":       {math.Atan},
+	"cbrt":       {math.Cbrt},
+	"ceil":       {math.Ceil},
+	"copysign":   {math.Copysign},
+	"cosh":       {math.Cosh},
+	"cos":        {math.Cos},
+	"dim":        {math.Dim},
+	"div":        {(*big.Int).Div},
+	"divmod":     {(*big.Int).DivMod},
+	"erfc":       {math.Erfc},
+	"erf":        {math.Erf},
+	"exp2":       {math.Exp2},
+	"expm1":      {math.Expm1},
+	"exp":        {math.Exp},
+	"expmod":     {(*big.Int).Exp}, // see also "pow", below
+	"float":      {cvtFloat},
+	"floor":      {math.Floor},
+	"gamma":      {math.Gamma},
+	"gcd":        {(*big.Int).GCD},
+	"hypot":      {math.Hypot},
+	"int":        {cvtInt},
+	"inv":        {(*big.Rat).Inv},
+	"j0":         {math.J0},
+	"j1":         {math.J1},
+	"log10":      {math.Log10},
+	"log1p":      {math.Log1p},
+	"log2":       {math.Log2},
+	"logb":       {math.Logb},
+	"log":        {math.Log},
+	"max":        {math.Max},
+	"min":        {math.Min},
+	"mod":        {math.Mod, (*big.Int).Mod},
 	"modinverse": {(*big.Int).ModInverse},
-	"mul": {mathMul, (*big.Int).Mul, (*big.Rat).Mul},
-	"neg": {mathNeg, (*big.Int).Neg, (*big.Rat).Neg},
-	"nextafter": {math.Nextafter},
-	"not": {(*big.Int).Not},
-	"or": {(*big.Int).Or},
-	"pow":       {math.Pow, intPow},
-	"quo": {mathQuo, (*big.Int).Quo, (*big.Rat).Quo},
-	"quorem": {(*big.Int).QuoRem},
-	"rat":   {cvtRat},
-	"remainder": {math.Remainder},
-	"rem": {math.Remainder, (*big.Int).Rem},
-	"sinh":      {math.Sinh},
-	"sin":       {math.Sin},
-	"sqrt":      {math.Sqrt},
-	"sub": {mathSub, (*big.Int).Sub, (*big.Rat).Sub},
-	"tanh":      {math.Tanh},
-	"tan":       {math.Tan},
-	"trunc":     {math.Trunc},
-	"xor": {(*big.Int).Xor},
-	"y0":        {math.Y0},
-	"y1":        {math.Y1},
+	"mul":        {mathMul, (*big.Int).Mul, (*big.Rat).Mul},
+	"neg":        {mathNeg, (*big.Int).Neg, (*big.Rat).Neg},
+	"nextafter":  {math.Nextafter},
+	"not":        {(*big.Int).Not},
+	"or":         {(*big.Int).Or},
+	"pow":        {math.Pow, intPow},
+	"quo":        {mathQuo, (*big.Int).Quo, (*big.Rat).Quo},
+	"quorem":     {(*big.Int).QuoRem},
+	"rat":        {cvtRat},
+	"remainder":  {math.Remainder},
+	"rem":        {math.Remainder, (*big.Int).Rem},
+	"sinh":       {math.Sinh},
+	"sin":        {math.Sin},
+	"sqrt":       {math.Sqrt},
+	"sub":        {mathSub, (*big.Int).Sub, (*big.Rat).Sub},
+	"tanh":       {math.Tanh},
+	"tan":        {math.Tan},
+	"trunc":      {math.Trunc},
+	"xor":        {(*big.Int).Xor},
+	"y0":         {math.Y0},
+	"y1":         {math.Y1},
 }
 
 func init() {
-	ops["help"] = []interface{}{help}		// break initialisation cycle
+	ops["help"] = []interface{}{help} // break initialisation cycle
 }
 
 var alias = map[string]string{
@@ -135,7 +136,7 @@ var patterns = []pattern{
 		regex(floatPat + "/" + floatPat),
 		genericOp{0, 1, func(s *stack, p string) {
 			i := strings.Index(p, "/")
-			r0, ok0 := new(big.Rat).SetString(p[0 : i])
+			r0, ok0 := new(big.Rat).SetString(p[0:i])
 			r1, ok1 := new(big.Rat).SetString(p[i+1:])
 			if !ok0 || !ok1 {
 				s.fatalf("bad rational %q", p)
@@ -164,4 +165,49 @@ var patterns = []pattern{
 			}
 		}},
 	},
+}
+
+// We define intPow here because there's a naming
+// clash between math (e ** x) and big (x ** y ^ m)
+func intPow(z, x, y *big.Int) *big.Int {
+	return z.Exp(x, y, nil)
+}
+
+func mathAdd(x, y float64) float64 {
+	return x + y
+}
+
+func mathSub(x, y float64) float64 {
+	return x - y
+}
+
+func mathMul(x, y float64) float64 {
+	return x * y
+}
+
+func mathQuo(x, y float64) float64 {
+	return x / y
+}
+
+func mathNeg(x float64) float64 {
+	return -x
+}
+
+var cvtInt = genericOp{1, 1, func(s *stack, _ string) {
+	v := s.pop()
+	s.push(v, v.toInt())
+}}
+
+var cvtFloat = genericOp{1, 1, func(s *stack, _ string) {
+	v := s.pop()
+	s.push(v, v.toFloat())
+}}
+
+var cvtRat = genericOp{1, 1, func(s *stack, _ string) {
+	v := s.pop()
+	s.push(v, v.toRat())
+}}
+
+func regex(s string) *regexp.Regexp {
+	return regexp.MustCompile("^(" + s + ")$")
 }
