@@ -1,8 +1,10 @@
 package canvas
 
 import (
-	"exp/draw"
+	"code.google.com/p/x-go-binding/ui"
+	"image/draw"
 	"image"
+	"image/color"
 )
 
 // A MoveableItem is an item that may be
@@ -29,7 +31,7 @@ func Draggable(it MoveableItem) MoveableItem {
 
 var _ HandlerItem = &dragger{}
 
-func (d *dragger) HandleMouse(f Flusher, m draw.MouseEvent, ec <-chan interface{}) bool {
+func (d *dragger) HandleMouse(f Flusher, m ui.MouseEvent, ec <-chan interface{}) bool {
 	if m.Buttons&1 == 0 {
 		if h, ok := d.MoveableItem.(HandleMouser); ok {
 			return h.HandleMouse(f, m, ec)
@@ -39,7 +41,7 @@ func (d *dragger) HandleMouse(f Flusher, m draw.MouseEvent, ec <-chan interface{
 	delta := centre(d.Bbox()).Sub(m.Loc)
 	but := m.Buttons
 	for {
-		if m, ok := (<-ec).(draw.MouseEvent); ok {
+		if m, ok := (<-ec).(ui.MouseEvent); ok {
 			d.SetCentre(m.Loc.Add(delta))
 			f.Flush()
 			if (m.Buttons & but) != but {
@@ -51,9 +53,9 @@ func (d *dragger) HandleMouse(f Flusher, m draw.MouseEvent, ec <-chan interface{
 }
 
 type mover struct {
-	item Item
+	item    Item
 	backing Backing
-	delta image.Point		// vector from backing to item coords
+	delta   image.Point // vector from backing to item coords
 }
 
 func Moveable(item Item) MoveableItem {
@@ -62,14 +64,14 @@ func Moveable(item Item) MoveableItem {
 	return m
 }
 
-// func (mov *mover) HandleMouse(m draw.MouseEvent, ec <-chan interface{}) bool
+// func (mov *mover) HandleMouse(m ui.MouseEvent, ec <-chan interface{}) bool
 // we'd like to be able to pass the mouse events on to our item
 // here, but we can't do so without possibly consuming one
 // mouse event too many, as we'd have to impose an intermediate
 // process to do coord translation, which adds a buffer size of one.
 
 func (m *mover) SetCentre(p image.Point) {
-	m.backing.Atomically(func(flush FlushFunc){
+	m.backing.Atomically(func(flush FlushFunc) {
 		bbox := m.item.Bbox()
 		oldr := bbox.Sub(m.delta)
 		m.delta = centre(bbox).Sub(p)
@@ -85,8 +87,8 @@ func (m *mover) SetContainer(b Backing) {
 }
 
 func (m *mover) Atomically(f func(FlushFunc)) {
-	m.backing.Atomically(func(flush FlushFunc){
-		f(func(r image.Rectangle, it Drawer){
+	m.backing.Atomically(func(flush FlushFunc) {
+		f(func(r image.Rectangle, it Drawer) {
 			if it != nil {
 				it = m
 			}
@@ -106,12 +108,12 @@ func (m *mover) Flush() {
 }
 
 func (m *mover) Draw(img draw.Image, clipr image.Rectangle) {
-//debugp("mover draw clipr %v; centre %v; delta %v\n", clipr, centre(m.item.Bbox()), m.delta)
+	//debugp("mover draw clipr %v; centre %v; delta %v\n", clipr, centre(m.item.Bbox()), m.delta)
 	clipr = clipr.Add(m.delta)
 	i := SliceImage(clipr.Max.X, clipr.Max.Y, clipr, img, m.delta)
-//debugp("item draw clipr %v; delta %v; bbox %v\n", clipr, m.delta, m.item.Bbox())
+	//debugp("item draw clipr %v; delta %v; bbox %v\n", clipr, m.delta, m.item.Bbox())
 	m.item.Draw(i, clipr)
-//debugp("item drawn\n")
+	//debugp("item drawn\n")
 }
 
 func (m *mover) Bbox() image.Rectangle {
@@ -130,15 +132,16 @@ type rectBacking struct {
 	Backing
 	r image.Rectangle
 }
+
 func (b rectBacking) Rect() image.Rectangle {
 	return b.r
 }
 
 func ImageOf(it Item) *image.RGBA {
 	r := it.Bbox()
-	img := image.NewRGBA(r.Dx(), r.Dy())
+	img := image.NewRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
 	b := Backing(rectBacking{NullBacking(), image.Rect(0, 0, r.Dx(), r.Dy())})
-	b.Atomically(func(_ FlushFunc){
+	b.Atomically(func(_ FlushFunc) {
 		it.SetContainer(b)
 		it.Draw(SliceImage(r.Max.X, r.Max.Y, r, img, r.Min), r)
 		it.SetContainer(nil)
@@ -148,8 +151,8 @@ func ImageOf(it Item) *image.RGBA {
 
 type imageSlice struct {
 	img draw.Image
-	r image.Rectangle		// rect actually backed with an image.
-	p image.Point			// origin of img.
+	r   image.Rectangle // rect actually backed with an image.
+	p   image.Point     // origin of img.
 }
 
 var _ draw.Image = (*imageSlice)(nil)
@@ -166,28 +169,28 @@ func SliceImage(width, height int, r image.Rectangle, img draw.Image, p image.Po
 	i := new(imageSlice)
 	i.img = img
 	i.r = r.Intersect(image.Rectangle{p, p.Add(img.Bounds().Size())})
-//debugp("actual sliced rectangle %v\n", i.r)
+	//debugp("actual sliced rectangle %v\n", i.r)
 	i.p = p
 	return i
 }
 
 func (i *imageSlice) DrawMask(r image.Rectangle, src image.Image, sp image.Point, mask image.Image, mp image.Point, op draw.Op) bool {
-//debugp("imageslice draw %v; sp %v\n", r, sp)
+	//debugp("imageslice draw %v; sp %v\n", r, sp)
 	dr := r.Intersect(i.r)
 	if dr.Empty() {
-//debugp("-> clipped empty (r %v)\n", i.r)
+		//debugp("-> clipped empty (r %v)\n", i.r)
 		return true
 	}
-	delta := dr.Min.Sub(r.Min)			// realignment because of clipping.
+	delta := dr.Min.Sub(r.Min) // realignment because of clipping.
 	sp = sp.Add(delta)
 	mp = mp.Add(delta)
 	dr = dr.Sub(i.p)
-//debugp("-> draw %v; sp %v\n", dr, sp)
+	//debugp("-> draw %v; sp %v\n", dr, sp)
 	draw.DrawMask(i.img, dr, src, sp, mask, mp, op)
 	return true
 }
 
-func (i *imageSlice) ColorModel() image.ColorModel {
+func (i *imageSlice) ColorModel() color.Model {
 	return i.img.ColorModel()
 }
 
@@ -195,18 +198,18 @@ func (i *imageSlice) Bounds() image.Rectangle {
 	return i.r
 }
 
-func (i *imageSlice) At(x, y int) image.Color {
+func (i *imageSlice) At(x, y int) color.Color {
 	p := image.Point{x, y}
-	if i.r.Contains(p) {
+	if p.In(i.r) {
 		p = p.Add(i.p)
 		return i.img.At(p.X, p.Y)
 	}
-	return image.RGBAColor{0, 0, 0, 0}
+	return color.RGBA{0, 0, 0, 0}
 }
 
-func (i *imageSlice) Set(x, y int, c image.Color) {
+func (i *imageSlice) Set(x, y int, c color.Color) {
 	p := image.Point{x, y}
-	if i.r.Contains(p) {
+	if p.In(i.r) {
 		p = p.Add(i.p)
 		i.img.Set(p.X, p.Y, c)
 	}

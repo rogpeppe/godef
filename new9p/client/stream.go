@@ -1,17 +1,16 @@
 package client
 
 import (
-	"io"
-	"os"
-	"sync"
-	"rog-go.googlecode.com/hg/new9p/seq"
-"log"
+	"code.google.com/p/rog-go/new9p/seq"
 	"container/list"
+	"io"
+	"log"
+	"sync"
 )
 
 type readResult struct {
 	buf []byte
-	err os.Error
+	err error
 }
 
 type streamReader struct {
@@ -21,9 +20,9 @@ type streamReader struct {
 	done  bool
 }
 
-func (cr *streamReader) Read(buf []byte) (int, os.Error) {
+func (cr *streamReader) Read(buf []byte) (int, error) {
 	if cr.done {
-		return 0, os.EOF
+		return 0, io.EOF
 	}
 	if len(cr.buf) == 0 {
 		// no bytes in buffer: try to get some more.
@@ -45,8 +44,8 @@ func (cr *streamReader) Read(buf []byte) (int, os.Error) {
 	return n, nil
 }
 
-func (cr *streamReader) Close() os.Error {
-//	cr.seq.Flush()
+func (cr *streamReader) Close() error {
+	//	cr.seq.Flush()
 	if !cr.done {
 		close(cr.reply)
 		cr.done = true
@@ -54,9 +53,9 @@ func (cr *streamReader) Close() os.Error {
 	return nil
 }
 
-func (cr *streamReader) WriteTo(w io.Writer) (tot int64, err os.Error) {
+func (cr *streamReader) WriteTo(w io.Writer) (tot int64, err error) {
 	if cr.done {
-		return 0, os.EOF
+		return 0, io.EOF
 	}
 	if len(cr.buf) > 0 {
 		n, err := w.Write(cr.buf)
@@ -69,7 +68,7 @@ func (cr *streamReader) WriteTo(w io.Writer) (tot int64, err os.Error) {
 		r := <-cr.c
 		if r.err != nil {
 			cr.done = true
-			if r.err == os.EOF {
+			if r.err == io.EOF {
 				r.err = nil
 			}
 			return tot, r.err
@@ -111,11 +110,11 @@ func (nsf *NsFile) SeqReadStream(sq *seq.Sequencer, nreqs, iounit int) io.ReadCl
 				break
 			}
 			q.Put(b)
-log.Printf("stream doer: read %v", offset)
+			log.Printf("stream doer: read %v", offset)
 			sq.Do(f, seq.ReadReq{b, offset})
 			offset += int64(len(b))
 		}
-log.Printf("stream doer: do(nil, nil)")
+		log.Printf("stream doer: do(nil, nil)")
 		sq.Do(nil, nil)
 		done <- true
 	}()
@@ -124,7 +123,7 @@ log.Printf("stream doer: do(nil, nil)")
 	go func() {
 		readerClosed := false
 		for r := range results {
-log.Printf("stream: got result %#v (chan %p)\n", r, results)
+			log.Printf("stream: got result %#v (chan %p)\n", r, results)
 			b := q.Get().([]byte)
 			cr.c <- readResult{b[0:r.(seq.ReadResult).Count], nil}
 			if !<-cr.reply {
@@ -133,12 +132,12 @@ log.Printf("stream: got result %#v (chan %p)\n", r, results)
 			}
 			bufs <- b
 		}
-log.Printf("stream: closed")
+		log.Printf("stream: closed")
 		// Stop as many requests as possible from being sent.
 		// If we implemented flush, we would flush the request now.
 	loop:
 		for {
-			select{
+			select {
 			case <-bufs:
 			default:
 				break loop
@@ -148,19 +147,19 @@ log.Printf("stream: closed")
 
 		// Absorb and ignore any extra replies.
 		for r := range results {
-log.Printf("stream: aborbing extra: %#v\n", r)
+			log.Printf("stream: aborbing extra: %#v\n", r)
 		}
 		<-done
 
 		err := sq.Error()
 		if !readerClosed {
-log.Printf("stream: sending error to reader")
+			log.Printf("stream: sending error to reader")
 			if err == nil {
-				err = os.EOF
+				err = io.EOF
 			}
 			cr.c <- readResult{nil, err}
 		}
-log.Printf("stream: yielding result, err %#v\n", err)
+		log.Printf("stream: yielding result, err %#v\n", err)
 		sq.Result(seq.StringResult("SeqReadStream"), err)
 	}()
 	return cr

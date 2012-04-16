@@ -5,15 +5,14 @@
 package g9p
 
 import (
-	"syscall"
 	"fmt"
-	"os"
+	"syscall"
 )
 
 // Creates a Fcall value from the on-the-wire representation. If
 // dotu is true, reads 9P2000.u messages. Returns the unpacked message,
 // error and how many bytes from the buffer were used by the message.
-func Unpack(buf []byte, dotu bool) (fc *Fcall, err os.Error, fcsz int) {
+func Unpack(buf []byte, dotu bool) (fc *Fcall, err error, fcsz int) {
 	var m uint16
 
 	if len(buf) < 7 {
@@ -32,8 +31,8 @@ func Unpack(buf []byte, dotu bool) (fc *Fcall, err os.Error, fcsz int) {
 
 	if int(fc.Size) > len(buf) || fc.Size < 7 {
 		return nil, &Error{fmt.Sprintf("buffer too short: %d expected %d",
-			len(buf), fc.Size),
-			syscall.EINVAL},
+				len(buf), fc.Size),
+				syscall.EINVAL},
 			0
 	}
 

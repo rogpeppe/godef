@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 package g9p
-import "os"
 
 // Logger is a common interface that allows clients and servers
 // to see all 9p messages in transit, for debugging, for
@@ -13,7 +12,7 @@ type Logger interface {
 }
 
 // Create a Rversion message in the specified Fcall.
-func PackRversion(fc *Fcall, msize uint32, version string) os.Error {
+func PackRversion(fc *Fcall, msize uint32, version string) error {
 	size := 4 + 2 + len(version) /* msize[4] version[s] */
 	p, err := packCommon(fc, size, Rversion)
 	if err != nil {
@@ -29,7 +28,7 @@ func PackRversion(fc *Fcall, msize uint32, version string) os.Error {
 }
 
 // Create a Rauth message in the specified Fcall.
-func PackRauth(fc *Fcall, aqid *Qid) os.Error {
+func PackRauth(fc *Fcall, aqid *Qid) error {
 	size := 13 /* aqid[13] */
 	p, err := packCommon(fc, size, Rauth)
 	if err != nil {
@@ -44,7 +43,7 @@ func PackRauth(fc *Fcall, aqid *Qid) os.Error {
 // Create a Rerror message in the specified Fcall. If dotu is true,
 // the function will create a 9P2000.u message. If false, nerror is
 // ignored.
-func PackRerror(fc *Fcall, error string, errornum uint32, dotu bool) os.Error {
+func PackRerror(fc *Fcall, error string, errornum uint32, dotu bool) error {
 	size := 2 + len(error) /* ename[s] */
 	if dotu {
 		size += 4 /* ecode[4] */
@@ -66,14 +65,14 @@ func PackRerror(fc *Fcall, error string, errornum uint32, dotu bool) os.Error {
 }
 
 // Create a Rflush message in the specified Fcall.
-func PackRflush(fc *Fcall) os.Error {
+func PackRflush(fc *Fcall) error {
 	_, err := packCommon(fc, 0, Rflush)
 
 	return err
 }
 
 // Create a Rattach message in the specified Fcall.
-func PackRattach(fc *Fcall, aqid *Qid) os.Error {
+func PackRattach(fc *Fcall, aqid *Qid) error {
 	size := 13 /* aqid[13] */
 	p, err := packCommon(fc, size, Rattach)
 	if err != nil {
@@ -86,7 +85,7 @@ func PackRattach(fc *Fcall, aqid *Qid) os.Error {
 }
 
 // Create a Rwalk message in the specified Fcall.
-func PackRwalk(fc *Fcall, wqids []Qid) os.Error {
+func PackRwalk(fc *Fcall, wqids []Qid) error {
 	nwqid := len(wqids)
 	size := 2 + nwqid*13 /* nwqid[2] nwname*wqid[13] */
 	p, err := packCommon(fc, size, Rwalk)
@@ -105,7 +104,7 @@ func PackRwalk(fc *Fcall, wqids []Qid) os.Error {
 }
 
 // Create a Ropen message in the specified Fcall.
-func PackRopen(fc *Fcall, qid *Qid, iounit uint32) os.Error {
+func PackRopen(fc *Fcall, qid *Qid, iounit uint32) error {
 	size := 13 + 4 /* qid[13] iounit[4] */
 	p, err := packCommon(fc, size, Ropen)
 	if err != nil {
@@ -120,7 +119,7 @@ func PackRopen(fc *Fcall, qid *Qid, iounit uint32) os.Error {
 }
 
 // Create a Rcreate message in the specified Fcall.
-func PackRcreate(fc *Fcall, qid *Qid, iounit uint32) os.Error {
+func PackRcreate(fc *Fcall, qid *Qid, iounit uint32) error {
 	size := 13 + 4 /* qid[13] iounit[4] */
 	p, err := packCommon(fc, size, Rcreate)
 	if err != nil {
@@ -138,7 +137,7 @@ func PackRcreate(fc *Fcall, qid *Qid, iounit uint32) os.Error {
 // The user should copy the returned data to the slice pointed by
 // fc.Data and call SetRreadCount to update the data size to the
 // actual value.
-func InitRread(fc *Fcall, count uint32) os.Error {
+func InitRread(fc *Fcall, count uint32) error {
 	size := int(4 + count) /* count[4] data[count] */
 	p, err := packCommon(fc, size, Rread)
 	if err != nil {
@@ -166,7 +165,7 @@ func SetRreadCount(fc *Fcall, count uint32) {
 }
 
 // Create a Rread message in the specified Fcall.
-func PackRread(fc *Fcall, data []byte) os.Error {
+func PackRread(fc *Fcall, data []byte) error {
 	count := uint32(len(data))
 	err := InitRread(fc, count)
 	if err != nil {
@@ -178,7 +177,7 @@ func PackRread(fc *Fcall, data []byte) os.Error {
 }
 
 // Create a Rwrite message in the specified Fcall.
-func PackRwrite(fc *Fcall, count uint32) os.Error {
+func PackRwrite(fc *Fcall, count uint32) error {
 	p, err := packCommon(fc, 4, Rwrite) /* count[4] */
 	if err != nil {
 		return err
@@ -191,13 +190,13 @@ func PackRwrite(fc *Fcall, count uint32) os.Error {
 }
 
 // Create a Rclunk message in the specified Fcall.
-func PackRclunk(fc *Fcall) os.Error {
+func PackRclunk(fc *Fcall) error {
 	_, err := packCommon(fc, 0, Rclunk)
 	return err
 }
 
 // Create a Rremove message in the specified Fcall.
-func PackRremove(fc *Fcall) os.Error {
+func PackRremove(fc *Fcall) error {
 	_, err := packCommon(fc, 0, Rremove)
 	return err
 }
@@ -206,7 +205,7 @@ func PackRremove(fc *Fcall) os.Error {
 // function will create a 9P2000.u stat representation that includes
 // st.Nuid, st.Ngid, st.Nmuid and st.Ext. Otherwise these values will be
 // ignored.
-func PackRstat(fc *Fcall, d *Dir, dotu bool) os.Error {
+func PackRstat(fc *Fcall, d *Dir, dotu bool) error {
 	stsz := statsz(d, dotu)
 	size := 2 + stsz /* stat[n] */
 	p, err := packCommon(fc, size, Rstat)
@@ -221,7 +220,7 @@ func PackRstat(fc *Fcall, d *Dir, dotu bool) os.Error {
 }
 
 // Create a Rwstat message in the specified Fcall.
-func PackRwstat(fc *Fcall) os.Error {
+func PackRwstat(fc *Fcall) error {
 	_, err := packCommon(fc, 0, Rwstat)
 	return err
 }

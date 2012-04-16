@@ -1,7 +1,7 @@
 package basic
 
 import (
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 	"io"
 )
 
@@ -10,17 +10,17 @@ func Use() {
 
 // male side sends reader (or nil if it has no preference);
 // female replies with the actual fd to use (or nil if there's been an error)
-var FdT = &abc.Type{"fd", false, func(x interface{}) (ok bool) {_, ok = x.(Fd); return}}
+var FdT = &abc.Type{"fd", false, func(x interface{}) (ok bool) { _, ok = x.(Fd); return }}
 
 type Fd chan fdRequest
 
 type fdRequest struct {
-	r io.Reader
+	r  io.Reader
 	wc chan io.Writer
 }
 
+type nullWidget struct{}
 
-type nullWidget struct { }
 func (_ nullWidget) Plug(_ string, _ interface{}) {
 }
 
@@ -38,8 +38,8 @@ func (fd Fd) GetReader() io.Reader {
 		r, w := io.Pipe()
 		req.wc <- w
 		req.r = r
-	}else{
-		req.wc <- nil			// reader accepted; other end can now disappear
+	} else {
+		req.wc <- nil // reader accepted; other end can now disappear
 	}
 	return req.r
 }
@@ -59,4 +59,3 @@ func close(x interface{}) {
 		x.Close()
 	}
 }
-

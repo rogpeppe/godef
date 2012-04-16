@@ -1,20 +1,21 @@
 package main
 
 import (
+	g9p "code.google.com/p/rog-go/new9p"
+	g9pc "code.google.com/p/rog-go/new9p/client"
 	"flag"
+	"fmt"
+	"io"
+	"io/ioutil"
 	"log"
 	"os"
-	"io"
-	"fmt"
-	"io/ioutil"
-	g9p "rog-go.googlecode.com/hg/new9p"
-	g9pc "rog-go.googlecode.com/hg/new9p/client"
 )
 
 var old = flag.Bool("old", false, "use old 9p operations")
 var fs *g9pc.Fsys
 var ns *g9pc.Ns
 var sum = make(chan int64)
+
 func main() {
 	log.SetOutput(nullWriter{})
 	flag.Parse()
@@ -22,14 +23,14 @@ func main() {
 		fmt.Fprintln(os.Stderr, "usage: bundle addr dir")
 		return
 	}
-	var err os.Error
+	var err error
 	fs, err = g9pc.Mount("tcp", flag.Arg(0), "")
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "mount failed:", err)
 		return
 	}
 	root := g9pc.NewNsFile(fs.Root.File())
-	ns = &g9pc.Ns{Root:root, Dot: root}
+	ns = &g9pc.Ns{Root: root, Dot: root}
 	fmt.Println("mounted")
 	dir := flag.Arg(1)
 	if *old {
@@ -37,7 +38,7 @@ func main() {
 			oldwalk(dir)
 			close(sum)
 		}()
-	}else{
+	} else {
 		go func() {
 			newwalk(dir, true)
 			close(sum)
@@ -96,14 +97,15 @@ func newwalk(name string, isDir bool) {
 			return
 		}
 		for _, dir := range d {
-			newwalk(name + "/" + dir.Name, dir.Qid.Type&g9p.QTDIR != 0)
+			newwalk(name+"/"+dir.Name, dir.Qid.Type&g9p.QTDIR != 0)
 		}
 		return
 	}
-	sum <-count(r)
+	sum <- count(r)
 }
 
-type nullWriter struct {}
-func (nullWriter) Write(data []byte) (int, os.Error) {
+type nullWriter struct{}
+
+func (nullWriter) Write(data []byte) (int, error) {
 	return len(data), nil
 }

@@ -1,12 +1,13 @@
 package main
 
 import (
+	"code.google.com/p/rog-go/go9p/g9p"
+	"code.google.com/p/rog-go/go9p/g9pc"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
-	"rog-go.googlecode.com/hg/go9p/g9p"
-	"rog-go.googlecode.com/hg/go9p/g9pc"
 )
 
 var debuglevel = flag.Int("d", 0, "debuglevel")
@@ -40,7 +41,7 @@ func main() {
 	buf := make([]byte, 8192)
 	for {
 		n, oserr := os.Stdin.Read(buf)
-		if oserr != nil && oserr != os.EOF {
+		if oserr != nil && oserr != io.EOF {
 			err = &g9p.Error{oserr.String(), 0}
 			goto error
 		}

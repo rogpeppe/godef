@@ -1,7 +1,7 @@
 package basic
 
 import (
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 	"os"
 )
 
@@ -9,7 +9,7 @@ func init() {
 	abc.Register("write", map[string]abc.Socket{
 		"1": abc.Socket{FdT, abc.Female},
 		"2": abc.Socket{abc.StringT, abc.Female},
-	},makeWrite)
+	}, makeWrite)
 }
 
 func makeWrite(_ *abc.Status, args map[string]interface{}) abc.Widget {

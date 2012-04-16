@@ -1,21 +1,36 @@
 package canvas
 
 import (
-	"container/vector"
+	"code.google.com/p/freetype-go/freetype/raster"
 	"image"
-	"freetype-go.googlecode.com/hg/freetype/raster"
 )
 
 // A ellipse object represents an ellipse centered in cr
 // with radiuses ra and rb
 type Ellipse struct {
 	Item
-	raster RasterItem
+	raster  RasterItem
 	backing Backing
-	cr raster.Point
-	ra, rb raster.Fix32
-	width  raster.Fix32
-	pts *vector.Vector
+	cr      raster.Point
+	ra, rb  raster.Fix32
+	width   raster.Fix32
+	pts     pointVec
+}
+
+type pointVec []raster.Point
+
+func (v *pointVec) Push(p raster.Point) {
+	*v = append(*v, p)
+}
+
+func (v *pointVec) Pop() raster.Point {
+	s := *v
+	if len(s) == 0 {
+		panic("empty vec")
+	}
+	p := s[len(s)-1]
+	*v = s[0:len(s)-1]
+	return p
 }
 
 //color, center, radius a radius b and width
@@ -41,10 +56,9 @@ func (obj *Ellipse) SetContainer(b Backing) {
 
 // See A Fast Bresenham Type Algorithm For Drawing Ellipses
 // by John Kennedy
-func bresham(ra int, sqa, sqb int, pts *vector.Vector, rev bool) int {
-
+func bresham(ra int, sqa, sqb int, pts *pointVec, rev bool) int {
 	i := 0
-	stopx :=  2 *sqb*ra
+	stopx := 2 * sqb * ra
 	stopy := 0
 
 	x := ra
@@ -60,17 +74,17 @@ func bresham(ra int, sqa, sqb int, pts *vector.Vector, rev bool) int {
 			pts.Push(raster.Point{int2fix(x), int2fix(y)})
 		} else {
 			pts.Push(raster.Point{int2fix(y), int2fix(x)})
-		} 
+		}
 		i++
 		y++
-		stopy += 2 *sqa
+		stopy += 2 * sqa
 		err += dy
-		dy += 2 *sqa
-		if 2*err + dx > 0 {
+		dy += 2 * sqa
+		if 2*err+dx > 0 {
 			x--
-			stopx -= 2 *sqb
+			stopx -= 2 * sqb
 			err += dx
-			dx += 2 *sqb
+			dx += 2 * sqb
 		}
 	}
 	return i
@@ -82,31 +96,28 @@ func (obj *Ellipse) makeOutline() {
 
 	var totnq int
 	var pt raster.Point
-	var pts2 *vector.Vector
+	var pts2 pointVec
 
 	obj.raster.Clear()
 	nquadr2 := 0
 	pts := obj.pts
-
-	if pts == nil {	
+	if len(pts) == 0 {
 		sqa := fix2int(obj.ra * obj.ra)
-		sqb :=  fix2int(obj.rb * obj.rb)
-	
+		sqb := fix2int(obj.rb * obj.rb)
+
 		ra := fix2int(obj.ra)
-		pts = new(vector.Vector)
-		nquadr :=  bresham(ra, sqa, sqb, pts, false)
-	
+		nquadr := bresham(ra, sqa, sqb, &pts, false)
+
 		rb := fix2int(obj.rb)
-		pts2 = new(vector.Vector)
-		nquadr2 = bresham(rb, sqb, sqa, pts2, true)
-		totnq = nquadr+nquadr2
-	
+		nquadr2 = bresham(rb, sqb, sqa, &pts2, true)
+		totnq = nquadr + nquadr2
+
 		obj.pts = pts
-	} else {	
-		totnq = len(*pts)
+	} else {
+		totnq = len(pts)
 	}
-	pt = pts.At(0).(raster.Point)
-	pt0 := raster.Point{obj.cr.X+pt.X, obj.cr.Y+pt.Y}
+	pt = pts[0]
+	pt0 := raster.Point{obj.cr.X + pt.X, obj.cr.Y + pt.Y}
 	obj.raster.Start(pt0)
 	for j := 0; j < totnq; j++ {
 		if nquadr2 > 0 {
@@ -114,24 +125,24 @@ func (obj *Ellipse) makeOutline() {
 			nquadr2--
 		}
 
-		pt = pts.At(j).(raster.Point)
-		ptl := raster.Point{obj.cr.X+pt.X, obj.cr.Y+pt.Y}
+		pt = pts[j]
+		ptl := raster.Point{obj.cr.X + pt.X, obj.cr.Y + pt.Y}
 		obj.raster.Add1(ptl)
 	}
 
-	 for j := 0; j < totnq; j++ {
-		pt = pts.At(totnq-j-1).(raster.Point)
-		ptl := raster.Point{obj.cr.X-pt.X, obj.cr.Y+pt.Y}
+	for j := 0; j < totnq; j++ {
+		pt = pts[totnq-j-1]
+		ptl := raster.Point{obj.cr.X - pt.X, obj.cr.Y + pt.Y}
 		obj.raster.Add1(ptl)
 	}
 	for j := 0; j < totnq; j++ {
-		pt = pts.At(j).(raster.Point)
-		ptl := raster.Point{obj.cr.X+pt.X, obj.cr.Y-pt.Y}
+		pt = pts[j]
+		ptl := raster.Point{obj.cr.X + pt.X, obj.cr.Y - pt.Y}
 		obj.raster.Add1(ptl)
 	}
 	for j := 0; j < totnq; j++ {
-		pt = pts.At(totnq-j-1).(raster.Point)
-		ptl := raster.Point{obj.cr.X-pt.X, obj.cr.Y-pt.Y}
+		pt = pts[totnq-j-1]
+		ptl := raster.Point{obj.cr.X - pt.X, obj.cr.Y - pt.Y}
 		obj.raster.Add1(ptl)
 	}
 

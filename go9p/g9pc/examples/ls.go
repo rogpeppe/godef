@@ -1,12 +1,12 @@
 package main
 
 import (
+	"code.google.com/p/rog-go/go9p/g9p"
+	"code.google.com/p/rog-go/go9p/g9pc"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"rog-go.googlecode.com/hg/go9p/g9p"
-	"rog-go.googlecode.com/hg/go9p/g9pc"
 )
 
 var debuglevel = flag.Int("d", 0, "debuglevel")
@@ -14,7 +14,7 @@ var addr = flag.String("addr", "127.0.0.1:5640", "network address")
 
 func main() {
 	var user g9p.User
-	var err os.Error
+	var err error
 	var c *g9pc.Client
 	var file *g9pc.File
 	var d []*g9p.Dir

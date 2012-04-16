@@ -1,7 +1,8 @@
 package seq
+
 import (
-	"os"
-	plan9 "rog-go.googlecode.com/hg/new9p"
+	plan9 "code.google.com/p/rog-go/new9p"
+	"errors"
 )
 
 type Req interface {
@@ -14,7 +15,7 @@ type Result interface {
 
 type CompositeReq interface {
 	Req
-	Do(seq *Sequencer, f File) os.Error		// executes action. must result in one result.
+	Do(seq *Sequencer, f File) error // executes action. must result in one result.
 }
 
 type BasicReq interface {
@@ -23,7 +24,7 @@ type BasicReq interface {
 }
 
 type File interface {
-	Do(op BasicReq) (Result, os.Error)
+	Do(op BasicReq) (Result, error)
 	IsOpen() bool
 	IsDir() bool
 	IsInSequence() bool
@@ -31,18 +32,20 @@ type File interface {
 }
 
 type FileSys interface {
-	NewFile() (File, os.Error)
-	StartSequence() (Sequence, <-chan Result, os.Error)
+	NewFile() (File, error)
+	StartSequence() (Sequence, <-chan Result, error)
 }
 
 type Sequence interface {
-	Do(f File, op BasicReq) os.Error
+	Do(f File, op BasicReq) error
 	FileSys() FileSys
-	Error() os.Error
+	Error() error
 }
-var Eaborted = os.NewError("sequence aborted")
+
+var Eaborted = errors.New("sequence aborted")
 
 type basicReq int
+
 const (
 	opClone basicReq = iota
 	opCreate
@@ -94,7 +97,7 @@ type (
 	}
 
 	ReadReq struct {
-		Data    []byte
+		Data   []byte
 		Offset int64
 	}
 	ReadResult struct {
@@ -107,7 +110,7 @@ type (
 	}
 
 	WriteReq struct {
-		Data    []byte
+		Data   []byte
 		Offset int64
 	}
 	WriteResult struct {
@@ -134,41 +137,41 @@ type (
 	StringResult string
 )
 
-func (CloneReq) Ttype() interface{} { return opClone }
+func (CloneReq) Ttype() interface{}  { return opClone }
 func (CreateReq) Ttype() interface{} { return opCreate }
-func (WalkReq) Ttype() interface{} { return opWalk }
-func (OpenReq) Ttype() interface{} { return opOpen }
-func (ReadReq) Ttype() interface{} { return opRead }
-func (WriteReq) Ttype() interface{} { return opWrite }
-func (StatReq) Ttype() interface{} { return opStat }
-func (WstatReq) Ttype() interface{} { return opWstat }
+func (WalkReq) Ttype() interface{}   { return opWalk }
+func (OpenReq) Ttype() interface{}   { return opOpen }
+func (ReadReq) Ttype() interface{}   { return opRead }
+func (WriteReq) Ttype() interface{}  { return opWrite }
+func (StatReq) Ttype() interface{}   { return opStat }
+func (WstatReq) Ttype() interface{}  { return opWstat }
 func (RemoveReq) Ttype() interface{} { return opRemove }
-func (ClunkReq) Ttype() interface{} { return opClunk }
-func (AbortReq) Ttype() interface{} { return opAbort }
+func (ClunkReq) Ttype() interface{}  { return opClunk }
+func (AbortReq) Ttype() interface{}  { return opAbort }
 func (NonseqReq) Ttype() interface{} { return opNonseq }
 
-func (CloneResult) Rtype() interface{} { return opClone }
+func (CloneResult) Rtype() interface{}  { return opClone }
 func (CreateResult) Rtype() interface{} { return opCreate }
-func (WalkResult) Rtype() interface{} { return opWalk }
-func (OpenResult) Rtype() interface{} { return opOpen }
-func (ReadResult) Rtype() interface{} { return opRead }
-func (WriteResult) Rtype() interface{} { return opWrite }
-func (StatResult) Rtype() interface{} { return opStat }
-func (WstatResult) Rtype() interface{} { return opWstat }
-func (ClunkResult) Rtype() interface{} { return opClunk }
+func (WalkResult) Rtype() interface{}   { return opWalk }
+func (OpenResult) Rtype() interface{}   { return opOpen }
+func (ReadResult) Rtype() interface{}   { return opRead }
+func (WriteResult) Rtype() interface{}  { return opWrite }
+func (StatResult) Rtype() interface{}   { return opStat }
+func (WstatResult) Rtype() interface{}  { return opWstat }
+func (ClunkResult) Rtype() interface{}  { return opClunk }
 func (RemoveResult) Rtype() interface{} { return opRemove }
 func (NonseqResult) Rtype() interface{} { return opNonseq }
 func (StringResult) Rtype() interface{} { return opNone }
 
-func (CloneReq) basic() {}
+func (CloneReq) basic()  {}
 func (CreateReq) basic() {}
-func (WalkReq) basic() {}
-func (OpenReq) basic() {}
-func (ReadReq) basic() {}
-func (WriteReq) basic() {}
-func (StatReq) basic() {}
-func (WstatReq) basic() {}
-func (ClunkReq) basic() {}
+func (WalkReq) basic()   {}
+func (OpenReq) basic()   {}
+func (ReadReq) basic()   {}
+func (WriteReq) basic()  {}
+func (StatReq) basic()   {}
+func (WstatReq) basic()  {}
+func (ClunkReq) basic()  {}
 func (RemoveReq) basic() {}
-func (AbortReq) basic() {}
+func (AbortReq) basic()  {}
 func (NonseqReq) basic() {}

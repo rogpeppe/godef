@@ -16,8 +16,10 @@ package canvas
 
 import (
 	"container/list"
-	"exp/draw"
+	"code.google.com/p/x-go-binding/ui"
+	"image/draw"
 	"image"
+	"image/color"
 	"log"
 )
 
@@ -101,7 +103,7 @@ type Item interface {
 // mc should not be used after HandleMouse returns.
 //
 type HandleMouser interface {
-	HandleMouse(f Flusher, m draw.MouseEvent, ec <-chan interface{}) bool
+	HandleMouse(f Flusher, m ui.MouseEvent, ec <-chan interface{}) bool
 }
 
 type HandlerItem interface {
@@ -119,7 +121,7 @@ var _ HandlerItem = (*Canvas)(nil)
 //
 type Canvas struct {
 	r          image.Rectangle // the bounding rectangle of the canvas.
-	img        draw.Image    // image we were last drawn onto
+	img        draw.Image      // image we were last drawn onto
 	backing    Backing
 	opaque     bool
 	background image.Image
@@ -131,14 +133,14 @@ type Canvas struct {
 // be opaque, and will used to draw the background.
 // r gives the extent of the canvas.
 //
-func NewCanvas(background image.Color, r image.Rectangle) *Canvas {
+func NewCanvas(background color.Color, r image.Rectangle) *Canvas {
 	// TODO: if background==nil, then
 	// r is irrelevant, and we can just calculate our bbox
 	// from the items we hold
 	c := new(Canvas)
 	if background != nil {
 		c.opaque = opaqueColor(background)
-		c.background = &image.ColorImage{background}
+		c.background = &image.Uniform{background}
 	}
 	c.backing = NullBacking()
 	c.r = r
@@ -179,7 +181,7 @@ func (c *Canvas) Flush() {
 // HandleMouse delivers the mouse events to the top-most
 // item that that is hit by the mouse point.
 //
-func (c *Canvas) HandleMouse(_ Flusher, m draw.MouseEvent, ec <-chan interface{}) bool {
+func (c *Canvas) HandleMouse(_ Flusher, m ui.MouseEvent, ec <-chan interface{}) bool {
 	var chosen HandlerItem
 	c.Atomically(func(_ FlushFunc) {
 		for e := c.items.Back(); e != nil; e = e.Prev() {
@@ -210,7 +212,7 @@ func (c *Canvas) Draw(dst draw.Image, clipr image.Rectangle) {
 	clipr = clipr.Intersect(c.r)
 	c.img = dst
 	if c.background != nil {
-		draw.Draw(dst, clipr, c.background, clipr.Min)
+		draw.Draw(dst, clipr, c.background, clipr.Min, draw.Over)
 	}
 	clipr = clipr.Intersect(c.r)
 	for e := c.items.Front(); e != nil; e = e.Next() {
@@ -246,13 +248,13 @@ func (c *Canvas) Raise(it, nextto Item, above bool) {
 			if ae != nil {
 				if above {
 					c.items.InsertAfter(it, ae)
-				}else{
+				} else {
 					c.items.InsertBefore(it, ae)
 				}
-			}else{
+			} else {
 				if above {
 					c.items.PushBack(it)
-				}else{
+				} else {
 					c.items.PushFront(it)
 				}
 			}
@@ -261,7 +263,6 @@ func (c *Canvas) Raise(it, nextto Item, above bool) {
 	})
 }
 
-
 // drawAbove draws only those items above it.
 //
 func (c *Canvas) drawAbove(it Item, clipr image.Rectangle) {
@@ -269,7 +270,7 @@ func (c *Canvas) drawAbove(it Item, clipr image.Rectangle) {
 	drawing := false
 	for e := c.items.Front(); e != nil; e = e.Next() {
 		if e.Value == nil {
-panic("nil value - can't happen?")
+			panic("nil value - can't happen?")
 			continue
 		}
 		item := e.Value.(Item)
@@ -298,7 +299,7 @@ func (c *Canvas) Delete(it Item) {
 		}
 		if removed {
 			it.SetContainer(NullBacking())
-		}else{
+		} else {
 			log.Printf("item %T not removed", it)
 		}
 	})
@@ -327,9 +328,9 @@ func (c *Canvas) Replace(it, it1 Item) (replaced bool) {
 // See the Backing interface for details
 //
 func (c *Canvas) Atomically(f func(FlushFunc)) {
-if c == nil || c.backing == nil {
-	panic("nil c or backing")
-}
+	if c == nil || c.backing == nil {
+		panic("nil c or backing")
+	}
 	c.backing.Atomically(func(bflush FlushFunc) {
 		f(func(r image.Rectangle, drawn Drawer) {
 			if drawn != nil {

@@ -5,7 +5,7 @@ import (
 	"os"
 )
 
-func Dial(network, addr string) (*Conn, os.Error) {
+func Dial(network, addr string) (*Conn, error) {
 	c, err := net.Dial(network, addr)
 	if err != nil {
 		return nil, err
@@ -13,7 +13,7 @@ func Dial(network, addr string) (*Conn, os.Error) {
 	return NewConn(c)
 }
 
-func DialService(service string) (*Conn, os.Error) {
+func DialService(service string) (*Conn, error) {
 	ns := os.Getenv("NAMESPACE")
 	if ns == "" {
 		return nil, Error("unknown name space")
@@ -21,7 +21,7 @@ func DialService(service string) (*Conn, os.Error) {
 	return Dial("unix", ns+"/"+service)
 }
 
-func Mount(network, addr string, aname string) (*Fsys, os.Error) {
+func Mount(network, addr string, aname string) (*Fsys, error) {
 	c, err := Dial(network, addr)
 	if err != nil {
 		return nil, err
@@ -33,7 +33,7 @@ func Mount(network, addr string, aname string) (*Fsys, os.Error) {
 	return fsys, err
 }
 
-func MountService(service string) (*Fsys, os.Error) {
+func MountService(service string) (*Fsys, error) {
 	c, err := DialService(service)
 	if err != nil {
 		return nil, err

@@ -4,13 +4,10 @@
 
 package g9pc
 
-import (
-	"os"
-	"rog-go.googlecode.com/hg/go9p/g9p"
-)
+import "code.google.com/p/rog-go/go9p/g9p"
 
 // Clunks a fid. Returns nil if successful.
-func (clnt *Client) Clunk(fid *Fid) (err os.Error) {
+func (clnt *Client) Clunk(fid *Fid) (err error) {
 	if fid.walked {
 		tc := clnt.newFcall()
 		err = g9p.PackTclunk(tc, fid.Fid)
@@ -28,7 +25,7 @@ func (clnt *Client) Clunk(fid *Fid) (err os.Error) {
 }
 
 // Closes a file. Returns nil if successful.
-func (file *File) Close() os.Error {
+func (file *File) Close() error {
 	// Should we cancel all pending requests for the File
 	return file.fid.Client.Clunk(file.fid)
 }

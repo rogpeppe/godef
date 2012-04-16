@@ -1,12 +1,12 @@
 package canvas
 
 import (
-	"exp/draw"
+	"code.google.com/p/freetype-go/freetype"
+	"code.google.com/p/freetype-go/freetype/raster"
+	"code.google.com/p/freetype-go/freetype/truetype"
+	"code.google.com/p/rog-go/values"
+	"image/draw"
 	"image"
-	"freetype-go.googlecode.com/hg/freetype"
-	"freetype-go.googlecode.com/hg/freetype/raster"
-	"freetype-go.googlecode.com/hg/freetype/truetype"
-	"rog-go.googlecode.com/hg/values"
 )
 
 const (
@@ -19,14 +19,14 @@ type TextItem struct {
 	Text string
 	Pt   raster.Point
 	bbox image.Rectangle
-	dst draw.Image
+	dst  draw.Image
 	fill image.Image
 
 	// these three painters are arranged in a stack, with the
 	// first at the bottom and the last at the top.
-	rp   raster.Painter
-	gp   *raster.GammaCorrectionPainter
-	cp   clippedPainter
+	rp raster.Painter
+	gp *raster.GammaCorrectionPainter
+	cp clippedPainter
 }
 
 func (d *TextItem) Init() *TextItem {
@@ -39,7 +39,7 @@ func (d *TextItem) Init() *TextItem {
 func (d *TextItem) makePainter() {
 	if d.dst != nil {
 		d.rp = NewPainter(d.dst, d.fill, draw.Over)
-	}else{
+	} else {
 		d.rp = nil
 	}
 	d.gp.Painter = d.rp
@@ -47,7 +47,7 @@ func (d *TextItem) makePainter() {
 
 func (d *TextItem) CalcBbox() {
 	var bbox bboxPainter
-//	d.DrawText(&bbox, d.Pt, d.Text)
+	//	d.DrawText(&bbox, d.Pt, d.Text)
 	d.bbox = bbox.R
 }
 
@@ -66,13 +66,13 @@ func (d *TextItem) Draw(dst draw.Image, clip image.Rectangle) {
 		d.makePainter()
 	}
 	d.cp.Clipr = clip
-//	d.DrawText(&d.cp, d.Pt, d.Text)
+	//	d.DrawText(&d.cp, d.Pt, d.Text)
 }
 
 func (d *TextItem) HitTest(p image.Point) bool {
 	var hit hitTestPainter
 	hit.P = p
-//	d.DrawText(&hit, d.Pt, d.Text)
+	//	d.DrawText(&hit, d.Pt, d.Text)
 	return hit.Hit
 }
 
@@ -85,12 +85,12 @@ func (d *TextItem) SetContainer(_ Backing) {
 
 type Text struct {
 	Item
-	item   TextItem
-	delta  image.Point // vector from upper left of bbox to text origin
-	p      image.Point
-	anchor Anchor
+	item    TextItem
+	delta   image.Point // vector from upper left of bbox to text origin
+	p       image.Point
+	anchor  Anchor
 	backing Backing
-	value values.Value
+	value   values.Value
 }
 
 // NewText creates a new item to display a line of text.
@@ -117,7 +117,12 @@ func NewText(p image.Point, where Anchor, s string, font *truetype.Font, size fl
 }
 
 func (t *Text) listener() {
-	for x := range t.value.Iter() {
+	g := t.value.Getter()
+	for {
+		x, ok := g.Get()
+		if !ok {
+			break
+		}
 		t.SetText(x.(string))
 		t.backing.Flush()
 	}

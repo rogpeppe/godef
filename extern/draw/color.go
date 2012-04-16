@@ -4,7 +4,10 @@
 
 package draw
 
-import "image"
+import (
+	"image"
+	"image/color"
+)
 
 // A Color represents a color with 8-bit R, G, B, and A values,
 // packed into a uint32—0xRRGGBBAA—so that comparison
@@ -15,7 +18,7 @@ import "image"
 type Color uint32
 
 // Check that Color implements image.Color and image.Image
-var _ image.Color = Black
+var _ color.Color = Black
 var _ image.Image = Black
 
 var (
@@ -92,9 +95,9 @@ func (c Color) Width() int { return 1e9 }
 
 func (c Color) Height() int { return 1e9 }
 
-func (c Color) At(x, y int) image.Color { return c }
+func (c Color) At(x, y int) color.Color { return c }
 
-func toColor(color image.Color) image.Color {
+func toColor(color color.Color) color.Color {
 	if c, ok := color.(Color); ok {
 		return c
 	}
@@ -102,4 +105,4 @@ func toColor(color image.Color) image.Color {
 	return Color(r>>8<<24 | g>>8<<16 | b>>8<<8 | a>>8)
 }
 
-func (c Color) ColorModel() image.ColorModel { return image.ColorModelFunc(toColor) }
+func (c Color) ColorModel() color.Model { return color.ModelFunc(toColor) }

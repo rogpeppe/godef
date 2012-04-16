@@ -4,18 +4,18 @@ package main
 
 import (
 	"bufio"
+	g9p "code.google.com/p/rog-go/new9p"
+	g9pc "code.google.com/p/rog-go/new9p/client"
+	"code.google.com/p/rog-go/new9p/seq"
 	"flag"
 	"fmt"
-	"log"
-	"os"
 	"io"
 	"io/ioutil"
+	"log"
+	"os"
 	"path"
-	"strings"
 	"strconv"
-	g9p  "rog-go.googlecode.com/hg/new9p"
-	g9pc "rog-go.googlecode.com/hg/new9p/client"
-	"rog-go.googlecode.com/hg/new9p/seq"
+	"strings"
 )
 
 var addr = flag.String("addr", "127.0.0.1:5640", "network address")
@@ -132,7 +132,7 @@ func lsone(ns *g9pc.Ns, s string, long bool) {
 		defer file.Close()
 		for {
 			d, err := file.Dirread()
-			if err != nil && err != os.EOF {
+			if err != nil && err != io.EOF {
 				fmt.Fprintf(os.Stderr, "error reading dir: %s\n", err)
 			}
 			if d == nil || len(d) == 0 {
@@ -307,6 +307,7 @@ func rmone(ns *g9pc.Ns, f string) {
 		return
 	}
 }
+
 // Remove one or more files from the server
 func cmdrm(ns *g9pc.Ns, s []string) {
 	for _, f := range s {
@@ -341,7 +342,6 @@ type traverser struct {
 	refc chan int
 	tokc chan bool
 }
-
 
 func cmdtorture(ns *g9pc.Ns, s []string) {
 	path := "."
@@ -437,7 +437,7 @@ func (t *traverser) traverse(parent *g9pc.NsFile, path, name string, sync chan b
 func (t *traverser) readDir(pseq *seq.Sequencer, fid *g9pc.NsFile, path string) {
 	t.printf("readDir %s", path)
 	sq, results := pseq.Subsequencer("readDir")
-	errc := make(chan os.Error, 1)
+	errc := make(chan error, 1)
 	go func() {
 		<-results          // SeqWalk (clone)
 		_, ok := <-results // OpenReq
@@ -522,7 +522,7 @@ func (t *traverser) release() {
 
 type nullWriter struct{}
 
-func (nullWriter) Write(data []byte) (int, os.Error) {
+func (nullWriter) Write(data []byte) (int, error) {
 	return len(data), nil
 }
 
@@ -557,8 +557,8 @@ func cmdread(ns *g9pc.Ns, s []string) {
 	sq, results := seq.NewSequencer()
 	go func() {
 		r := <-results // walk result
-		r = <-results // open result
-		r = <-results // readstream result
+		r = <-results  // open result
+		r = <-results  // readstream result
 		_, ok := <-results
 		if ok {
 			panic("expected closed")
@@ -659,7 +659,7 @@ func main() {
 	return
 }
 
-func Copy(dst io.Writer, src io.Reader) (written int64, err os.Error) {
+func Copy(dst io.Writer, src io.Reader) (written int64, err error) {
 	// If the writer has a ReadFrom method, use it to to do the copy.
 	// Avoids an allocation and a copy.
 	if rt, ok := dst.(io.ReaderFrom); ok {
@@ -686,7 +686,7 @@ func Copy(dst io.Writer, src io.Reader) (written int64, err os.Error) {
 				break
 			}
 		}
-		if er == os.EOF {
+		if er == io.EOF {
 			break
 		}
 		if er != nil {

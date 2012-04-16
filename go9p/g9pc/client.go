@@ -7,33 +7,33 @@
 package g9pc
 
 import (
+	"code.google.com/p/rog-go/go9p/g9p"
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"sync"
 	"syscall"
-	"io"
-	"os"
-	"rog-go.googlecode.com/hg/go9p/g9p"
 )
 
 // The Client type represents a 9P2000 client. The client is connected to
 // a 9P2000 file server and its methods can be used to access and manipulate
 // the files exported by the server.
 type Client struct {
-	mu sync.Mutex
-	msize      uint32 // Maximum size of the 9P messages
-	dotu       bool   // If true, 9P2000.u protocol is spoken
-	root       *Fid   // Fid that points to the rood directory
-	log        g9p.Logger
+	mu    sync.Mutex
+	msize uint32 // Maximum size of the 9P messages
+	dotu  bool   // If true, 9P2000.u protocol is spoken
+	root  *Fid   // Fid that points to the rood directory
+	log   g9p.Logger
 
-	finished   chan os.Error   // client is no longer connected to server (holds error if any)
+	finished chan error // client is no longer connected to server (holds error if any)
 	conn     io.ReadWriteCloser
 	tagpool  *pool
 	fidpool  *pool
 	reqout   chan *req
 	reqfirst *req
 	reqlast  *req
-//	err      *g9p.Error
+	//	err      *g9p.Error
 
 	reqchan chan *req
 	tchan   chan *g9p.Fcall
@@ -44,14 +44,14 @@ type Client struct {
 // A Fid type represents a file on the server. Fids are used for the
 // low level methods that correspond directly to the 9P2000 message requests
 type Fid struct {
-	mu sync.Mutex
+	mu       sync.Mutex
 	Client   *Client // Client the fid belongs to
-	Iounit uint32
+	Iounit   uint32
 	g9p.Qid         // The Qid description for the file
-	Mode   uint8  // Open mode (one of g9p.O* values) (if file is open)
-	Fid    uint32 // Fid number
+	Mode     uint8  // Open mode (one of g9p.O* values) (if file is open)
+	Fid      uint32 // Fid number
 	g9p.User        // The user the fid belongs to
-	walked bool   // true if the fid points to a walked file on the server
+	walked   bool   // true if the fid points to a walked file on the server
 }
 
 // The file is similar to the Fid, but is used in the high-level client
@@ -62,7 +62,7 @@ type File struct {
 }
 
 type pool struct {
-	mu sync.Mutex
+	mu    sync.Mutex
 	need  int
 	nchan chan uint32
 	maxid uint32
@@ -70,17 +70,17 @@ type pool struct {
 }
 
 type req struct {
-	mu sync.Mutex
-	client       *Client
+	mu         sync.Mutex
+	client     *Client
 	tc         *g9p.Fcall
 	rc         *g9p.Fcall
-	err        os.Error
+	err        error
 	done       chan *req
 	tag        uint16
 	prev, next *req
 }
 
-func (client *Client) rpcnb(r *req) os.Error {
+func (client *Client) rpcnb(r *req) error {
 	var tag uint16
 	if r.tc.Type == g9p.Tversion {
 		tag = g9p.NOTAG
@@ -101,11 +101,11 @@ func (client *Client) rpcnb(r *req) os.Error {
 	client.reqlast = r
 	client.mu.Unlock()
 
-	select{
+	select {
 	case e := <-client.finished:
 		client.finished <- e
 		if e == nil {
-			e = os.ErrorString("Client no longer connected")
+			e = errors.New("Client no longer connected")
 		}
 		return e
 	case client.reqout <- r:
@@ -118,7 +118,7 @@ func (client *Client) Msize() uint32 {
 	return client.msize
 }
 
-func (client *Client) rpc(tc *g9p.Fcall) (rc *g9p.Fcall, err os.Error) {
+func (client *Client) rpc(tc *g9p.Fcall) (rc *g9p.Fcall, err error) {
 	r := client.reqAlloc()
 	r.tc = tc
 	r.done = make(chan *req)
@@ -126,10 +126,10 @@ func (client *Client) rpc(tc *g9p.Fcall) (rc *g9p.Fcall, err os.Error) {
 	if err != nil {
 		return
 	}
-	select{
+	select {
 	case <-r.done:
 	case e := <-client.finished:
-		client.finished <-e
+		client.finished <- e
 		r.rc = nil
 		r.err = e
 	}
@@ -140,7 +140,7 @@ func (client *Client) rpc(tc *g9p.Fcall) (rc *g9p.Fcall, err os.Error) {
 }
 
 func (client *Client) recv() {
-	var err os.Error
+	var err error
 	buf := make([]byte, client.msize*8)
 	pos := 0
 	for {
@@ -193,7 +193,7 @@ func (client *Client) recv() {
 			}
 
 			if r == nil {
-				err = os.ErrorString("unexpected response")
+				err = errors.New("unexpected response")
 				client.conn.Close()
 				client.mu.Unlock()
 				goto closed
@@ -233,7 +233,7 @@ func (client *Client) recv() {
 	}
 
 closed:
-log.Printf("recv done\n")
+	log.Printf("recv done\n")
 	client.finished <- err
 
 	/* send error to all pending requests */
@@ -243,7 +243,7 @@ log.Printf("recv done\n")
 	client.mu.Unlock()
 }
 
-func (client *Client) Wait() (err os.Error) {
+func (client *Client) Wait() (err error) {
 	err = <-client.finished
 	client.finished <- err
 	return
@@ -277,7 +277,7 @@ func (client *Client) send() {
 // NewClient creates a client object for the 9p server connected
 // to by c. It negotiates the dialect and msize for the
 // connection. Returns a Client object, or Error.
-func NewClient(c io.ReadWriteCloser, msize uint32, dotu bool, log g9p.Logger) (*Client, os.Error) {
+func NewClient(c io.ReadWriteCloser, msize uint32, dotu bool, log g9p.Logger) (*Client, error) {
 	client := new(Client)
 	client.conn = c
 	client.msize = msize
@@ -285,7 +285,7 @@ func NewClient(c io.ReadWriteCloser, msize uint32, dotu bool, log g9p.Logger) (*
 	client.tagpool = newPool(uint32(g9p.NOTAG))
 	client.fidpool = newPool(g9p.NOFID)
 	client.reqout = make(chan *req)
-	client.finished = make(chan os.Error, 1)
+	client.finished = make(chan error, 1)
 	client.reqchan = make(chan *req, 16)
 	client.tchan = make(chan *g9p.Fcall, 16)
 	client.log = log
@@ -332,7 +332,7 @@ func (client *Client) fidAlloc() *Fid {
 }
 
 func (client *Client) newFcall() *g9p.Fcall {
-	select{
+	select {
 	case tc := <-client.tchan:
 		return tc
 	default:
@@ -341,7 +341,7 @@ func (client *Client) newFcall() *g9p.Fcall {
 }
 
 func (client *Client) reqAlloc() *req {
-	select{
+	select {
 	case r := <-client.reqchan:
 		return r
 	default:
@@ -355,7 +355,7 @@ func (client *Client) reqAlloc() *req {
 
 func (client *Client) reqFree(r *req) {
 	if r.tc != nil && len(r.tc.Buf) >= int(client.msize) {
-		select{
+		select {
 		case client.tchan <- r.tc:
 		default:
 		}

@@ -1,33 +1,34 @@
 package client
 
 import (
+	"errors"
+	"fmt"
 	"io"
 	"io/ioutil"
 	"os"
-	"sync"
+	"runtime"
 	"strings"
-	"fmt"
-"runtime"
-//"log"
-"bytes"
-	plan9 "rog-go.googlecode.com/hg/new9p"
+	"sync"
+	//"log"
+	"bytes"
+	plan9 "code.google.com/p/rog-go/new9p"
 )
 
 func getuser() string { return os.Getenv("USER") }
 
 type Fid struct {
-	c *Conn
-	qid plan9.Qid
-	fid uint32
-	mode uint8
-	flags uint8		// fOpen | fAlloc
-	seq *seq9p
+	c      *Conn
+	qid    plan9.Qid
+	fid    uint32
+	mode   uint8
+	flags  uint8 // fOpen | fAlloc
+	seq    *seq9p
 	offset int64
-	f sync.Mutex
+	f      sync.Mutex
 }
 
 const (
-	fOpen = 1<<iota
+	fOpen = 1 << iota
 	fAlloc
 	fPending
 )
@@ -36,7 +37,7 @@ func callers(n int) string {
 	var b bytes.Buffer
 	prev := false
 	for {
-		_, file, line, ok := runtime.Caller(n+1)
+		_, file, line, ok := runtime.Caller(n + 1)
 		if !ok {
 			return b.String()
 		}
@@ -50,9 +51,9 @@ func callers(n int) string {
 	return ""
 }
 
-func (fid *Fid) Close() (err os.Error) {
+func (fid *Fid) Close() (err error) {
 	checkSeq(nil, fid)
-//log.Printf("Closed called from %s", callers(1))
+	//log.Printf("Closed called from %s", callers(1))
 	switch {
 	case fid == nil:
 		return nil
@@ -66,7 +67,7 @@ func (fid *Fid) Close() (err os.Error) {
 	return err
 }
 
-func (fid *Fid) Create(name string, mode uint8, perm plan9.Perm) os.Error {
+func (fid *Fid) Create(name string, mode uint8, perm plan9.Perm) error {
 	checkSeq(nil, fid)
 	tx := &plan9.Fcall{Type: plan9.Tcreate, Fid: fid.fid, Name: name, Mode: mode, Perm: perm}
 	rx, err := fid.c.rpc(tx)
@@ -78,7 +79,7 @@ func (fid *Fid) Create(name string, mode uint8, perm plan9.Perm) os.Error {
 	return nil
 }
 
-func (fid *Fid) Dirread() ([]*plan9.Dir, os.Error) {
+func (fid *Fid) Dirread() ([]*plan9.Dir, error) {
 	checkSeq(nil, fid)
 	buf := make([]byte, plan9.STATMAX)
 	n, err := fid.Read(buf)
@@ -88,7 +89,7 @@ func (fid *Fid) Dirread() ([]*plan9.Dir, os.Error) {
 	return plan9.UnmarshalDirs(buf[0:n])
 }
 
-func (fid *Fid) Dirreadall() ([]*plan9.Dir, os.Error) {
+func (fid *Fid) Dirreadall() ([]*plan9.Dir, error) {
 	checkSeq(nil, fid)
 	buf, err := ioutil.ReadAll(fid)
 	if len(buf) == 0 {
@@ -97,7 +98,7 @@ func (fid *Fid) Dirreadall() ([]*plan9.Dir, os.Error) {
 	return plan9.UnmarshalDirs(buf)
 }
 
-func (fid *Fid) Open(mode uint8) os.Error {
+func (fid *Fid) Open(mode uint8) error {
 	checkSeq(nil, fid)
 	tx := &plan9.Fcall{Type: plan9.Topen, Fid: fid.fid, Mode: mode}
 	rx, err := fid.c.rpc(tx)
@@ -115,11 +116,11 @@ func (fid *Fid) Qid() plan9.Qid {
 	return fid.qid
 }
 
-func (fid *Fid) Read(b []byte) (n int, err os.Error) {
+func (fid *Fid) Read(b []byte) (n int, err error) {
 	return fid.ReadAt(b, -1)
 }
 
-func (fid *Fid) ReadAt(b []byte, offset int64) (n int, err os.Error) {
+func (fid *Fid) ReadAt(b []byte, offset int64) (n int, err error) {
 	checkSeq(nil, fid)
 	msize := fid.c.msize - plan9.IOHDRSZ
 	n = len(b)
@@ -138,7 +139,7 @@ func (fid *Fid) ReadAt(b []byte, offset int64) (n int, err os.Error) {
 		return 0, err
 	}
 	if len(rx.Data) == 0 {
-		return 0, os.EOF
+		return 0, io.EOF
 	}
 	copy(b, rx.Data)
 	if offset == -1 {
@@ -149,15 +150,15 @@ func (fid *Fid) ReadAt(b []byte, offset int64) (n int, err os.Error) {
 	return len(rx.Data), nil
 }
 
-func (fid *Fid) ReadFull(b []byte) (n int, err os.Error) {
+func (fid *Fid) ReadFull(b []byte) (n int, err error) {
 	checkSeq(nil, fid)
 	return io.ReadFull(fid, b)
 }
 
-func (fid *Fid) Remove() os.Error {
+func (fid *Fid) Remove() error {
 	checkSeq(nil, fid)
 	if fid.c == nil || fid.flags&fAlloc == 0 {
-		return os.NewError("no such fid")
+		return errors.New("no such fid")
 	}
 	tx := &plan9.Fcall{Type: plan9.Tremove, Fid: fid.fid}
 	_, err := fid.c.rpc(tx)
@@ -166,14 +167,14 @@ func (fid *Fid) Remove() os.Error {
 	return err
 }
 
-func (fid *Fid) Seek(n int64, whence int) (int64, os.Error) {
+func (fid *Fid) Seek(n int64, whence int) (int64, error) {
 	checkSeq(nil, fid)
 	switch whence {
 	case 0:
 		fid.f.Lock()
 		fid.offset = n
 		fid.f.Unlock()
-		
+
 	case 1:
 		fid.f.Lock()
 		n += fid.offset
@@ -183,7 +184,7 @@ func (fid *Fid) Seek(n int64, whence int) (int64, os.Error) {
 		}
 		fid.offset = n
 		fid.f.Unlock()
-	
+
 	case 2:
 		d, err := fid.Stat()
 		if err != nil {
@@ -196,15 +197,15 @@ func (fid *Fid) Seek(n int64, whence int) (int64, os.Error) {
 		fid.f.Lock()
 		fid.offset = n
 		fid.f.Unlock()
-	
+
 	default:
 		return 0, Error("bad whence in seek")
 	}
-	
+
 	return n, nil
 }
 
-func (fid *Fid) Stat() (*plan9.Dir, os.Error) {
+func (fid *Fid) Stat() (*plan9.Dir, error) {
 	checkSeq(nil, fid)
 	tx := &plan9.Fcall{Type: plan9.Tstat, Fid: fid.fid}
 	rx, err := fid.c.rpc(tx)
@@ -214,7 +215,7 @@ func (fid *Fid) Stat() (*plan9.Dir, os.Error) {
 	return plan9.UnmarshalDir(rx.Stat)
 }
 
-func (fid *Fid) Clone(newfid *Fid) os.Error {
+func (fid *Fid) Clone(newfid *Fid) error {
 	checkSeq(nil, fid)
 	if newfid.flags&(fPending|fAlloc) != 0 {
 		panic("fid in use")
@@ -230,14 +231,14 @@ func (fid *Fid) Clone(newfid *Fid) os.Error {
 	return err
 }
 
-func (fid *Fid) Walk(elem ...string) (*Fid, os.Error) {
+func (fid *Fid) Walk(elem ...string) (*Fid, error) {
 	checkSeq(nil, fid)
 	wfid, err := fid.c.getfid()
 	if err != nil {
 		return nil, err
 	}
 
-	for nwalk := 0;; nwalk++ {
+	for nwalk := 0; ; nwalk++ {
 		n := len(elem)
 		if n > plan9.MAXWELEM {
 			n = plan9.MAXWELEM
@@ -250,7 +251,7 @@ func (fid *Fid) Walk(elem ...string) (*Fid, os.Error) {
 		}
 		rx, err := fid.c.rpc(tx)
 		if err == nil && len(rx.Wqid) != n {
-			err = Error("file '"+strings.Join(elem, "/")+"' not found")
+			err = Error("file '" + strings.Join(elem, "/") + "' not found")
 		}
 		if err != nil {
 			wfid.Close()
@@ -269,15 +270,15 @@ func (fid *Fid) Walk(elem ...string) (*Fid, os.Error) {
 	return wfid, nil
 }
 
-func (fid *Fid) Write(b []byte) (n int, err os.Error) {
+func (fid *Fid) Write(b []byte) (n int, err error) {
 	return fid.WriteAt(b, -1)
 }
 
-func (fid *Fid) WriteAt(b []byte, offset int64) (n int, err os.Error) {
+func (fid *Fid) WriteAt(b []byte, offset int64) (n int, err error) {
 	checkSeq(nil, fid)
-//log.Printf("WriteAt %d\n", offset)
-//defer func(){log.Printf("-> %d, %v\n", n, err)}()
-//log.Printf("msize %d\n", fid.c.msize);
+	//log.Printf("WriteAt %d\n", offset)
+	//defer func(){log.Printf("-> %d, %v\n", n, err)}()
+	//log.Printf("msize %d\n", fid.c.msize);
 	msize := fid.c.msize - plan9.IOHDRSIZE
 	tot := 0
 	n = len(b)
@@ -300,7 +301,7 @@ func (fid *Fid) WriteAt(b []byte, offset int64) (n int, err os.Error) {
 	return tot, nil
 }
 
-func (fid *Fid) writeAt(b []byte, offset int64) (n int, err os.Error) {
+func (fid *Fid) writeAt(b []byte, offset int64) (n int, err error) {
 	o := offset
 	if o == -1 {
 		fid.f.Lock()
@@ -320,7 +321,7 @@ func (fid *Fid) writeAt(b []byte, offset int64) (n int, err os.Error) {
 	return int(rx.Count), nil
 }
 
-func (fid *Fid) Wstat(d *plan9.Dir) os.Error {
+func (fid *Fid) Wstat(d *plan9.Dir) error {
 	checkSeq(nil, fid)
 	b, err := d.Bytes()
 	if err != nil {
@@ -334,10 +335,10 @@ func (fid *Fid) Wstat(d *plan9.Dir) os.Error {
 func checkSeq(seq *seq9p, fid *Fid) {
 	switch {
 	case seq == nil && fid.seq != nil:
-//log.Printf("seq fid %d used outside sequence, flags %x, callers %s\n", fid.fid, fid.flags, callers(1))
+		//log.Printf("seq fid %d used outside sequence, flags %x, callers %s\n", fid.fid, fid.flags, callers(1))
 		panic("seq fid used outside sequence")
 	case seq != nil && fid.seq != nil && seq != fid.seq:
-//log.Printf("seq fid %d used in wrong sequence t%d, callers %s\n", fid.fid, seq.tag, callers(1))
+		//log.Printf("seq fid %d used in wrong sequence t%d, callers %s\n", fid.fid, seq.tag, callers(1))
 		panic("seq fid used in wrong sequence")
 	}
 }

@@ -6,8 +6,8 @@ package deepcopy
 import (
 	"fmt"
 	"reflect"
-	"unsafe"
 	"sync"
+	"unsafe"
 )
 
 // basic copy algorithm:
@@ -45,9 +45,9 @@ type memRanges struct {
 //
 type copyInfo struct {
 	hasPointers bool
-	canCopy bool
-	ranges func(obj reflect.Value, f *infoStore, m *memRanges)
-	copy   func(dst, obj reflect.Value, f *infoStore, m *memRanges)
+	canCopy     bool
+	ranges      func(obj reflect.Value, f *infoStore, m *memRanges)
+	copy        func(dst, obj reflect.Value, f *infoStore, m *memRanges)
 }
 
 var infoMap = make(map[reflect.Type]*copyInfo)
@@ -76,7 +76,7 @@ type infoStore struct {
 //
 func Copy(obj interface{}) (r interface{}) {
 	var m memRanges
-	v := reflect.NewValue(obj)
+	v := reflect.ValueOf(obj)
 
 	lock.Lock()
 	store := infoStore{infoMap, nil}
@@ -84,7 +84,7 @@ func Copy(obj interface{}) (r interface{}) {
 	lock.Unlock()
 
 	f.ranges(v, &store, &m)
-	dst := reflect.MakeZero(v.Type())
+	dst := reflect.Zero(v.Type())
 	f.copy(dst, v, &store, &m)
 
 	// If we have encountered some new types while traversing the
@@ -108,6 +108,7 @@ func Copy(obj interface{}) (r interface{}) {
 	}
 	return dst.Interface()
 }
+
 // deepCopyInfo returns the copyInfo for the given type t,
 // To save recursively inspecting its type each time an object
 // is copied, we store (in store) functions tailored to each type that
@@ -121,42 +122,42 @@ func deepCopyInfo(store *infoStore, t reflect.Type) (f *copyInfo) {
 	// hasPointers is must be true so that the recursion will terminate.
 	f = &copyInfo{true, true, nil, nil}
 	store.set(t, f)
-	switch t := t.(type) {
-	case *reflect.InterfaceType:
+	switch t.Kind() {
+	case reflect.Interface:
 		f.ranges = func(obj0 reflect.Value, store *infoStore, m *memRanges) {
-			obj := obj0.(*reflect.InterfaceValue)
+			obj := obj0
 			e := obj.Elem()
 			deepCopyInfo(store, e.Type()).ranges(e, store, m)
 		}
 		f.copy = func(dst, obj0 reflect.Value, store *infoStore, m *memRanges) {
-			e := obj0.(*reflect.InterfaceValue).Elem()
+			e := obj0.Elem()
 			einfo := deepCopyInfo(store, e.Type())
 
 			// we cannot just pass dst to einfo.copy() because
 			// various types (e.g. arrays and structs) expect an 
 			// actual instance of the type to modify
-			v := reflect.MakeZero(e.Type())
+			v := reflect.Zero(e.Type())
 			einfo.copy(v, e, store, m)
-			dst.SetValue(v)
+			dst.Set(v)
 		}
 
-	case *reflect.MapType:
+	case reflect.Map:
 		et := t.Elem()
 		einfo := deepCopyInfo(store, et)
 		f.ranges = func(obj0 reflect.Value, store *infoStore, m *memRanges) {
-			obj := obj0.(*reflect.MapValue)
-			m0 := obj.Get()
+			obj := obj0
+			m0 := obj.Pointer()
 			if m.add(memRange{m0, m0 + 1}, t, nil) {
 				if einfo.hasPointers {
-					for _, k := range obj.Keys() {
-						einfo.ranges(obj.Elem(k), store, m)
+					for _, k := range obj.MapKeys() {
+						einfo.ranges(obj.MapIndex(k), store, m)
 					}
 				}
 			}
 		}
 		f.copy = func(dst, obj0 reflect.Value, store *infoStore, m *memRanges) {
-			obj := obj0.(*reflect.MapValue)
-			m0 := obj.Get()
+			obj := obj0
+			m0 := obj.Pointer()
 			e := m.get(m0)
 			if e == nil {
 				panic("map range not found")
@@ -167,31 +168,31 @@ func deepCopyInfo(store *infoStore, t reflect.Type) (f *copyInfo) {
 				e.copied = true
 				v := reflect.MakeMap(t)
 				e.v = v
-				dst.SetValue(e.v)
+				dst.Set(e.v)
 				if einfo.hasPointers {
-					kv := reflect.MakeZero(t.Elem())
-					for _, k := range obj.Keys() {
-						einfo.copy(kv, obj.Elem(k), store, m)
-						v.SetElem(k, kv)
+					kv := reflect.Zero(t.Elem())
+					for _, k := range obj.MapKeys() {
+						einfo.copy(kv, obj.MapIndex(k), store, m)
+						v.SetMapIndex(k, kv)
 					}
 				} else {
-					for _, k := range obj.Keys() {
-						v.SetElem(k, obj.Elem(k))
+					for _, k := range obj.MapKeys() {
+						v.SetMapIndex(k, obj.MapIndex(k))
 					}
 				}
 			} else {
-				dst.SetValue(e.v)
+				dst.Set(e.v)
 			}
 		}
 
-	case *reflect.PtrType:
+	case reflect.Ptr:
 		et := t.Elem()
 		einfo := deepCopyInfo(store, et)
 		esize := et.Size()
 		f.ranges = func(obj0 reflect.Value, store *infoStore, m *memRanges) {
-			obj := obj0.(*reflect.PtrValue)
+			obj := obj0
 			if !obj.IsNil() {
-				m0 := obj.Get()
+				m0 := obj.Pointer()
 				if m.add(memRange{m0, m0 + esize}, et, makeZero) {
 					if einfo.hasPointers {
 						einfo.ranges(obj.Elem(), store, m)
@@ -200,21 +201,21 @@ func deepCopyInfo(store *infoStore, t reflect.Type) (f *copyInfo) {
 			}
 		}
 		f.copy = func(dst0, obj0 reflect.Value, store *infoStore, m *memRanges) {
-			obj := obj0.(*reflect.PtrValue)
+			obj := obj0
 			if obj.IsNil() {
 				return
 			}
-			m0 := obj.Get()
+			m0 := obj.Pointer()
 			m1 := m0 + esize
 			e := m.get(m0)
 			if e == nil {
 				panic("range not found")
 			}
-			if e.v == nil {
+			if !e.v.IsValid() {
 				e.v, e.allocAddr = e.make(e.memRange, e.t)
 			}
 			ptr := m0 - e.m0 + e.allocAddr
-			v := reflect.NewValue(unsafe.Unreflect(t, unsafe.Pointer(&ptr))).(*reflect.PtrValue)
+			v := reflect.ValueOf(unsafe.Unreflect(t, unsafe.Pointer(&ptr)))
 			// make a copy only if we're pointing to the entire
 			// allocated object; otherwise the copy will be made
 			// later when we get to the pointer that does point
@@ -223,84 +224,84 @@ func deepCopyInfo(store *infoStore, t reflect.Type) (f *copyInfo) {
 				e.copied = true
 				einfo.copy(v.Elem(), obj.Elem(), store, m)
 			}
-			dst0.SetValue(v)
+			dst0.Set(v)
 		}
 
-	case *reflect.ArrayType:
+	case reflect.Array:
 		einfo := deepCopyInfo(store, t.Elem())
 		n := t.Len()
 		if einfo.hasPointers {
 			f.ranges = func(obj0 reflect.Value, store *infoStore, m *memRanges) {
-				obj := obj0.(*reflect.ArrayValue)
+				obj := obj0
 				for i := 0; i < n; i++ {
-					einfo.ranges(obj.Elem(i), store, m)
+					einfo.ranges(obj.Index(i), store, m)
 				}
 			}
 			f.copy = func(dst0, obj0 reflect.Value, store *infoStore, m *memRanges) {
-				dst := dst0.(*reflect.ArrayValue)
-				obj := obj0.(*reflect.ArrayValue)
+				dst := dst0
+				obj := obj0
 				for i := 0; i < n; i++ {
-					einfo.copy(dst.Elem(i), obj.Elem(i), store, m)
+					einfo.copy(dst.Index(i), obj.Index(i), store, m)
 				}
 			}
 		} else {
 			f.ranges = noRanges
 			f.copy = func(dst0, obj0 reflect.Value, store *infoStore, m *memRanges) {
-				dst := dst0.(*reflect.ArrayValue)
-				obj := obj0.(*reflect.ArrayValue)
+				dst := dst0
+				obj := obj0
 				reflect.ArrayCopy(dst, obj)
 			}
 		}
 
-	case *reflect.SliceType:
+	case reflect.Slice:
 		et := t.Elem()
 		esize := et.Size()
 		einfo := deepCopyInfo(store, et)
 		f.ranges = func(obj0 reflect.Value, store *infoStore, m *memRanges) {
-			obj := obj0.(*reflect.SliceValue)
+			obj := obj0
 			if obj.IsNil() {
 				return
 			}
 			n := obj.Cap()
-			m1 := obj.Get()
+			m1 := obj.Pointer()
 			m0 := m1 - uintptr(n)*esize
 			if m.add(memRange{m0, m1}, obj.Type(), makeSlice) {
 				if einfo.hasPointers {
 					obj = obj.Slice(0, n)
 					for i := 0; i < n; i++ {
-						einfo.ranges(obj.Elem(i), store, m)
+						einfo.ranges(obj.Index(i), store, m)
 					}
 				}
 			}
 		}
 		f.copy = func(dst0, obj0 reflect.Value, store *infoStore, m *memRanges) {
-			obj := obj0.(*reflect.SliceValue)
+			obj := obj0
 			if obj.IsNil() {
 				return
 			}
-			dst := dst0.(*reflect.SliceValue)
+			dst := dst0
 			cap := obj.Cap()
-			m1 := obj.Get()
+			m1 := obj.Pointer()
 			m0 := m1 - uintptr(obj.Cap())*esize
 			e := m.get(m0)
 			if e == nil {
 				panic("slice range not found")
 			}
 			// allocate whole object, even if obj represents just a part of it
-			if e.v == nil {
+			if !e.v.IsValid() {
 				e.v, e.allocAddr = e.make(e.memRange, e.t)
 			}
 			// we must fabricate the slice, as we may be pointing
 			// to a slice of an in-struct array, rather than another slice.
 			h := reflect.SliceHeader{m0 - e.m0 + e.allocAddr, obj.Len(), obj.Cap()}
-			dst.SetValue(reflect.NewValue(unsafe.Unreflect(t, unsafe.Pointer(&h))))
+			dst.Set(reflect.ValueOf(unsafe.Unreflect(t, unsafe.Pointer(&h))))
 			if e.m0 == m0 && e.m1 == m1 && !e.copied {
 				e.copied = true
 				obj := obj.Slice(0, cap)
 				dst := dst.Slice(0, cap)
 				if einfo.hasPointers {
 					for i := 0; i < cap; i++ {
-						einfo.copy(dst.Elem(i), obj.Elem(i), store, m)
+						einfo.copy(dst.Index(i), obj.Index(i), store, m)
 					}
 				} else {
 					reflect.ArrayCopy(dst, obj)
@@ -308,7 +309,7 @@ func deepCopyInfo(store *infoStore, t reflect.Type) (f *copyInfo) {
 			}
 		}
 
-	case *reflect.StructType:
+	case reflect.Struct:
 		einfo := make([]*copyInfo, t.NumField())
 		hasPointers := false
 		canCopy := true
@@ -323,7 +324,7 @@ func deepCopyInfo(store *infoStore, t reflect.Type) (f *copyInfo) {
 		f.canCopy = canCopy
 		if hasPointers && canCopy {
 			f.ranges = func(obj0 reflect.Value, store *infoStore, m *memRanges) {
-				obj := obj0.(*reflect.StructValue)
+				obj := obj0
 				for i, f := range einfo {
 					if f.hasPointers {
 						f.ranges(obj.Field(i), store, m)
@@ -331,13 +332,13 @@ func deepCopyInfo(store *infoStore, t reflect.Type) (f *copyInfo) {
 				}
 			}
 			f.copy = func(dst0, obj0 reflect.Value, store *infoStore, m *memRanges) {
-				dst := dst0.(*reflect.StructValue)
-				obj := obj0.(*reflect.StructValue)
+				dst := dst0
+				obj := obj0
 				for i, f := range einfo {
 					f.copy(dst.Field(i), obj.Field(i), store, m)
 				}
 			}
-		}else{
+		} else {
 			f.ranges = noRanges
 			f.copy = shallowCopy
 		}
@@ -353,7 +354,7 @@ func noRanges(_ reflect.Value, _ *infoStore, _ *memRanges) {
 }
 
 func shallowCopy(dst, obj reflect.Value, _ *infoStore, _ *memRanges) {
-	dst.SetValue(obj)
+	dst.Set(obj)
 }
 
 func (f *infoStore) get(t reflect.Type) *copyInfo {
@@ -374,15 +375,15 @@ func (f *infoStore) set(t reflect.Type, fns *copyInfo) {
 }
 
 func makeSlice(r memRange, t0 reflect.Type) (v reflect.Value, allocAddr uintptr) {
-	t := t0.(*reflect.SliceType)
+	t := t0
 	esize := t.Elem().Size()
 	n := (r.m1 - r.m0) / esize
 	s := reflect.MakeSlice(t, int(n), int(n))
-	return s, s.Get() - n*esize
+	return s, s.Pointer() - n*esize
 }
 
 func makeZero(_ memRange, t reflect.Type) (v reflect.Value, allocAddr uintptr) {
-	v = reflect.MakeZero(t)
+	v = reflect.Zero(t)
 	return v, v.Addr()
 }
 
@@ -442,7 +443,6 @@ func (m *memRanges) get(m0 uintptr) *memRangeList {
 	}
 	return nil
 }
-
 
 func (r memRange) String() string {
 	return fmt.Sprintf("[%x %x]", r.m0, r.m1)

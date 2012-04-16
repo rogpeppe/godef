@@ -1,7 +1,7 @@
 package canvas
 
 import (
-	"exp/draw"
+	"image/draw"
 	"image"
 	"sync"
 )

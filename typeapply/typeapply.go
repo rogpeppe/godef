@@ -20,13 +20,14 @@ var (
 // A traverserFunc implements Do for a particular
 // value type X and target type T. It assumes that x is of
 // type X and f is of type func(T).
-type traverserFunc func(f *reflect.FuncValue, x reflect.Value)
+type traverserFunc func(f reflect.Value, x reflect.Value)
 
 type knowledge byte
+
 const (
-	dontKnow = knowledge(iota)	// don't know yet
-	no			// definite no.
-	yes			// definite yes.
+	dontKnow = knowledge(iota) // don't know yet
+	no                         // definite no.
+	yes                        // definite yes.
 )
 
 // typeInfo holds information on a value type with respect to a particular
@@ -36,12 +37,12 @@ type typeInfo struct {
 	// This can be dontKnow during execution of the canReach
 	// function
 	canReach knowledge
-		
+
 	// Is this type being currently visited?
 	visiting bool
 
 	// A function that implements Do on this type.
-	trav     traverserFunc
+	trav traverserFunc
 }
 
 // Do calls the function f, which must be of the form func(T) for some
@@ -50,15 +51,15 @@ type typeInfo struct {
 // cyclic. If a member of x is reachable in more than one way,
 // then f will be called for each way.
 func Do(f interface{}, x interface{}) {
-	fv := reflect.NewValue(f).(*reflect.FuncValue)
-	ft := fv.Type().(*reflect.FuncType)
+	fv := reflect.ValueOf(f)
+	ft := fv.Type()
 	if ft.NumIn() != 1 {
 		panic("function should take exactly one argument only")
 	}
 	if ft.NumOut() != 0 {
 		panic("function should have no return values")
 	}
-	xv := reflect.NewValue(x)
+	xv := reflect.ValueOf(x)
 	xt := xv.Type()
 
 	// t is the type that we're looking for.
@@ -95,7 +96,7 @@ func getTraverserFunc(m map[reflect.Type]*typeInfo, t, xt reflect.Type) traverse
 	// If we've actually found an instance of the type, then
 	// the traverserFunc calls the function on it.
 	if xt == t {
-		info.trav = func(fv *reflect.FuncValue, xv reflect.Value) {
+		info.trav = func(fv reflect.Value, xv reflect.Value) {
 			fv.Call([]reflect.Value{xv})
 		}
 		return info.trav
@@ -107,16 +108,16 @@ func getTraverserFunc(m map[reflect.Type]*typeInfo, t, xt reflect.Type) traverse
 	// is through a StructValue, which indirects through the typeInfo,
 	// so will use the eventual value.
 	info.trav = dummyTraverser
-	switch xt := xt.(type) {
-	case *reflect.PtrType:
+	switch xt.Kind() {
+	case reflect.Ptr:
 		elemFunc := getTraverserFunc(m, t, xt.Elem())
-		info.trav = func(fv *reflect.FuncValue, xv reflect.Value) {
-			if y := xv.(*reflect.PtrValue); !y.IsNil() {
+		info.trav = func(fv reflect.Value, xv reflect.Value) {
+			if y := xv; !y.IsNil() {
 				elemFunc(fv, y.Elem())
 			}
 		}
 
-	case *reflect.StructType:
+	case reflect.Struct:
 		n := xt.NumField()
 		type fieldFunc struct {
 			i    int
@@ -132,42 +133,42 @@ func getTraverserFunc(m map[reflect.Type]*typeInfo, t, xt reflect.Type) traverse
 			}
 		}
 		fields = fields[0:j]
-		info.trav = func(fv *reflect.FuncValue, xv reflect.Value) {
-			y := xv.(*reflect.StructValue)
+		info.trav = func(fv reflect.Value, xv reflect.Value) {
+			y := xv
 			for _, f := range fields {
 				// indirect through info so that recursive types work ok.
 				f.info.trav(fv, y.Field(f.i))
 			}
 		}
 
-	case *reflect.MapType:
+	case reflect.Map:
 		travKey := getTraverserFunc(m, t, xt.Key())
 		travElem := getTraverserFunc(m, t, xt.Elem())
-		info.trav = func(fv *reflect.FuncValue, xv reflect.Value) {
-			y := xv.(*reflect.MapValue)
-			for _, key := range y.Keys() {
+		info.trav = func(fv reflect.Value, xv reflect.Value) {
+			y := xv
+			for _, key := range y.MapKeys() {
 				if travKey != nil {
 					travKey(fv, key)
 				}
 				if travElem != nil {
-					travElem(fv, y.Elem(key))
+					travElem(fv, y.MapIndex(key))
 				}
 			}
 		}
 
-	case *reflect.ArrayType, *reflect.SliceType:
-		trav := getTraverserFunc(m, t, xt.(reflect.ArrayOrSliceType).Elem())
-		info.trav = func(fv *reflect.FuncValue, xv reflect.Value) {
-			y := xv.(reflect.ArrayOrSliceValue)
+	case reflect.Array, reflect.Slice:
+		trav := getTraverserFunc(m, t, xt.Elem())
+		info.trav = func(fv reflect.Value, xv reflect.Value) {
+			y := xv
 			n := y.Len()
 			for i := 0; i < n; i++ {
-				trav(fv, y.Elem(i))
+				trav(fv, y.Index(i))
 			}
 		}
 
-	case *reflect.InterfaceType:
-		info.trav = func(fv *reflect.FuncValue, xv reflect.Value) {
-			y := xv.(*reflect.InterfaceValue)
+	case reflect.Interface:
+		info.trav = func(fv reflect.Value, xv reflect.Value) {
+			y := xv
 			if y.IsNil() {
 				return
 			}
@@ -199,11 +200,11 @@ func canReach(m map[reflect.Type]*typeInfo, t, xt reflect.Type) knowledge {
 		return yes
 	}
 	info.visiting = true
-	switch xt := xt.(type) {
-	case *reflect.PtrType:
+	switch xt.Kind() {
+	case reflect.Ptr:
 		info.canReach = canReach(m, t, xt.Elem())
 
-	case *reflect.StructType:
+	case reflect.Struct:
 		for i := 0; i < xt.NumField(); i++ {
 			f := xt.Field(i)
 			// ignore unexported members.
@@ -212,24 +213,24 @@ func canReach(m map[reflect.Type]*typeInfo, t, xt reflect.Type) knowledge {
 			}
 		}
 
-	case *reflect.MapType:
+	case reflect.Map:
 		info.canReach = canReach(m, t, xt.Key())
 		info.canReach = or(canReach(m, t, xt.Elem()), info.canReach)
 
-	case *reflect.ArrayType:
+	case reflect.Array:
 		info.canReach = canReach(m, t, xt.Elem())
 
-	case *reflect.SliceType:
+	case reflect.Slice:
 		info.canReach = canReach(m, t, xt.Elem())
 
-	case *reflect.InterfaceType:
+	case reflect.Interface:
 		info.canReach = yes
 	}
 	info.visiting = false
 	return info.canReach
 }
 
-func dummyTraverser(fv *reflect.FuncValue, xv reflect.Value) {
+func dummyTraverser(fv reflect.Value, xv reflect.Value) {
 	panic("dummyTraverser called")
 }
 

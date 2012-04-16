@@ -45,7 +45,7 @@ package looper
 //
 import "C"
 import (
-	"rog-go.googlecode.com/hg/exp/callback"
+	"code.google.com/p/rog-go/exp/callback"
 	"sync"
 	"unsafe"
 )
@@ -87,7 +87,7 @@ func NewLooper(f func() bool) *Looper {
 // has returned false.
 func (l *Looper) Close() {
 	mutex.Lock()
-	loopers[l] = false, false
+	delete(loopers, l)
 	mutex.Unlock()
 }
 

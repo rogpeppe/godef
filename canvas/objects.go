@@ -1,18 +1,20 @@
 package canvas
 
 import (
-	"exp/draw"
+	"code.google.com/p/freetype-go/freetype/raster"
+	"code.google.com/p/rog-go/values"
+	"code.google.com/p/x-go-binding/ui"
+	"image/draw"
 	"image"
+	"image/color"
 	"math"
-	"freetype-go.googlecode.com/hg/freetype/raster"
-	"rog-go.googlecode.com/hg/values"
 )
 
 // Box creates a rectangular image of the given size, filled with the given colour,
 // with a border-size border of colour borderCol.
 //
 func Box(width, height int, col image.Image, border int, borderCol image.Image) image.Image {
-	img := image.NewRGBA(width, height)
+	img := image.NewRGBA(image.Rect(0, 0, width, height))
 	if border < 0 {
 		border = 0
 	}
@@ -26,7 +28,7 @@ func Box(width, height int, col image.Image, border int, borderCol image.Image) 
 // to draw itself. It is intended to be used as a building
 // block for other Items.
 type ImageItem struct {
-	R      image.Rectangle
+	R        image.Rectangle
 	Image    image.Image
 	IsOpaque bool
 }
@@ -53,7 +55,7 @@ func (obj *ImageItem) Bbox() image.Rectangle {
 }
 
 func (obj *ImageItem) HitTest(p image.Point) bool {
-	return obj.R.Contains(p)
+	return p.In(obj.R)
 }
 
 // An Image represents an rectangular (but possibly
@@ -61,7 +63,7 @@ func (obj *ImageItem) HitTest(p image.Point) bool {
 //
 type Image struct {
 	Item
-	item   ImageItem // access to the fields of the ImageItem
+	item    ImageItem // access to the fields of the ImageItem
 	backing Backing
 }
 
@@ -99,9 +101,9 @@ func (obj *Image) SetCentre(p image.Point) {
 //
 type Polygon struct {
 	Item
-	raster RasterItem
+	raster  RasterItem
 	backing Backing
-	points []raster.Point
+	points  []raster.Point
 }
 
 // Polygon returns a new PolyObject, using col for its fill colour, and
@@ -140,10 +142,10 @@ func (obj *Polygon) makeOutline() {
 // A line object represents a single straight line.
 type Line struct {
 	Item
-	raster RasterItem
+	raster  RasterItem
 	backing Backing
-	p0, p1 raster.Point
-	width  raster.Fix32
+	p0, p1  raster.Point
+	width   raster.Fix32
 }
 
 // Line returns a new Line, coloured with col, from p0 to p1,
@@ -221,7 +223,7 @@ func isincos2(x, y raster.Fix32) (isin, icos raster.Fix32) {
 
 type Slider struct {
 	backing Backing
-	value values.Value
+	value   values.Value
 	Item
 	c      *Canvas
 	val    float64
@@ -235,17 +237,17 @@ type Slider struct {
 // its Type() should be float64; the slider's value is in the
 // range [0, 1].
 //
-func NewSlider(r image.Rectangle, fg, bg image.Color, value values.Value) (obj *Slider) {
+func NewSlider(r image.Rectangle, fg, bg color.Color, value values.Value) (obj *Slider) {
 	obj = new(Slider)
 	obj.value = value
 	obj.c = NewCanvas(nil, r)
 	obj.box.R = r
-	obj.box.Image = Box(r.Dx(), r.Dy(), &image.ColorImage{bg}, 1, image.Black)
+	obj.box.Image = Box(r.Dx(), r.Dy(), &image.Uniform{bg}, 1, image.Black)
 	obj.box.IsOpaque = opaqueColor(bg)
 
 	br := obj.buttonRect()
 	obj.button.R = br
-	obj.button.Image = Box(br.Dx(), br.Dy(), &image.ColorImage{fg}, 1, image.Black)
+	obj.button.Image = Box(br.Dx(), br.Dy(), &image.Uniform{fg}, 1, image.Black)
 	obj.button.IsOpaque = opaqueColor(fg)
 	obj.c.AddItem(&obj.box)
 	obj.c.AddItem(&obj.button)
@@ -273,7 +275,12 @@ func (obj *Slider) buttonRect() (r image.Rectangle) {
 }
 
 func (obj *Slider) listener() {
-	for x := range obj.value.Iter() {
+	g := obj.value.Getter()
+	for {
+		x, ok := g.Get()
+		if !ok {
+			break
+		}
 		v := x.(float64)
 		obj.backing.Atomically(func(flush FlushFunc) {
 			if v > 1 {
@@ -296,13 +303,13 @@ func (obj *Slider) x2val(x int) float64 {
 	return float64(x-(obj.box.R.Min.X+buttonWidth/2)) / float64(obj.box.R.Dx()-buttonWidth)
 }
 
-func (obj *Slider) HandleMouse(f Flusher, m draw.MouseEvent, ec <-chan interface{}) bool {
+func (obj *Slider) HandleMouse(f Flusher, m ui.MouseEvent, ec <-chan interface{}) bool {
 	if m.Buttons&1 == 0 {
 		return false
 	}
 	offset := 0
 	br := obj.buttonRect()
-	if !br.Contains(m.Loc) {
+	if !m.Loc.In(br) {
 		obj.value.Set(obj.x2val(m.Loc.X))
 	} else {
 		offset = m.Loc.X - (br.Min.X+br.Max.X)/2
@@ -310,7 +317,7 @@ func (obj *Slider) HandleMouse(f Flusher, m draw.MouseEvent, ec <-chan interface
 
 	but := m.Buttons
 	for {
-		if m, ok := (<-ec).(*draw.MouseEvent); ok {
+		if m, ok := (<-ec).(*ui.MouseEvent); ok {
 			obj.value.Set(obj.x2val(m.Loc.X - offset))
 			if (m.Buttons & but) != but {
 				break
@@ -320,7 +327,7 @@ func (obj *Slider) HandleMouse(f Flusher, m draw.MouseEvent, ec <-chan interface
 	return true
 }
 
-func opaqueColor(col image.Color) bool {
+func opaqueColor(col color.Color) bool {
 	_, _, _, a := col.RGBA()
 	return a == 0xffff
 }
@@ -337,7 +344,7 @@ func BorderOp(dst draw.Image, r image.Rectangle, w int, src image.Image, sp imag
 	i := w
 	if i > 0 {
 		// inside r
-		DrawOp(dst, image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+i), src, sp, op)                          // top
+		DrawOp(dst, image.Rect(r.Min.X, r.Min.Y, r.Max.X, r.Min.Y+i), src, sp, op)                                // top
 		DrawOp(dst, image.Rect(r.Min.X, r.Min.Y+i, r.Min.X+i, r.Max.Y-i), src, sp.Add(image.Pt(0, i)), op)        // left
 		DrawOp(dst, image.Rect(r.Max.X-i, r.Min.Y+i, r.Max.X, r.Max.Y-i), src, sp.Add(image.Pt(r.Dx()-i, i)), op) // right
 		DrawOp(dst, image.Rect(r.Min.X, r.Max.Y-i, r.Max.X, r.Max.Y), src, sp.Add(image.Pt(0, r.Dy()-i)), op)     // bottom
@@ -353,9 +360,9 @@ func BorderOp(dst draw.Image, r image.Rectangle, w int, src image.Image, sp imag
 }
 
 func centreDist(r image.Rectangle) image.Point {
-	return image.Pt(r.Dx() / 2, r.Dy() / 2)
+	return image.Pt(r.Dx()/2, r.Dy()/2)
 }
 
 func centre(r image.Rectangle) image.Point {
-	return image.Pt((r.Min.X + r.Max.X) / 2, (r.Min.Y + r.Max.Y) / 2)
+	return image.Pt((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
 }

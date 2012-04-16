@@ -3,11 +3,12 @@
 package ncnet
 
 import (
+	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"netchan"
-	"os"
 )
 
 const initMessage = "netconnect"
@@ -15,7 +16,7 @@ const initMessage = "netconnect"
 type netchanAddr string
 
 type hanguper interface {
-	Hangup(name string) os.Error
+	Hangup(name string) error
 }
 
 func (a netchanAddr) String() string {
@@ -38,9 +39,9 @@ type Conn struct {
 	*chanReader
 	*chanWriter
 	clientName string
-	localAddr netchanAddr
+	localAddr  netchanAddr
 	remoteAddr netchanAddr
-	nc hanguper
+	nc         hanguper
 }
 
 func (c *Conn) LocalAddr() net.Addr {
@@ -51,41 +52,41 @@ func (c *Conn) RemoteAddr() net.Addr {
 	return c.remoteAddr
 }
 
-func (c *Conn) SetReadTimeout(nsec int64) os.Error {
-	return os.ErrorString("cannot set timeout")
+func (c *Conn) SetReadTimeout(nsec int64) error {
+	return errors.New("cannot set timeout")
 }
 
-func (c *Conn) SetWriteTimeout(nsec int64) os.Error {
-	return os.ErrorString("cannot set timeout")
+func (c *Conn) SetWriteTimeout(nsec int64) error {
+	return errors.New("cannot set timeout")
 }
 
-func (c *Conn) SetTimeout(nsec int64) os.Error {
-	return os.ErrorString("cannot set timeout")
+func (c *Conn) SetTimeout(nsec int64) error {
+	return errors.New("cannot set timeout")
 }
 
-func (c *Conn) Close() os.Error {
+func (c *Conn) Close() error {
 	c.nc.Hangup(c.clientName + ".req")
 	c.nc.Hangup(c.clientName + ".reply")
 	return nil
 }
 
 type netchanListener struct {
-	exp *netchan.Exporter
-	name string
-	conns chan net.Conn
-	err os.Error
-	closed chan bool			// closed when closed; never sent on otherwise.
+	exp    *netchan.Exporter
+	name   string
+	conns  chan net.Conn
+	err    error
+	closed chan bool // closed when closed; never sent on otherwise.
 }
 
 // Listen uses the given Exporter to listen on the given service name.
 // It uses a set of netchan channels, all prefixed with that name.
 // The connections returned by the Listener have underlying type *Conn.
 // This can be used to gain access to the underlying channels.
-func Listen(exp *netchan.Exporter, service string) (net.Listener, os.Error) {
+func Listen(exp *netchan.Exporter, service string) (net.Listener, error) {
 	r := &netchanListener{
-		exp: exp,
-		name: service,
-		conns: make(chan net.Conn),
+		exp:    exp,
+		name:   service,
+		conns:  make(chan net.Conn),
 		closed: make(chan bool),
 	}
 	// Create the auxilliary channel and export it.
@@ -98,7 +99,7 @@ func Listen(exp *netchan.Exporter, service string) (net.Listener, os.Error) {
 		for i := 0; ; i++ {
 			clientName := fmt.Sprintf("%s.%d", service, i)
 			r.exporter(clientName)
-			select{
+			select {
 			case clientNames <- clientName:
 			case <-r.closed:
 				return
@@ -108,7 +109,7 @@ func Listen(exp *netchan.Exporter, service string) (net.Listener, os.Error) {
 	return r, nil
 }
 
-func (r *netchanListener) Accept() (c net.Conn, err os.Error) {
+func (r *netchanListener) Accept() (c net.Conn, err error) {
 	c, ok := <-r.conns
 	if !ok {
 		err = r.err
@@ -116,7 +117,7 @@ func (r *netchanListener) Accept() (c net.Conn, err os.Error) {
 	return
 }
 
-func (r *netchanListener) Close() os.Error {
+func (r *netchanListener) Close() error {
 	close(r.closed)
 	return nil
 }
@@ -143,16 +144,16 @@ func (r *netchanListener) exporter(clientName string) {
 
 	go func() {
 		c := &Conn{
-			R: req,
-			W: reply,
+			R:          req,
+			W:          reply,
 			chanReader: newChanReader(req),
 			chanWriter: newChanWriter(reply),
 			clientName: clientName,
-			localAddr: netchanAddr(r.name),
+			localAddr:  netchanAddr(r.name),
 			remoteAddr: netchanAddr("unknown"),
-			nc: r.exp,
+			nc:         r.exp,
 		}
-		select{
+		select {
 		case m := <-req:
 			if string(m) != initMessage {
 				r.exp.Hangup(reqname)
@@ -166,7 +167,7 @@ func (r *netchanListener) exporter(clientName string) {
 		// BUG: there's no way for us to tell when a client goes away
 		// unless they close the channel, so we will leak exporters
 		// where the importer is killed.
-		select{
+		select {
 		case r.conns <- c:
 		case <-r.closed:
 			c.Close()
@@ -176,7 +177,7 @@ func (r *netchanListener) exporter(clientName string) {
 
 // Dial makes a connection to the named netchan service,
 // which must have been previously exported with a call to Listen.
-func Dial(imp *netchan.Importer, service string) (net.Conn, os.Error) {
+func Dial(imp *netchan.Importer, service string) (net.Conn, error) {
 	cnames := make(chan string)
 	err := imp.ImportNValues(service, cnames, netchan.Recv, 1, 1)
 	if err != nil {
@@ -197,14 +198,14 @@ func Dial(imp *netchan.Importer, service string) (net.Conn, os.Error) {
 	}
 	req <- []byte(initMessage)
 	return &Conn{
-		R: reply,
-		W: req,
+		R:          reply,
+		W:          req,
 		chanReader: &chanReader{c: reply},
 		chanWriter: &chanWriter{c: req},
 		clientName: clientName,
-		localAddr: netchanAddr("unknown"),
+		localAddr:  netchanAddr("unknown"),
 		remoteAddr: netchanAddr(service),
-		nc: imp,
+		nc:         imp,
 	}, nil
 }
 
@@ -220,12 +221,12 @@ func newChanReader(c <-chan []byte) *chanReader {
 	return &chanReader{c: c}
 }
 
-func (r *chanReader) Read(buf []byte) (int, os.Error) {
+func (r *chanReader) Read(buf []byte) (int, error) {
 	for len(r.buf) == 0 {
 		var ok bool
 		r.buf, ok = <-r.c
 		if !ok {
-			return 0, os.EOF
+			return 0, io.EOF
 		}
 	}
 	n := copy(buf, r.buf)
@@ -242,7 +243,7 @@ type chanWriter struct {
 func newChanWriter(c chan<- []byte) *chanWriter {
 	return &chanWriter{c: c}
 }
-func (w *chanWriter) Write(buf []byte) (n int, err os.Error) {
+func (w *chanWriter) Write(buf []byte) (n int, err error) {
 	b := make([]byte, len(buf))
 	copy(b, buf)
 	w.c <- b

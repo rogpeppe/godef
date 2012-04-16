@@ -4,14 +4,10 @@
 
 package g9pc
 
-import (
-	"os"
-	"rog-go.googlecode.com/hg/go9p/g9p"
-)
-
+import "code.google.com/p/rog-go/go9p/g9p"
 
 // Returns the metadata for the file associated with the Fid, or an Error.
-func (clnt *Client) Stat(fid *Fid) (*g9p.Dir, os.Error) {
+func (clnt *Client) Stat(fid *Fid) (*g9p.Dir, error) {
 	tc := clnt.newFcall()
 	err := g9p.PackTstat(tc, fid.Fid)
 	if err != nil {
@@ -30,7 +26,7 @@ func (clnt *Client) Stat(fid *Fid) (*g9p.Dir, os.Error) {
 }
 
 // Returns the metadata for a named file, or an Error.
-func (clnt *Client) FStat(path string) (*g9p.Dir, os.Error) {
+func (clnt *Client) FStat(path string) (*g9p.Dir, error) {
 	fid, err := clnt.FWalk(path)
 	if err != nil {
 		return nil, err
@@ -42,7 +38,7 @@ func (clnt *Client) FStat(path string) (*g9p.Dir, os.Error) {
 }
 
 // Modifies the data of the file associated with the Fid, or an Error.
-func (clnt *Client) Wstat(fid *Fid, dir *g9p.Dir) os.Error {
+func (clnt *Client) Wstat(fid *Fid, dir *g9p.Dir) error {
 	tc := clnt.newFcall()
 	err := g9p.PackTwstat(tc, fid.Fid, dir, clnt.dotu)
 	if err != nil {

@@ -5,7 +5,8 @@ package stringfs
 import (
 	"bytes"
 	"encoding/binary"
-	"gob"
+	"encoding/gob"
+	"errors"
 	"os"
 	"strings"
 	"sync"
@@ -64,7 +65,7 @@ type File struct {
 // Encode recursively reads the directory at path
 // and encodes it into a read only file system
 // that can later be read with Decode.
-func Encode(path string) (string, os.Error) {
+func Encode(path string) (string, error) {
 	fs := &fsWriter{}
 	fs.enc = gob.NewEncoder(&fs.buf)
 	// make sure entry type is encoded first.
@@ -75,14 +76,14 @@ func Encode(path string) (string, os.Error) {
 		return "", err
 	}
 	if !e.dir {
-		return "", os.ErrorString("root must be a directory")
+		return "", errors.New("root must be a directory")
 	}
 	binary.Write(&fs.buf, binary.LittleEndian, uint32(e.offset))
 	return string(fs.buf.Bytes()), nil
 }
 
 // write writes path and all its contents to the file system.
-func (fs *fsWriter) write(path string) (*entry, os.Error) {
+func (fs *fsWriter) write(path string) (*entry, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -126,7 +127,7 @@ func (fs *fsWriter) write(path string) (*entry, os.Error) {
 
 // Decode converts a file system as encoded by Encode
 // into an FS.
-func Decode(s string) (*FS, os.Error) {
+func Decode(s string) (*FS, error) {
 	fs := new(FS)
 	r := strings.NewReader(s[len(s)-4:])
 	if err := binary.Read(r, binary.LittleEndian, &fs.root); err != nil {
@@ -151,14 +152,14 @@ func isSlash(c int) bool {
 // Open opens the named path within fs.
 // Paths are slash-separated, with an optional
 // slash prefix.
-func (fs *FS) Open(path string) (*File, os.Error) {
+func (fs *FS) Open(path string) (*File, error) {
 	p := strings.FieldsFunc(path, isSlash)
 	e := &entry{dir: true, offset: int(fs.root)}
 
 	fs.mu.Lock()
 	defer fs.mu.Unlock()
 	for _, name := range p {
-		var err os.Error
+		var err error
 		e, err = fs.walk(e, name)
 		if err != nil {
 			return nil, err
@@ -171,12 +172,12 @@ func (fs *FS) Open(path string) (*File, os.Error) {
 		fs,
 		strings.Reader(fs.s[e.offset : e.offset+e.len]),
 		e,
-	},nil
+	}, nil
 }
 
-func (fs *FS) walk(e *entry, name string) (*entry, os.Error) {
+func (fs *FS) walk(e *entry, name string) (*entry, error) {
 	if !e.dir {
-		return nil, os.ErrorString("not a directory")
+		return nil, errors.New("not a directory")
 	}
 	contents, err := fs.contents(e)
 	if err != nil {
@@ -187,7 +188,7 @@ func (fs *FS) walk(e *entry, name string) (*entry, os.Error) {
 			return &contents[i], nil
 		}
 	}
-	return nil, os.ErrorString("file not found")
+	return nil, errors.New("file not found")
 }
 
 // IsDirectory returns true if the file represents a directory.
@@ -196,17 +197,17 @@ func (f *File) IsDirectory() bool {
 }
 
 // Read reads from a file. It is invalid to call it on a directory.
-func (f *File) Read(buf []byte) (int, os.Error) {
+func (f *File) Read(buf []byte) (int, error) {
 	if f.entry.dir {
-		return 0, os.ErrorString("cannot read a directory")
+		return 0, errors.New("cannot read a directory")
 	}
 	return f.rd.Read(buf)
 }
 
 // contents returns all the entries inside a directory.
-func (fs *FS) contents(e *entry) (entries []entry, err os.Error) {
+func (fs *FS) contents(e *entry) (entries []entry, err error) {
 	if !e.dir {
-		return nil, os.ErrorString("not a directory")
+		return nil, errors.New("not a directory")
 	}
 	fs.rd = strings.Reader(fs.s[e.offset:])
 	err = fs.dec.Decode(&entries)
@@ -215,7 +216,7 @@ func (fs *FS) contents(e *entry) (entries []entry, err os.Error) {
 
 // Readdirnames returns the names of all the files in
 // the File, which must be a directory.
-func (f *File) Readdirnames() ([]string, os.Error) {
+func (f *File) Readdirnames() ([]string, error) {
 	f.fs.mu.Lock()
 	defer f.fs.mu.Unlock()
 	entries, err := f.fs.contents(f.entry)

@@ -1,12 +1,12 @@
 package client
 
 import (
+	"errors"
 	"fmt"
-//"log"
-	"os"
+	//"log"
+	plan9 "code.google.com/p/rog-go/new9p"
+	"code.google.com/p/rog-go/new9p/seq"
 	"container/list"
-	plan9 "rog-go.googlecode.com/hg/new9p"
-	"rog-go.googlecode.com/hg/new9p/seq"
 )
 
 func (fid *Fid) File() seq.File {
@@ -16,22 +16,22 @@ func (fid *Fid) File() seq.File {
 type file9p Fid
 type filesys9p Conn
 type seq9p struct {
-	c        *Conn
-	tag      uint16
-	err      os.Error
+	c   *Conn
+	tag uint16
+	err error
 
 	// access to the remaining fields guarded by c.w
-	fids	map[uint32] *Fid
+	fids     map[uint32]*Fid
 	replyEOF bool
-	doEOF bool
-	q queue
+	doEOF    bool
+	q        queue
 }
 
-func (sq *seq9p) Error() os.Error {
+func (sq *seq9p) Error() error {
 	return sq.err
 }
 
-func (fs *filesys9p) NewFile() (seq.File, os.Error) {
+func (fs *filesys9p) NewFile() (seq.File, error) {
 	c := (*Conn)(fs)
 	fid, err := c.getfid()
 	if err != nil {
@@ -40,7 +40,7 @@ func (fs *filesys9p) NewFile() (seq.File, os.Error) {
 	return (*file9p)(fid), nil
 }
 
-func (fs *filesys9p) StartSequence() (seq.Sequence, <-chan seq.Result, os.Error) {
+func (fs *filesys9p) StartSequence() (seq.Sequence, <-chan seq.Result, error) {
 	c := (*Conn)(fs)
 	rxc := make(chan *plan9.Fcall, 1)
 	tag, err := c.newtag(rxc)
@@ -58,39 +58,39 @@ func (fs *filesys9p) StartSequence() (seq.Sequence, <-chan seq.Result, os.Error)
 	if err := sq.c.write(tx); err != nil {
 		return nil, nil, err
 	}
-	
+
 	return sq, resultc, nil
 }
 
 type req struct {
 	fid *Fid
-	op seq.Req
-	tx *plan9.Fcall
+	op  seq.Req
+	tx  *plan9.Fcall
 }
 
-func (sq *seq9p) Do(f seq.File, op seq.BasicReq) os.Error {
+func (sq *seq9p) Do(f seq.File, op seq.BasicReq) error {
 	var fid *Fid
 	if f != nil {
 		fid = (*Fid)(f.(*file9p))
 		if fid.c != sq.c {
-//log.Printf("fs mismatch")
-			return os.NewError("mismatched filesys")
+			//log.Printf("fs mismatch")
+			return errors.New("mismatched filesys")
 		}
 		checkSeq(sq, fid)
-//log.Printf("seq9p.Do(seq %p, %p(%d, seq %p), %#v) (callers %s)", sq, fid, fid.fid, fid.seq, op, callers(1))
-	}else{
-//log.Printf("seq9p.Do(nil, %#v) (callers %s)", op, callers(1))
+		//log.Printf("seq9p.Do(seq %p, %p(%d, seq %p), %#v) (callers %s)", sq, fid, fid.fid, fid.seq, op, callers(1))
+	} else {
+		//log.Printf("seq9p.Do(nil, %#v) (callers %s)", op, callers(1))
 	}
 	sq.c.w.Lock()
 	defer sq.c.w.Unlock()
 	if sq.doEOF || (sq.replyEOF && op != nil) {
-//log.Printf("sequence has already terminated")
-		return os.NewError("sequence has terminated")
+		//log.Printf("sequence has already terminated")
+		return errors.New("sequence has terminated")
 	}
 	var tx *plan9.Fcall
 	switch op := op.(type) {
 	case nil:
-//log.Printf("seq9p sending terminate message")
+		//log.Printf("seq9p sending terminate message")
 		tx = &plan9.Fcall{Type: plan9.Tend}
 	case seq.AbortReq:
 		tx = &plan9.Fcall{Type: plan9.Tflush, Oldtag: sq.tag}
@@ -150,7 +150,7 @@ func (sq *seq9p) Do(f seq.File, op seq.BasicReq) os.Error {
 		sq.doEOF = true
 		sq.putfids()
 	}
-	
+
 	return nil
 }
 
@@ -187,7 +187,7 @@ func (sq *seq9p) fcall2result(rxc <-chan *plan9.Fcall, resultc chan<- seq.Result
 				sq.putfid(newfid)
 				newfid.Close()
 			}
-			sq.err = os.NewError(rx.Ename)
+			sq.err = errors.New(rx.Ename)
 			return
 		case plan9.Rwalk:
 			switch len(rx.Wqid) {
@@ -219,7 +219,7 @@ func (sq *seq9p) fcall2result(rxc <-chan *plan9.Fcall, resultc chan<- seq.Result
 			rq.fid.qid = rx.Qid
 			result = seq.CreateResult{rx.Qid}
 		case plan9.Rwrite:
-			result = seq.WriteResult{int(rx.Count)}		// TODO: check overflow?
+			result = seq.WriteResult{int(rx.Count)} // TODO: check overflow?
 		case plan9.Rread:
 			data := rq.op.(seq.ReadReq).Data
 			copy(data, rx.Data)
@@ -247,7 +247,7 @@ func (sq *seq9p) fcall2result(rxc <-chan *plan9.Fcall, resultc chan<- seq.Result
 			// TODO ensure sanity checked before it gets here.
 			panic(fmt.Sprintf("unexpected rmessage: %v", rx))
 		}
-//log.Printf("fcall2result %#v (rq %#v)\n", result, rq)
+		//log.Printf("fcall2result %#v (rq %#v)\n", result, rq)
 		sq.c.w.Unlock()
 		if result != nil {
 			resultc <- result
@@ -258,7 +258,7 @@ func (sq *seq9p) fcall2result(rxc <-chan *plan9.Fcall, resultc chan<- seq.Result
 
 func (sq *seq9p) putfid(fid *Fid) {
 	fid.seq = nil
-	sq.fids[fid.fid] = nil, false
+	delete(sq.fids, fid.fid)
 }
 
 // putfids clunks all the fids if the sequence has terminated
@@ -266,15 +266,15 @@ func (sq *seq9p) putfid(fid *Fid) {
 // fids can be reused only after Tend has been
 // sent and the final reply has been seen.
 func (sq *seq9p) putfids() {
-//log.Printf("putfids; doEOF %v; replyEOF %v; fids %p; callers %s", sq.doEOF, sq.replyEOF, sq.fids, callers(1))
+	//log.Printf("putfids; doEOF %v; replyEOF %v; fids %p; callers %s", sq.doEOF, sq.replyEOF, sq.fids, callers(1))
 	if sq.doEOF && sq.replyEOF && sq.fids != nil {
 		if sq.err != nil {
 			for _, fid := range sq.fids {
-				fid.flags &^= fAlloc|fPending
+				fid.flags &^= fAlloc | fPending
 				fid.seq = nil
 				fid.Close()
 			}
-		}else{
+		} else {
 			for _, fid := range sq.fids {
 				if fid.flags&fPending != 0 {
 					panic("fid still pending")
@@ -291,15 +291,15 @@ func (sq *seq9p) FileSys() seq.FileSys {
 }
 
 func (fid *file9p) IsDir() bool {
-	if fid.flags & fPending != 0{
+	if fid.flags&fPending != 0 {
 		panic("fid is not allocated")
 	}
 	return (fid.qid.Type & plan9.QTDIR) != 0
 }
 
 func (fid *file9p) IsOpen() bool {
-	if fid.flags & fPending != 0{
-		panic("fid is not allocated")		// TODO ???
+	if fid.flags&fPending != 0 {
+		panic("fid is not allocated") // TODO ???
 	}
 	return (fid.flags & fOpen) != 0
 }
@@ -312,7 +312,7 @@ func (fid *file9p) FileSys() seq.FileSys {
 	return (*filesys9p)(fid.c)
 }
 
-func (file *file9p) Do(op seq.BasicReq) (seq.Result, os.Error) {
+func (file *file9p) Do(op seq.BasicReq) (seq.Result, error) {
 	fid := (*Fid)(file)
 	switch op := op.(type) {
 	case seq.CloneReq:
@@ -389,7 +389,7 @@ func (file *file9p) Do(op seq.BasicReq) (seq.Result, os.Error) {
 		return seq.CreateResult{fid.qid}, nil
 	case seq.RemoveReq:
 		if fid.flags&fAlloc == 0 {
-			panic("remove of unalloced fid")		// TODO better error
+			panic("remove of unalloced fid") // TODO better error
 		}
 		tx := &plan9.Fcall{Type: plan9.Tremove, Fid: fid.fid}
 		_, err := fid.c.rpc(tx)

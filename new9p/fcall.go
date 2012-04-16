@@ -3,7 +3,6 @@ package plan9
 import (
 	"fmt"
 	"io"
-	"os"
 )
 
 const (
@@ -11,34 +10,34 @@ const (
 )
 
 type Fcall struct {
-	Type	uint8
-	Tag uint16
-	Fid uint32		// All T messages except Tversion, Tflush, Tbegin and Tend
-	Msize uint32	// Tversion, Rversion
-	Version string	// Tversion, Rversion
-	Oldtag uint16	// Tflush
-	Ename string	// Rerror
-	Qid Qid	// Rattach, Ropen, Rcreate
-	Iounit uint32	// Ropen, Rcreate
-	Aqid Qid	// Rauth
-	Afid uint32	// Tauth, Tattach
-	Uname string	// Tauth, Tattach
-	Aname string	// Tauth, Tattach
-	Perm Perm	// Tcreate
-	Name string	// Tcreate
-	Mode uint8	// Tcreate, Topen
-	Newfid uint32	// Twalk
-	Wname []string	// Twalk
-	Wqid []Qid	// Rwalk
-	Offset uint64	// Tread, Twrite
-	Count uint32	// Tread, Rwrite
-	Data []byte	// Twrite, Rread
-	Stat []byte	// Twstat, Rstat
-	
+	Type    uint8
+	Tag     uint16
+	Fid     uint32   // All T messages except Tversion, Tflush, Tbegin and Tend
+	Msize   uint32   // Tversion, Rversion
+	Version string   // Tversion, Rversion
+	Oldtag  uint16   // Tflush
+	Ename   string   // Rerror
+	Qid     Qid      // Rattach, Ropen, Rcreate
+	Iounit  uint32   // Ropen, Rcreate
+	Aqid    Qid      // Rauth
+	Afid    uint32   // Tauth, Tattach
+	Uname   string   // Tauth, Tattach
+	Aname   string   // Tauth, Tattach
+	Perm    Perm     // Tcreate
+	Name    string   // Tcreate
+	Mode    uint8    // Tcreate, Topen
+	Newfid  uint32   // Twalk
+	Wname   []string // Twalk
+	Wqid    []Qid    // Rwalk
+	Offset  uint64   // Tread, Twrite
+	Count   uint32   // Tread, Rwrite
+	Data    []byte   // Twrite, Rread
+	Stat    []byte   // Twstat, Rstat
+
 	// 9P2000.u extensions
-	Errno uint32	// Rerror
-	Uid uint32	// Tattach, Tauth
-	Extension string	// Tcreate
+	Errno     uint32 // Rerror
+	Uid       uint32 // Tattach, Tauth
+	Extension string // Tcreate
 }
 
 const (
@@ -48,7 +47,7 @@ const (
 	Rauth
 	Tattach
 	Rattach
-	Terror	// illegal
+	Terror // illegal
 	Rerror
 	Tflush
 	Rflush
@@ -79,8 +78,8 @@ const (
 	Tmax
 )
 
-func (f *Fcall) Bytes() ([]byte, os.Error) {
-	b := pbit32(nil, 0)	// length: fill in later
+func (f *Fcall) Bytes() ([]byte, error) {
+	b := pbit32(nil, 0) // length: fill in later
 	b = pbit8(b, f.Type)
 	b = pbit16(b, f.Tag)
 	switch f.Type {
@@ -101,13 +100,13 @@ func (f *Fcall) Bytes() ([]byte, os.Error) {
 		b = pbit32(b, f.Afid)
 		b = pstring(b, f.Uname)
 		b = pstring(b, f.Aname)
-	
+
 	case Tattach:
 		b = pbit32(b, f.Fid)
 		b = pbit32(b, f.Afid)
 		b = pstring(b, f.Uname)
 		b = pstring(b, f.Aname)
-	
+
 	case Twalk:
 		b = pbit32(b, f.Fid)
 		b = pbit32(b, f.Newfid)
@@ -122,18 +121,18 @@ func (f *Fcall) Bytes() ([]byte, os.Error) {
 	case Topen:
 		b = pbit32(b, f.Fid)
 		b = pbit8(b, f.Mode)
-	
+
 	case Tcreate:
 		b = pbit32(b, f.Fid)
 		b = pstring(b, f.Name)
 		b = pperm(b, f.Perm)
 		b = pbit8(b, f.Mode)
-	
+
 	case Tread:
 		b = pbit32(b, f.Fid)
 		b = pbit64(b, f.Offset)
 		b = pbit32(b, f.Count)
-	
+
 	case Twrite:
 		b = pbit32(b, f.Fid)
 		b = pbit64(b, f.Offset)
@@ -142,7 +141,7 @@ func (f *Fcall) Bytes() ([]byte, os.Error) {
 
 	case Tclunk, Tremove, Tstat, Tnonseq:
 		b = pbit32(b, f.Fid)
-	
+
 	case Twstat:
 		b = pbit32(b, f.Fid)
 		b = pbit16(b, uint16(len(f.Stat)))
@@ -151,19 +150,19 @@ func (f *Fcall) Bytes() ([]byte, os.Error) {
 	case Rversion:
 		b = pbit32(b, f.Msize)
 		b = pstring(b, f.Version)
-	
+
 	case Rerror:
 		b = pstring(b, f.Ename)
-	
+
 	case Rflush, Rclunk, Rremove, Rwstat, Rbegin, Rend, Rnonseq:
 		// nothing
-	
+
 	case Rauth:
 		b = pqid(b, f.Aqid)
-	
+
 	case Rattach:
 		b = pqid(b, f.Qid)
-	
+
 	case Rwalk:
 		if len(f.Wqid) > MAXWELEM {
 			return nil, ProtocolError("too many qid in walk")
@@ -172,7 +171,7 @@ func (f *Fcall) Bytes() ([]byte, os.Error) {
 		for i := range f.Wqid {
 			b = pqid(b, f.Wqid[i])
 		}
-	
+
 	case Ropen, Rcreate:
 		b = pqid(b, f.Qid)
 		b = pbit32(b, f.Iounit)
@@ -180,10 +179,10 @@ func (f *Fcall) Bytes() ([]byte, os.Error) {
 	case Rread:
 		b = pbit32(b, uint32(len(f.Data)))
 		b = append(b, f.Data...)
-	
+
 	case Rwrite:
 		b = pbit32(b, f.Count)
-	
+
 	case Rstat:
 		b = pbit16(b, uint16(len(f.Stat)))
 		b = append(b, f.Stat...)
@@ -193,10 +192,10 @@ func (f *Fcall) Bytes() ([]byte, os.Error) {
 	return b, nil
 }
 
-func UnmarshalFcall(b []byte) (f *Fcall, err os.Error) {
+func UnmarshalFcall(b []byte) (f *Fcall, err error) {
 	defer func() {
 		if recover() != nil {
-println("bad fcall at ", b)
+			println("bad fcall at ", b)
 			f = nil
 			err = ProtocolError("malformed Fcall")
 		}
@@ -206,7 +205,7 @@ println("bad fcall at ", b)
 	if len(b) != int(n)-4 {
 		panic(1)
 	}
-	
+
 	f = new(Fcall)
 	f.Type, b = gbit8(b)
 	f.Tag, b = gbit16(b)
@@ -218,7 +217,7 @@ println("bad fcall at ", b)
 	case Tversion:
 		f.Msize, b = gbit32(b)
 		f.Version, b = gstring(b)
-	
+
 	case Tflush:
 		f.Oldtag, b = gbit16(b)
 
@@ -226,13 +225,13 @@ println("bad fcall at ", b)
 		f.Afid, b = gbit32(b)
 		f.Uname, b = gstring(b)
 		f.Aname, b = gstring(b)
-	
+
 	case Tattach:
 		f.Fid, b = gbit32(b)
 		f.Afid, b = gbit32(b)
 		f.Uname, b = gstring(b)
 		f.Aname, b = gstring(b)
-	
+
 	case Twalk:
 		f.Fid, b = gbit32(b)
 		f.Newfid, b = gbit32(b)
@@ -249,18 +248,18 @@ println("bad fcall at ", b)
 	case Topen:
 		f.Fid, b = gbit32(b)
 		f.Mode, b = gbit8(b)
-	
+
 	case Tcreate:
 		f.Fid, b = gbit32(b)
 		f.Name, b = gstring(b)
 		f.Perm, b = gperm(b)
 		f.Mode, b = gbit8(b)
-	
+
 	case Tread:
 		f.Fid, b = gbit32(b)
 		f.Offset, b = gbit64(b)
 		f.Count, b = gbit32(b)
-	
+
 	case Twrite:
 		f.Fid, b = gbit32(b)
 		f.Offset, b = gbit64(b)
@@ -286,23 +285,23 @@ println("bad fcall at ", b)
 
 	case Tbegin, Tend:
 		// nothing
-	
+
 	case Rversion:
 		f.Msize, b = gbit32(b)
 		f.Version, b = gstring(b)
-	
+
 	case Rerror:
 		f.Ename, b = gstring(b)
-	
+
 	case Rflush, Rclunk, Rremove, Rwstat, Rbegin, Rend, Rnonseq:
 		// nothing
-	
+
 	case Rauth:
 		f.Aqid, b = gqid(b)
-	
+
 	case Rattach:
 		f.Qid, b = gqid(b)
-	
+
 	case Rwalk:
 		var n uint16
 		n, b = gbit16(b)
@@ -325,20 +324,20 @@ println("bad fcall at ", b)
 		}
 		f.Data = b
 		b = nil
-	
+
 	case Rwrite:
 		f.Count, b = gbit32(b)
-	
+
 	case Rstat:
 		var n uint16
-		n,  b = gbit16(b)
+		n, b = gbit16(b)
 		if len(b) != int(n) {
 			panic(1)
 		}
 		f.Stat = b
 		b = nil
 	}
-	
+
 	if len(b) != 0 {
 		panic(1)
 	}
@@ -363,7 +362,7 @@ func (f *Fcall) String() string {
 			f.Tag, f.Msize, f.Version)
 	case Tauth:
 		return fmt.Sprintf("Tauth tag %d afid %d uname %s aname %s",
-			f.Tag, f.Afid, f.Uname, f.Aname)		
+			f.Tag, f.Afid, f.Uname, f.Aname)
 	case Rauth:
 		return fmt.Sprintf("Rauth tag %d qid %v", f.Tag, f.Qid)
 	case Tattach:
@@ -440,14 +439,14 @@ func (f *Fcall) String() string {
 	return fmt.Sprintf("unknown type %d", f.Type)
 }
 
-func ReadFcall(r io.Reader) (*Fcall, os.Error) {
+func ReadFcall(r io.Reader) (*Fcall, error) {
 	// 128 bytes should be enough for most messages
 	buf := make([]byte, 128)
 	_, err := io.ReadFull(r, buf[0:4])
 	if err != nil {
 		return nil, err
 	}
-	
+
 	// read 4-byte header, make room for remainder
 	n, _ := gbit32(buf)
 	if n < 4 {
@@ -468,7 +467,7 @@ func ReadFcall(r io.Reader) (*Fcall, os.Error) {
 	return UnmarshalFcall(buf)
 }
 
-func WriteFcall(w io.Writer, f *Fcall) os.Error {
+func WriteFcall(w io.Writer, f *Fcall) error {
 	b, err := f.Bytes()
 	if err != nil {
 		return err

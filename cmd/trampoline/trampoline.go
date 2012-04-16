@@ -1,11 +1,11 @@
 package main
 
 import (
+	"code.google.com/p/rog-go/loopback"
 	"flag"
 	"fmt"
 	"io"
 	"os"
-	"rog-go.googlecode.com/hg/loopback"
 )
 
 var localNet = flag.String("i", "tcp", "network to listen on (accepts loopback options)")

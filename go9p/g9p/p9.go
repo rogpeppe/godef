@@ -5,7 +5,6 @@
 // The p9 package g9provides the definitions and functions used to implement
 // the 9P2000 protocol.
 package g9p
-import "os"
 
 import "syscall"
 
@@ -100,7 +99,7 @@ const (
 
 // Error represents a 9P2000 (and 9P2000.u) error
 type Error struct {
-	Error    string // textual representation of the error
+	Err      string // textual representation of the error
 	Errornum int    // numeric representation of the error (9P2000.u)
 }
 
@@ -273,7 +272,7 @@ func gint16(buf []byte) (uint16, []byte) {
 
 func gint32(buf []byte) (uint32, []byte) {
 	return uint32(buf[0]) | (uint32(buf[1]) << 8) | (uint32(buf[2]) << 16) |
-		(uint32(buf[3]) << 24),
+			(uint32(buf[3]) << 24),
 		buf[4:len(buf)]
 }
 
@@ -281,8 +280,8 @@ func Gint32(buf []byte) (uint32, []byte) { return gint32(buf) }
 
 func gint64(buf []byte) (uint64, []byte) {
 	return uint64(buf[0]) | (uint64(buf[1]) << 8) | (uint64(buf[2]) << 16) |
-		(uint64(buf[3]) << 24) | (uint64(buf[4]) << 32) | (uint64(buf[5]) << 40) |
-		(uint64(buf[6]) << 48) | (uint64(buf[7]) << 56),
+			(uint64(buf[3]) << 24) | (uint64(buf[4]) << 32) | (uint64(buf[5]) << 40) |
+			(uint64(buf[6]) << 48) | (uint64(buf[7]) << 56),
 		buf[8:len(buf)]
 }
 
@@ -447,11 +446,10 @@ func PackDir(d *Dir, buf []byte, dotu bool) int {
 	return sz
 }
 
-
 // Converts the on-the-wire representation of a stat to Stat value.
 // Returns an error if the conversion is impossible, otherwise
 // a pointer to a Stat value.
-func UnpackDir(buf []byte, dotu bool) (d *Dir, err os.Error) {
+func UnpackDir(buf []byte, dotu bool) (d *Dir, err error) {
 	sz := 2 + 2 + 4 + 13 + 4 + /* size[2] type[2] dev[4] qid[13] mode[4] */
 		4 + 4 + 8 + /* atime[4] mtime[4] length[8] */
 		2 + 2 + 2 + 2 /* name[s] uid[s] gid[s] muid[s] */
@@ -488,7 +486,7 @@ func SetTag(fc *Fcall, tag uint16) {
 	pint16(tag, fc.Pkt[5:len(fc.Pkt)])
 }
 
-func packCommon(fc *Fcall, size int, id uint8) ([]byte, os.Error) {
+func packCommon(fc *Fcall, size int, id uint8) ([]byte, error) {
 	size += 4 + 1 + 2 /* size[4] id[1] tag[2] */
 	if len(fc.Buf) < int(size) {
 		return nil, &Error{"buffer too small", syscall.EINVAL}
@@ -506,9 +504,9 @@ func packCommon(fc *Fcall, size int, id uint8) ([]byte, os.Error) {
 	return p, nil
 }
 
-func (err *Error) String() string {
+func (err *Error) Error() string {
 	if err != nil {
-		return err.Error
+		return err.Err
 		// TODO: return errno?
 	}
 

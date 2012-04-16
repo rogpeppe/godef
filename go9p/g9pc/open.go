@@ -5,14 +5,13 @@
 package g9pc
 
 import (
-	"os"
+	"code.google.com/p/rog-go/go9p/g9p"
 	"strings"
-	"rog-go.googlecode.com/hg/go9p/g9p"
 )
 
 // Opens the file associated with the fid. Returns nil if
 // the operation is successful.
-func (clnt *Client) Open(fid *Fid, mode uint8) os.Error {
+func (clnt *Client) Open(fid *Fid, mode uint8) error {
 	tc := clnt.newFcall()
 	err := g9p.PackTopen(tc, fid.Fid, mode)
 	if err != nil {
@@ -38,7 +37,7 @@ func (clnt *Client) Open(fid *Fid, mode uint8) os.Error {
 
 // Creates a file in the directory associated with the fid. Returns nil
 // if the operation is successful.
-func (clnt *Client) Create(fid *Fid, name string, perm uint32, mode uint8, ext string) os.Error {
+func (clnt *Client) Create(fid *Fid, name string, perm uint32, mode uint8, ext string) error {
 	tc := clnt.newFcall()
 	err := g9p.PackTcreate(tc, fid.Fid, name, perm, mode, ext, clnt.dotu)
 	if err != nil {
@@ -64,7 +63,7 @@ func (clnt *Client) Create(fid *Fid, name string, perm uint32, mode uint8, ext s
 
 // Creates and opens a named file.
 // Returns the file if the operation is successful, or an Error.
-func (clnt *Client) FCreate(path string, perm uint32, mode uint8) (*File, os.Error) {
+func (clnt *Client) FCreate(path string, perm uint32, mode uint8) (*File, error) {
 	n := strings.LastIndex(path, "/")
 	if n < 0 {
 		n = 0
@@ -89,7 +88,7 @@ func (clnt *Client) FCreate(path string, perm uint32, mode uint8) (*File, os.Err
 }
 
 // Opens a named file. Returns the opened file, or an Error.
-func (clnt *Client) FOpen(path string, mode uint8) (*File, os.Error) {
+func (clnt *Client) FOpen(path string, mode uint8) (*File, error) {
 	fid, err := clnt.FWalk(path)
 	if err != nil {
 		return nil, err

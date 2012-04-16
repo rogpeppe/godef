@@ -1,7 +1,7 @@
 package abc
+
 import (
 	"fmt"
-	"os"
 	"sync"
 )
 
@@ -56,14 +56,14 @@ func (status *Status) Log(s string) {
 func (status *Status) Error(s string) {
 }
 
-func (status *Status) Fail(e os.Error) {
+func (status *Status) Fail(e error) {
 }
 
 func (status *Status) Go(fn func(status *Status)) {
 	status.m.Go(fn)
 }
 
-func (m *StatusManager) Wait() os.Error {
+func (m *StatusManager) Wait() error {
 	wait := false
 	m.lock.Lock()
 	if m.wakeup == nil {

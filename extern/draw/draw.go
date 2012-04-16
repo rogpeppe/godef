@@ -10,7 +10,10 @@ package draw
 
 // BUG(rsc): This is a toy library and not ready for production use.
 
-import "image"
+import (
+	"image"
+	"image/color"
+)
 
 // m is the maximum color value returned by image.Color.RGBA.
 const m = 1<<16 - 1
@@ -25,12 +28,12 @@ const (
 	Src
 )
 
-var zeroColor image.Color = image.AlphaColor{0}
+var zeroColor color.Color = color.Alpha{0}
 
 // A draw.Image is an image.Image with a Set method to change a single pixel.
 type Image interface {
 	image.Image
-	Set(x, y int, c image.Color)
+	Set(x, y int, c color.Color)
 }
 
 // Draw calls DrawMask with a nil mask and an Over op.
@@ -44,7 +47,6 @@ func Draw(dst Image, r Rectangle, src image.Image, sp Point) {
 type DrawMasker interface {
 	DrawMask(r Rectangle, src image.Image, sp Point, mask image.Image, mp Point, op Op) bool
 }
-
 
 // DrawMask aligns r.Min in dst with sp in src and mp in mask and then replaces the rectangle r
 // in dst with the result of a Porter-Duff composition. A nil mask is treated as opaque.
@@ -75,7 +77,7 @@ func DrawMask(dst Image, r Rectangle, src image.Image, sp Point, mask image.Imag
 	case *image.RGBA:
 		if op == Over {
 			if mask == nil {
-				if src0, ok := src.(image.ColorImage); ok {
+				if src0, ok := src.(image.Uniform); ok {
 					drawFillOver(dst0, r, src0)
 					return
 				}
@@ -88,14 +90,14 @@ func DrawMask(dst Image, r Rectangle, src image.Image, sp Point, mask image.Imag
 					}
 				}
 			} else if mask0, ok := mask.(*image.Alpha); ok {
-				if src0, ok := src.(image.ColorImage); ok {
+				if src0, ok := src.(image.Uniform); ok {
 					drawGlyphOver(dst0, r, src0, mask0, mp)
 					return
 				}
 			}
 		} else {
 			if mask == nil {
-				if src0, ok := src.(image.ColorImage); ok {
+				if src0, ok := src.(image.Uniform); ok {
 					drawFillSrc(dst0, r, src0)
 					return
 				}
@@ -127,7 +129,7 @@ func DrawMask(dst Image, r Rectangle, src image.Image, sp Point, mask image.Imag
 		}
 	}
 
-	var out *image.RGBA64Color
+	var out *color.RGBA64
 	sy := sp.Y + y0 - r.Min.Y
 	my := mp.Y + y0 - r.Min.Y
 	for y := y0; y != y1; y, sy, my = y+dy, sy+dy, my+dy {
@@ -150,7 +152,7 @@ func DrawMask(dst Image, r Rectangle, src image.Image, sp Point, mask image.Imag
 			default:
 				sr, sg, sb, sa := src.At(sx, sy).RGBA()
 				if out == nil {
-					out = new(image.RGBA64Color)
+					out = new(color.RGBA64)
 				}
 				if op == Over {
 					dr, dg, db, da := dst.At(x, y).RGBA()
@@ -171,7 +173,7 @@ func DrawMask(dst Image, r Rectangle, src image.Image, sp Point, mask image.Imag
 	}
 }
 
-func drawFillOver(dst *image.RGBA, r Rectangle, src image.ColorImage) {
+func drawFillOver(dst *image.RGBA, r Rectangle, src image.Uniform) {
 	cr, cg, cb, ca := src.RGBA()
 	// The 0x101 is here for the same reason as in drawRGBA.
 	a := (m - ca) * 0x101
@@ -185,7 +187,7 @@ func drawFillOver(dst *image.RGBA, r Rectangle, src image.ColorImage) {
 			dg := (uint32(rgba.G)*a)/m + cg
 			db := (uint32(rgba.B)*a)/m + cb
 			da := (uint32(rgba.A)*a)/m + ca
-			dpix[x] = image.RGBAColor{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
+			dpix[x] = color.RGBA{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
 		}
 	}
 }
@@ -212,12 +214,12 @@ func drawCopyOver(dst *image.RGBA, r Rectangle, src *image.RGBA, sp Point) {
 			dg = (dg*a)/m + sg
 			db = (db*a)/m + sb
 			da = (da*a)/m + sa
-			dpix[x] = image.RGBAColor{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
+			dpix[x] = color.RGBA{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
 		}
 	}
 }
 
-func drawGlyphOver(dst *image.RGBA, r Rectangle, src image.ColorImage, mask *image.Alpha, mp Point) {
+func drawGlyphOver(dst *image.RGBA, r Rectangle, src image.Uniform, mask *image.Alpha, mp Point) {
 	x0, x1 := r.Min.X, r.Max.X
 	y0, y1 := r.Min.Y, r.Max.Y
 	cr, cg, cb, ca := src.RGBA()
@@ -241,17 +243,17 @@ func drawGlyphOver(dst *image.RGBA, r Rectangle, src image.ColorImage, mask *ima
 			dg = (dg*a + cg*ma) / m
 			db = (db*a + cb*ma) / m
 			da = (da*a + ca*ma) / m
-			dpix[x] = image.RGBAColor{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
+			dpix[x] = color.RGBA{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
 		}
 	}
 }
 
-func drawFillSrc(dst *image.RGBA, r Rectangle, src image.ColorImage) {
+func drawFillSrc(dst *image.RGBA, r Rectangle, src image.Uniform) {
 	if r.Dy() < 1 {
 		return
 	}
 	cr, cg, cb, ca := src.RGBA()
-	color := image.RGBAColor{uint8(cr >> 8), uint8(cg >> 8), uint8(cb >> 8), uint8(ca >> 8)}
+	color := color.RGBA{uint8(cr >> 8), uint8(cg >> 8), uint8(cb >> 8), uint8(ca >> 8)}
 	// The built-in copy function is faster than a straightforward for loop to fill the destination with
 	// the color, but copy requires a slice source. We therefore use a for loop to fill the first row, and
 	// then use the first row as the slice source for the remaining rows.
@@ -322,7 +324,7 @@ func drawRGBA(dst *image.RGBA, r Rectangle, src image.Image, sp Point, mask imag
 				db = sb * ma / m
 				da = sa * ma / m
 			}
-			dpix[x] = image.RGBAColor{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
+			dpix[x] = color.RGBA{uint8(dr >> 8), uint8(dg >> 8), uint8(db >> 8), uint8(da >> 8)}
 		}
 	}
 }

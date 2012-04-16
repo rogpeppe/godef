@@ -2,10 +2,10 @@ package filemarshal
 
 import (
 	"bytes"
+	"encoding/gob"
+	"encoding/json"
 	"fmt"
-	"gob"
 	"io/ioutil"
-	"json"
 	"os"
 	"runtime"
 	"testing"
@@ -162,7 +162,6 @@ func testDecode(t *T, dec Decoder, x interface{}) {
 		t.Fatal("decode failed:", err)
 	}
 }
-
 
 type T struct {
 	t      *testing.T

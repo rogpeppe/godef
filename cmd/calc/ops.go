@@ -56,6 +56,7 @@ var ops = map[string][]interface{}{
 	"log2":       {math.Log2},
 	"logb":       {math.Logb},
 	"log":        {math.Log},
+	"lsh":	{bigLsh},
 	"max":        {math.Max},
 	"min":        {math.Min},
 	"mod":        {math.Mod, (*big.Int).Mod},
@@ -71,6 +72,7 @@ var ops = map[string][]interface{}{
 	"rat":        {cvtRat},
 	"remainder":  {math.Remainder},
 	"rem":        {math.Remainder, (*big.Int).Rem},
+	"rsh":	{bigRsh},
 	"sinh":       {math.Sinh},
 	"sin":        {math.Sin},
 	"sqrt":       {math.Sqrt},
@@ -165,6 +167,22 @@ var patterns = []pattern{
 			}
 		}},
 	},
+}
+
+func bigLsh(z, x, y *big.Int) *big.Int {
+	i := y.Int64()
+	if i < 0 {
+		panic("negative shift")
+	}
+	return z.Lsh(x, uint(i))
+}
+
+func bigRsh(z, x, y *big.Int) *big.Int {
+	i := y.Int64()
+	if i < 0 {
+		panic("negative shift")
+	}
+	return z.Rsh(x, uint(i))
 }
 
 // We define intPow here because there's a naming

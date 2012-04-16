@@ -1,12 +1,12 @@
 package main
 
 import (
+	"code.google.com/p/rog-go/go9p/g9p"
+	"code.google.com/p/rog-go/go9p/g9pc"
 	"flag"
 	"fmt"
 	"log"
 	"os"
-	"rog-go.googlecode.com/hg/go9p/g9p"
-	"rog-go.googlecode.com/hg/go9p/g9pc"
 )
 
 var debuglevel = flag.Int("d", 0, "debuglevel")

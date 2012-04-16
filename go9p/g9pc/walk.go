@@ -5,17 +5,16 @@
 package g9pc
 
 import (
-	"os"
+	"code.google.com/p/rog-go/go9p/g9p"
 	"strings"
 	"syscall"
-	"rog-go.googlecode.com/hg/go9p/g9p"
 )
 
 // Starting from the file associated with fid, walks all wnames in
 // sequence and associates the resulting file with newfid. If no wnames
 // were walked successfully, an Error is returned. Otherwise a slice with a
 // Qid for each walked name is returned.
-func (clnt *Client) Walk(fid *Fid, newfid *Fid, wnames []string) ([]g9p.Qid, os.Error) {
+func (clnt *Client) Walk(fid *Fid, newfid *Fid, wnames []string) ([]g9p.Qid, error) {
 	tc := clnt.newFcall()
 	err := g9p.PackTwalk(tc, fid.Fid, newfid.Fid, wnames)
 	if err != nil {
@@ -33,8 +32,8 @@ func (clnt *Client) Walk(fid *Fid, newfid *Fid, wnames []string) ([]g9p.Qid, os.
 
 // Walks to a named file. Returns a Fid associated with the file,
 // or an Error.
-func (clnt *Client) FWalk(path string) (*Fid, os.Error) {
-	var err os.Error = nil
+func (clnt *Client) FWalk(path string) (*Fid, error) {
+	var err error = nil
 
 	var i, m int
 	for i = 0; i < len(path); i++ {
@@ -47,7 +46,7 @@ func (clnt *Client) FWalk(path string) (*Fid, os.Error) {
 		path = path[i:len(path)]
 	}
 
-	wnames := strings.Split(path, "/", -1)
+	wnames := strings.Split(path, "/")
 	newfid := clnt.fidAlloc()
 	fid := clnt.root
 	newfid.User = fid.User

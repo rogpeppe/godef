@@ -3,20 +3,20 @@ package client
 import (
 	"fmt"
 	"io"
+	"log"
 	"os"
 	"sync"
-	"log"
 
-	plan9 "rog-go.googlecode.com/hg/new9p"
+	plan9 "code.google.com/p/rog-go/new9p"
 )
 
 type Error string
 
-func (e Error) String() string { return string(e) }
+func (e Error) Error() string { return string(e) }
 
 type Conn struct {
 	rwc     io.ReadWriteCloser
-	err     os.Error
+	err     error
 	tagmap  map[uint16]chan *plan9.Fcall
 	freetag map[uint16]bool
 	freefid map[uint32]bool
@@ -27,7 +27,7 @@ type Conn struct {
 	w, x    sync.Mutex
 }
 
-func NewConn(rwc io.ReadWriteCloser) (*Conn, os.Error) {
+func NewConn(rwc io.ReadWriteCloser) (*Conn, error) {
 	c := &Conn{
 		rwc:     rwc,
 		tagmap:  make(map[uint16]chan *plan9.Fcall),
@@ -35,7 +35,7 @@ func NewConn(rwc io.ReadWriteCloser) (*Conn, os.Error) {
 		freefid: make(map[uint32]bool),
 		nexttag: 1,
 		nextfid: 1,
-		msize:   64*1024,
+		msize:   64 * 1024,
 		version: "9P2000",
 	}
 
@@ -85,20 +85,20 @@ func (c *Conn) mux(rx *plan9.Fcall) {
 	ch <- rx
 }
 
-func (c *Conn) getfid() (*Fid, os.Error) {
+func (c *Conn) getfid() (*Fid, error) {
 	c.x.Lock()
 	defer c.x.Unlock()
 	var fidnum uint32
-//	for fidnum, _ = range c.freefid {
-//		c.freefid[fidnum] = false, false
-//		goto found
-//	}
+	//	for fidnum, _ = range c.freefid {
+	//		c.freefid[fidnum] = false, false
+	//		goto found
+	//	}
 	fidnum = c.nextfid
 	if c.nextfid == plan9.NOFID {
 		return nil, plan9.ProtocolError("out of fids")
 	}
 	c.nextfid++
-//found:
+	//found:
 	fid := new(Fid)
 	fid.fid = fidnum
 	fid.c = c
@@ -119,43 +119,43 @@ func (c *Conn) putfid(f *Fid) {
 	}
 }
 
-func (c *Conn) newtag(ch chan *plan9.Fcall) (uint16, os.Error) {
+func (c *Conn) newtag(ch chan *plan9.Fcall) (uint16, error) {
 	c.x.Lock()
 	defer c.x.Unlock()
 	var tagnum uint16
-//	for tagnum, _ = range c.freetag {
-//		c.freetag[tagnum] = false, false
-//		goto found
-//	}
+	//	for tagnum, _ = range c.freetag {
+	//		c.freetag[tagnum] = false, false
+	//		goto found
+	//	}
 	tagnum = c.nexttag
 	if c.nexttag == plan9.NOTAG {
 		return 0, plan9.ProtocolError("out of tags")
 	}
 	c.nexttag++
-//found:
+	//found:
 	c.tagmap[tagnum] = ch
 	return tagnum, nil
 }
 
-func (c *Conn) read() (*plan9.Fcall, os.Error) {
+func (c *Conn) read() (*plan9.Fcall, error) {
 	if err := c.getErr(); err != nil {
 		return nil, err
 	}
 	f, err := plan9.ReadFcall(c.rwc)
 	if err != nil {
-log.Printf("<-- read error: %v", err)
+		log.Printf("<-- read error: %v", err)
 		c.setErr(err)
 		return nil, err
 	}
-//log.Printf("<-- %v", f)
+	//log.Printf("<-- %v", f)
 	return f, nil
 }
 
-func (c *Conn) write(f *plan9.Fcall) os.Error {
+func (c *Conn) write(f *plan9.Fcall) error {
 	if err := c.getErr(); err != nil {
 		return err
 	}
-//log.Printf("--> %v", f)
+	//log.Printf("--> %v", f)
 	err := plan9.WriteFcall(c.rwc, f)
 	if err != nil {
 		c.setErr(err)
@@ -163,7 +163,7 @@ func (c *Conn) write(f *plan9.Fcall) os.Error {
 	return err
 }
 
-func (c *Conn) rpc(tx *plan9.Fcall) (rx *plan9.Fcall, err os.Error) {
+func (c *Conn) rpc(tx *plan9.Fcall) (rx *plan9.Fcall, err error) {
 	ch := make(chan *plan9.Fcall, 1)
 	tx.Tag, err = c.newtag(ch)
 	if err != nil {
@@ -179,7 +179,7 @@ func (c *Conn) rpc(tx *plan9.Fcall) (rx *plan9.Fcall, err os.Error) {
 
 	rx = <-ch
 	if rx == nil {
-//log.Printf("rpc failed, closed %v, err %v\n", closed(ch), c.getErr())
+		//log.Printf("rpc failed, closed %v, err %v\n", closed(ch), c.getErr())
 		return nil, c.getErr()
 	}
 	if rx.Type == plan9.Rerror {
@@ -191,18 +191,18 @@ func (c *Conn) rpc(tx *plan9.Fcall) (rx *plan9.Fcall, err os.Error) {
 	return rx, nil
 }
 
-func (c *Conn) Close() os.Error {
+func (c *Conn) Close() error {
 	return c.rwc.Close()
 }
 
-func (c *Conn) getErr() os.Error {
+func (c *Conn) getErr() error {
 	c.x.Lock()
 	err := c.err
 	c.x.Unlock()
 	return err
 }
 
-func (c *Conn) setErr(err os.Error) {
+func (c *Conn) setErr(err error) {
 	c.x.Lock()
 	c.err = err
 	c.x.Unlock()

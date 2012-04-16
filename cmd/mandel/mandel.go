@@ -1,34 +1,36 @@
 package main
+
 import (
-	"flag"
-	"image"
-	"log"
-	"rog-go.googlecode.com/hg/canvas"
+	"code.google.com/p/rog-go/canvas"
 	"exp/draw"
 	"exp/draw/x11"
+	"flag"
+	"image"
+	"image/color"
+	"log"
 	"time"
 )
 
 type stack struct {
-	f Fractal
-	centre draw.Point
+	f          Fractal
+	centre     draw.Point
 	iterations int
-	next *stack
+	next       *stack
 }
 
 type context struct {
-	cvs *canvas.Canvas
-	f Fractal
-	pushed *stack
-	tiler *Tiler
-	item canvas.MoveableItem
-	tileSize int
+	cvs        *canvas.Canvas
+	f          Fractal
+	pushed     *stack
+	tiler      *Tiler
+	item       canvas.MoveableItem
+	tileSize   int
 	iterations int
-	cache tileTable
+	cache      tileTable
 }
 
 type Fractal interface {
-	At(p draw.Point) image.RGBAColor
+	At(p draw.Point) color.RGBA
 	Zoom(r draw.Rectangle) Fractal
 	Resize(r draw.Rectangle) Fractal
 	Associated(p draw.Point) Fractal
@@ -37,6 +39,7 @@ type Fractal interface {
 var topArea = crect{cmplx(-2.0, -1.5), cmplx(1.0, 1.5)}
 var iterations = flag.Int("iter", 300, "max number of iterations per point")
 var tileSize = flag.Int("tile", 40, "tile size in pixels")
+
 func main() {
 	flag.Parse()
 	wctxt, err := x11.NewWindow()
@@ -51,7 +54,7 @@ func main() {
 	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(wctxt))
 	ctxt.cvs = canvas.NewCanvas(nil, bg.Rect())
 	bg.SetItem(ctxt.cvs)
-	
+
 	ctxt.cache = NewTileTable()
 	ctxt.setFractal(NewMandelbrot(topArea, ctxt.cvs.Rect(), false, 0, ctxt.iterations), draw.ZP)
 
@@ -81,7 +84,7 @@ func main() {
 			}
 			m := <-finalm
 			dragging := m.Buttons != 0
-			switch{
+			switch {
 			case m0.Buttons&1 != 0:
 				switch nclick {
 				case 1:
@@ -91,7 +94,7 @@ func main() {
 				case 2:
 					if dragging {
 						ctxt.zoomRect(m, mc)
-					}else{
+					} else {
 						ctxt.zoomABit(m, mc)
 					}
 				}
@@ -100,7 +103,7 @@ func main() {
 				case 1:
 					if dragging {
 						ctxt.interactiveJulia(m, mc)
-					}else{
+					} else {
 						ctxt.julia(m.Point)
 					}
 				}
@@ -120,7 +123,7 @@ func (ctxt *context) zoomRect(m draw.Mouse, mc <-chan draw.Mouse) {
 func (ctxt *context) zoomABit(m draw.Mouse, mc <-chan draw.Mouse) {
 	// TODO: zoom into a rectangle centred on the mouse position,
 	// but half the size of the current canvas rectangle
-log.Stdoutf("zoom a bit")
+	log.Stdoutf("zoom a bit")
 }
 
 func (ctxt *context) julia(p draw.Point) {
@@ -130,18 +133,19 @@ func (ctxt *context) julia(p draw.Point) {
 }
 
 const ThumbSize = 150
-func (ctxt *context) interactiveJulia(m draw.Mouse, mc <-chan draw.Mouse){
+
+func (ctxt *context) interactiveJulia(m draw.Mouse, mc <-chan draw.Mouse) {
 	var i canvas.ImageItem
 	i.IsOpaque = true
 	i.R = draw.Rect(0, 0, ThumbSize, ThumbSize).Add(ctxt.cvs.Rect().Max).Sub(draw.Pt(ThumbSize, ThumbSize))
-	i.Image = image.NewRGBA(ThumbSize, ThumbSize)
+	i.Image = image.NewRGBA(image.Rect(0, 0, ThumbSize, ThumbSize))
 	ctxt.cvs.AddItem(&i)
-	defer func(){
+	defer func() {
 		ctxt.cvs.Delete(&i)
 		ctxt.cvs.Flush()
 	}()
 	delta := ctxt.mouseDelta()
-	for  {
+	for {
 		f := ctxt.f.Associated(m.Point.Add(delta))
 		if f == nil {
 			for m.Buttons != 0 {
@@ -199,16 +203,15 @@ func (ctxt *context) mouseDelta() draw.Point {
 	return draw.ZP.Sub(centre(ctxt.item.Bbox()))
 }
 
-
 type ColorRange struct {
-	start, end image.Color
-	p float64
+	start, end color.Color
+	p          float64
 }
 
 var (
-	DarkYellow = image.ColorImage{image.RGBAColor{0xee, 0xee, 0x9e, 0xff}}
-	DarkGreen = 	image.ColorImage{image.RGBAColor{0x44, 0x88, 0x44, 0xff}}
-	PaleGreyBlue = 	image.ColorImage{image.RGBAColor{0x49, 0x93, 0xDD, 0xFF}}
+	DarkYellow   = image.Uniform{color.RGBA{0xee, 0xee, 0x9e, 0xff}}
+	DarkGreen    = image.Uniform{color.RGBA{0x44, 0x88, 0x44, 0xff}}
+	PaleGreyBlue = image.Uniform{color.RGBA{0x49, 0x93, 0xDD, 0xFF}}
 )
 
 var range0 = []ColorRange{
@@ -219,41 +222,41 @@ var range0 = []ColorRange{
 	ColorRange{image.White, PaleGreyBlue, 0.125},
 }
 
-func interpolateColor(c1, c2 image.Color, where float64) image.Color {
+func interpolateColor(c1, c2 color.Color, where float64) color.Color {
 	r1, g1, b1, a1 := c1.RGBA()
 	r2, g2, b2, a2 := c2.RGBA()
 
-	var c image.RGBA64Color
-	c.R = uint16(float64(r2 - r1) * where + float64(r1) + 0.5)
-	c.G = uint16(float64(g2 - g1) * where + float64(g1) + 0.5)
-	c.B = uint16(float64(b2 - b1) * where + float64(b1) + 0.5)
-	c.A = uint16(float64(a2 - a1) * where + float64(a1) + 0.5)
+	var c color.RGBA64
+	c.R = uint16(float64(r2-r1)*where + float64(r1) + 0.5)
+	c.G = uint16(float64(g2-g1)*where + float64(g1) + 0.5)
+	c.B = uint16(float64(b2-b1)*where + float64(b1) + 0.5)
+	c.A = uint16(float64(a2-a1)*where + float64(a1) + 0.5)
 	return c
 }
 
-func makePalette(spec []ColorRange, nsteps int) []image.RGBAColor {
-	palette := make([]image.RGBAColor, nsteps + 1)
+func makePalette(spec []ColorRange, nsteps int) []color.RGBA {
+	palette := make([]color.RGBA, nsteps+1)
 	p := 0
 	for _, r := range spec {
-		n := int(r.p * float64(nsteps) + 0.5)
+		n := int(r.p*float64(nsteps) + 0.5)
 		for j := 0; j < n && p < nsteps; j++ {
-			c := interpolateColor(r.start, r.end, float64(j) / float64(n))
-			palette[p] = image.RGBAColorModel.Convert(c).(image.RGBAColor)
+			c := interpolateColor(r.start, r.end, float64(j)/float64(n))
+			palette[p] = color.RGBAModel.Convert(c).(color.RGBA)
 			p++
 		}
 	}
-	palette[nsteps] = image.RGBAColorModel.Convert(image.Black).(image.RGBAColor)
+	palette[nsteps] = color.RGBAModel.Convert(image.Black).(color.RGBA)
 	return palette
 }
 
 type Mandelbrot struct {
-	iterations int
-	palette []image.RGBAColor
+	iterations    int
+	palette       []color.RGBA
 	origin, delta complex128
-	cr crect
-	r draw.Rectangle
-	jpoint complex128			// number characterising julia set.
-	julia bool
+	cr            crect
+	r             draw.Rectangle
+	jpoint        complex128 // number characterising julia set.
+	julia         bool
 }
 
 type crect struct {
@@ -268,12 +271,12 @@ func NewMandelbrot(r crect, wr draw.Rectangle, julia bool, jpoint complex128, it
 	atall := (imag(r.min) - imag(r.min)) / (real(r.max) - real(r.min))
 	if btall > atall {
 		// bitmap is taller than area, so expand area vertically
-		excess := (real(r.max) - real(r.min)) * btall - (imag(r.max) - imag(r.min))
+		excess := (real(r.max)-real(r.min))*btall - (imag(r.max) - imag(r.min))
 		r.min -= cmplx(0, excess/2.0)
 		r.max += cmplx(0, excess/2.0)
-	}else{
+	} else {
 		// area is taller than bitmap, so expand area horizontally
-		excess := (imag(r.max) - imag(r.min)) / btall - (real(r.max) - real(r.min))
+		excess := (imag(r.max)-imag(r.min))/btall - (real(r.max) - real(r.min))
 		r.min -= cmplx(excess/2.0, 0)
 		r.max += cmplx(excess/2.0, 0)
 	}
@@ -285,15 +288,15 @@ func NewMandelbrot(r crect, wr draw.Rectangle, julia bool, jpoint complex128, it
 	m.jpoint = jpoint
 	m.cr = r
 	m.delta = cmplx(
-		(real(r.max) - real(r.min)) / float64(wr.Dx()),
-		(imag(r.max) - imag(r.min)) / float64(wr.Dy()),
+		(real(r.max)-real(r.min))/float64(wr.Dx()),
+		(imag(r.max)-imag(r.min))/float64(wr.Dy()),
 	)
 	m.r = wr
 	return &m
 }
 
 func (m *Mandelbrot) translate(p draw.Point) complex128 {
-	return m.origin + cmplx(float64(p.X) * real(m.delta), float64(p.Y) * imag(m.delta))
+	return m.origin + cmplx(float64(p.X)*real(m.delta), float64(p.Y)*imag(m.delta))
 }
 
 func (m *Mandelbrot) Zoom(r draw.Rectangle) Fractal {
@@ -304,8 +307,8 @@ func (m *Mandelbrot) Resize(r draw.Rectangle) Fractal {
 	return NewMandelbrot(m.cr, r, m.julia, m.jpoint, m.iterations)
 }
 
-func (m *Mandelbrot) At(pt draw.Point) (col image.RGBAColor) {
-	p := cmplx(float64(pt.X) * real(m.delta), float64(pt.Y) * imag(m.delta)) + m.origin
+func (m *Mandelbrot) At(pt draw.Point) (col color.RGBA) {
+	p := cmplx(float64(pt.X)*real(m.delta), float64(pt.Y)*imag(m.delta)) + m.origin
 
 	const max = 4
 
@@ -317,7 +320,7 @@ func (m *Mandelbrot) At(pt draw.Point) (col image.RGBAColor) {
 	n := m.iterations
 	for i := 0; i < n; i++ {
 		z = z*z + c
-		if real(z) * real(z) + imag(z) * imag(z) > max {
+		if real(z)*real(z)+imag(z)*imag(z) > max {
 			return m.palette[i]
 		}
 	}
@@ -334,12 +337,12 @@ func (m *Mandelbrot) Associated(pt draw.Point) Fractal {
 type Tile struct {
 	stop chan<- (chan<- int)
 	done <-chan int
-	r draw.Rectangle	// rectangle in pixels covered by tile
-//	lastDrawn int	// time stamp last drawn at.
-	nrows int		// number of rows calculated so far, from top.
+	r    draw.Rectangle // rectangle in pixels covered by tile
+	//	lastDrawn int	// time stamp last drawn at.
+	nrows int // number of rows calculated so far, from top.
 	image *image.RGBA
-	calc Fractal
-	next *Tile
+	calc  Fractal
+	next  *Tile
 }
 
 func NewTile(r draw.Rectangle, calc Fractal, img *image.RGBA, wait bool) *Tile {
@@ -347,17 +350,17 @@ func NewTile(r draw.Rectangle, calc Fractal, img *image.RGBA, wait bool) *Tile {
 	t.r = r
 	t.nrows = 0
 	if img == nil {
-		img = image.NewRGBA(r.Dx(), r.Dy())
+		img = image.NewRGBA(image.Rect(0, 0, r.Dx(), r.Dy()))
 	}
 	t.calc = calc
 	t.image = img
 	if wait {
 		t.calculate(nil, nil)
 		t.nrows = img.Height()
-	}else{
+	} else {
 		// choose some vaguely appropriate colour
 		col := calc.At(centre(r))
-		draw.Draw(t.image, draw.Rect(0, 0, r.Dx(), r.Dy()), image.ColorImage{col}, draw.ZP)
+		draw.Draw(t.image, draw.Rect(0, 0, r.Dx(), r.Dy()), image.Uniform{col}, draw.ZP)
 	}
 	return t
 }
@@ -375,16 +378,16 @@ func (t *Tile) Go(updatec chan<- draw.Rectangle) {
 	go t.calculate(updatec, stop)
 }
 
-func (t *Tile) calculate(updatec chan<- draw.Rectangle, stop <-chan (chan<- int)){
+func (t *Tile) calculate(updatec chan<- draw.Rectangle, stop <-chan (chan<- int)) {
 	y0 := t.nrows + t.r.Min.Y
-	for y := t.r.Min.Y + t.nrows; y < t.r.Max.Y;  {
-		row := t.image.Pixel[y - t.r.Min.Y]
+	for y := t.r.Min.Y + t.nrows; y < t.r.Max.Y; {
+		row := t.image.Pixel[y-t.r.Min.Y]
 		for i := range row {
 			row[i] = t.calc.At(draw.Point{i + t.r.Min.X, y})
 		}
 		y++
-		if updatec != nil && y & 3 == 0 {
-			select{
+		if updatec != nil && y&3 == 0 {
+			select {
 			case updatec <- draw.Rect(t.r.Min.X, y0, t.r.Max.X, y):
 				y0 = y
 			case done := <-stop:
@@ -414,13 +417,14 @@ func (t *Tile) Draw(dst draw.Image, clipr draw.Rectangle) {
 	draw.DrawMask(dst, r, t.image, r.Min.Sub(t.r.Min), nil, draw.ZP, draw.Src)
 }
 
-type tileTable map[int64] *Tile
+type tileTable map[int64]*Tile
+
 func NewTileTable() tileTable {
-	return make(map[int64] *Tile)
+	return make(map[int64]*Tile)
 }
 
 func hash(x, y int) int64 {
-	return int64(x) + int64(y) << 32
+	return int64(x) + int64(y)<<32
 }
 
 func (table tileTable) Get(x, y int, f Fractal) *Tile {
@@ -445,12 +449,12 @@ func (table tileTable) Set(x, y int, f Fractal, t *Tile) {
 }
 
 type Tiler struct {
-	backing canvas.Backing
-	all tileTable
-	current map[*Tile]bool
-	tileSize int
-	calc Fractal
-	updatec chan draw.Rectangle
+	backing    canvas.Backing
+	all        tileTable
+	current    map[*Tile]bool
+	tileSize   int
+	calc       Fractal
+	updatec    chan draw.Rectangle
 	drawerDone chan bool
 }
 
@@ -487,7 +491,7 @@ func (t *Tiler) drawer() {
 		if !ok {
 			break
 		}
-		t.backing.Atomically(func(flush canvas.FlushFunc){
+		t.backing.Atomically(func(flush canvas.FlushFunc) {
 			for ok {
 				flush(r, nil)
 				select {
@@ -549,7 +553,7 @@ func (t *Tiler) Draw(dst draw.Image, clipr draw.Rectangle) {
 			tile := t.all.Get(p.X, p.Y, t.calc)
 			if tile == nil {
 				tile = NewTile(
-					draw.Rect(p.X, p.Y, p.X + t.tileSize, p.Y + t.tileSize),
+					draw.Rect(p.X, p.Y, p.X+t.tileSize, p.Y+t.tileSize),
 					t.calc,
 					nil,
 					false,
@@ -557,7 +561,7 @@ func (t *Tiler) Draw(dst draw.Image, clipr draw.Rectangle) {
 				t.all.Set(p.X, p.Y, t.calc, tile)
 				t.current[tile] = true
 				tile.Go(t.updatec)
-			}else if !t.current[tile] {
+			} else if !t.current[tile] {
 				tile.Go(t.updatec)
 			}
 			tile.Draw(dst, clipr)
@@ -574,6 +578,7 @@ type RectFlusherContext interface {
 	draw.Context
 	FlushImageRect(r draw.Rectangle)
 }
+
 func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
 	if fctxt, ok := ctxt.(RectFlusherContext); ok {
 		return func(r draw.Rectangle) {
@@ -586,7 +591,7 @@ func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
 }
 
 func centre(r draw.Rectangle) draw.Point {
-	return draw.Pt((r.Min.X + r.Max.X) / 2, (r.Min.Y + r.Max.Y) / 2)
+	return draw.Pt((r.Min.X+r.Max.X)/2, (r.Min.Y+r.Max.Y)/2)
 }
 
 type box struct {
@@ -595,7 +600,7 @@ type box struct {
 
 func newBox(cvs *canvas.Canvas, r draw.Rectangle) *box {
 	var b box
-	red := image.ColorImage{image.Red}
+	red := image.Uniform{image.Red}
 	b.n = canvas.NewLine(red, r.Min, draw.Pt(r.Max.X, r.Min.Y), 1)
 	b.e = canvas.NewLine(red, draw.Pt(r.Max.X, r.Min.Y), r.Max, 1)
 	b.s = canvas.NewLine(red, r.Max, draw.Pt(r.Min.X, r.Max.Y), 1)
@@ -656,7 +661,7 @@ func clicker(m0 draw.Mouse, mc <-chan draw.Mouse) (clicks, final <-chan draw.Mou
 	go func() {
 		c <- m0
 		m := m0
-tracking:
+	tracking:
 		for !closed(mc) {
 			// wait for button up or delta or time to move outside limit.
 			for m = range mc {
@@ -672,7 +677,7 @@ tracking:
 
 			t = time.NewTicker(ClickTime)
 			// wait for button down or delta or time to move outside limit.
-buttonDown:
+		buttonDown:
 			for {
 				select {
 				case m = <-mc:

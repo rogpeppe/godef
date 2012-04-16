@@ -5,8 +5,8 @@ import (
 	"io"
 	"os"
 
-	"goplan9.googlecode.com/hg/plan9"
-	"goplan9.googlecode.com/hg/plan9/client"
+	"code.google.com/p/goplan9/plan9"
+	"code.google.com/p/goplan9/plan9/client"
 )
 
 func main() {
@@ -14,22 +14,22 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
-	
+
 	fid, err := fsys.Open("index", plan9.OREAD)
 	if err != nil {
 		panic(err)
 	}
-	
+
 	fid.Write([]byte("hello, world"))
-	
+
 	io.Copy(os.Stdout, fid)
 	fid.Close()
-	
+
 	d, err := fsys.Stat("/index")
 	if err != nil {
 		panic(err)
 	}
 	fmt.Printf("%v\n", d)
-	
+
 	fsys.Wstat("/index", d)
 }

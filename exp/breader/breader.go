@@ -2,24 +2,25 @@ package breader
 
 import (
 	"io"
-	"os"
 	"io/ioutil"
+	"os"
 )
 
 type bufferedReader struct {
-	req chan []byte
+	req   chan []byte
 	reply chan int
-	tmpf *os.File
-	error os.Error
+	tmpf  *os.File
+	error error
 }
-const ioUnit = 16*1024
+
+const ioUnit = 16 * 1024
 
 // NewReader continually reads from in and buffers the data
 // inside a temporary file (created with ioutil.TempFile(dir, prefix)).
 // It returns a Reader that can be used to read the data.
-func NewReader(in io.Reader, dir, prefix string) (io.Reader, os.Error) {
+func NewReader(in io.Reader, dir, prefix string) (io.Reader, error) {
 	br := new(bufferedReader)
-	br.error = os.EOF
+	br.error = io.EOF
 	tmpf, err := ioutil.TempFile(dir, prefix)
 	if tmpf == nil {
 		return nil, err
@@ -34,7 +35,7 @@ func NewReader(in io.Reader, dir, prefix string) (io.Reader, os.Error) {
 	return br, nil
 }
 
-func (br *bufferedReader) Read(buf []byte) (int, os.Error) {
+func (br *bufferedReader) Read(buf []byte) (int, error) {
 	br.req <- buf
 	n := <-br.reply
 	if n == 0 {

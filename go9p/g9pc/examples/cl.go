@@ -4,16 +4,17 @@ package main
 
 import (
 	"bufio"
+	"code.google.com/p/rog-go/go9p/g9p"
+	"code.google.com/p/rog-go/go9p/g9pc"
+	"code.google.com/p/rog-go/go9p/g9plog"
 	"flag"
 	"fmt"
+	"io"
 	"log"
-	"http"
+	"net/http"
 	"os"
 	"path"
 	"strings"
-	"rog-go.googlecode.com/hg/go9p/g9p"
-	"rog-go.googlecode.com/hg/go9p/g9pc"
-	"rog-go.googlecode.com/hg/go9p/g9plog"
 )
 
 var addr = flag.String("addr", "127.0.0.1:5640", "network address")
@@ -330,7 +331,7 @@ func cmdput(c *g9pc.Client, s []string) {
 	buf := make([]byte, 8192)
 	for {
 		n, oserr := fromfile.Read(buf)
-		if oserr != nil && oserr != os.EOF {
+		if oserr != nil && oserr != io.EOF {
 			fmt.Fprintf(os.Stderr, "error reading %s: %s\n", from, oserr)
 			return
 		}
@@ -364,6 +365,7 @@ func rmone(c *g9pc.Client, f string) {
 		return
 	}
 }
+
 // Remove one or more files from the server
 func cmdrm(c *g9pc.Client, s []string) {
 	for _, f := range s {
@@ -414,7 +416,7 @@ func interactive(c *g9pc.Client) {
 	if ok != nil {
 		fmt.Fprintf(os.Stderr, "can't create reader buffer: %s\n", ok)
 	}
-	done := make(chan os.Error)
+	done := make(chan error)
 	go func() {
 		e := c.Wait()
 		fmt.Printf("wait finished (%v)\n", e)
@@ -436,7 +438,7 @@ loop:
 		}
 		str := strings.TrimSpace(string(line))
 		// TODO: handle larger input lines by doubling buffer
-		in := strings.Split(str, "\n", -1)
+		in := strings.Split(str, "\n")
 		for i := range in {
 			if len(in[i]) > 0 {
 				cmd(c, in[i])

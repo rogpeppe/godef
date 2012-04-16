@@ -2,10 +2,11 @@
 package filemarshal
 
 import (
+	"code.google.com/p/rog-go/typeapply"
+	"errors"
 	"io"
 	"io/ioutil"
 	"os"
-	"rog-go.googlecode.com/hg/typeapply"
 )
 
 // A File holds on-disk storage.
@@ -30,13 +31,13 @@ func (f *File) File() *os.File {
 // Examples include gob.Encoder and json.Encoder.
 type Encoder interface {
 	// Encode writes an encoded version of x.
-	Encode(x interface{}) os.Error
+	Encode(x interface{}) error
 }
 
 // Decoder represents a decoding method.
 // Examples include gob.Decoder and json.Decoder.
 type Decoder interface {
-	Decode(x interface{}) os.Error
+	Decode(x interface{}) error
 }
 
 type encoder struct {
@@ -59,7 +60,7 @@ type decoder struct {
 // 
 //  When the decoder decodes the value, it can then associate the correct
 //  item in the data structure with the correct file stream.
-func (enc encoder) Encode(x interface{}) os.Error {
+func (enc encoder) Encode(x interface{}) error {
 	// TODO some kind of signature so that we can be more
 	// robust if we try to Decode a stream that has not
 	// been encoded with filemarshal?
@@ -106,7 +107,7 @@ func (enc encoder) Encode(x interface{}) os.Error {
 	return nil
 }
 
-func (dec decoder) Decode(x interface{}) os.Error {
+func (dec decoder) Decode(x interface{}) error {
 	err := dec.dec.Decode(x)
 	if err != nil {
 		return err
@@ -131,7 +132,7 @@ func (dec decoder) Decode(x interface{}) os.Error {
 			samefiles := files[name]
 			f := samefiles[0]
 			if f == nil {
-				return os.ErrorString("file not found in manifest")
+				return errors.New("file not found in manifest")
 			}
 			f.file, err = ioutil.TempFile("", "filemarshal")
 			if err != nil {
@@ -164,10 +165,10 @@ func (dec decoder) Decode(x interface{}) os.Error {
 
 type nullWriter struct{}
 
-func (nullWriter) Write(buf []byte) (int, os.Error) {
+func (nullWriter) Write(buf []byte) (int, error) {
 	return len(buf), nil
 }
-func (nullWriter) Seek(int64, int) (int64, os.Error) {
+func (nullWriter) Seek(int64, int) (int64, error) {
 	return 0, nil
 }
 

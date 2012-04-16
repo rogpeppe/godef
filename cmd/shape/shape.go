@@ -1,14 +1,15 @@
 package main
 
 import (
-	"exp/draw/x11"
+	"code.google.com/p/freetype-go/freetype/raster"
+	"code.google.com/p/rog-go/canvas"
+	"code.google.com/p/rog-go/values"
 	"exp/draw"
-	"log"
+	"exp/draw/x11"
+	"fmt"
 	"image"
-	"rog-go.googlecode.com/hg/canvas"
-	"rog-go.googlecode.com/hg/values"
-	"freetype-go.googlecode.com/hg/freetype/raster"
-"fmt"
+	"image/color"
+	"log"
 )
 
 var cvs *canvas.Canvas
@@ -40,10 +41,10 @@ func main() {
 					break
 				}
 				if cvs.HandleMouse(cvs, e, ec) {
-fmt.Printf("handled mouse\n")
+					fmt.Printf("handled mouse\n")
 					break
 				}
-fmt.Printf("raster maker\n")
+				fmt.Printf("raster maker\n")
 				rasterMaker(e, ec)
 			}
 		}
@@ -65,8 +66,8 @@ func nextMouse(ec <-chan interface{}) (m draw.MouseEvent) {
 	return
 }
 
-func color(r, g, b, a uint8) *image.ColorImage {
-	return &image.ColorImage{image.RGBAColor{r, g, b, a}}
+func color_(r, g, b, a uint8) *image.Uniform {
+	return &image.Uniform{color.RGBA{r, g, b, a}}
 }
 
 // click anywhere to create a new raster item.
@@ -74,7 +75,7 @@ func color(r, g, b, a uint8) *image.ColorImage {
 // but-3 to finish.
 func rasterMaker(m draw.MouseEvent, ec <-chan interface{}) {
 	obj := newRasterPlay()
-	defer obj.SetControlPointColor(color(0x80,0x80, 0x80, 0xff))
+	defer obj.SetControlPointColor(color_(0x80, 0x80, 0x80, 0xff))
 	obj.AddPoint(true, m.Loc)
 	cvs.AddItem(obj)
 	cvs.Flush()
@@ -94,25 +95,24 @@ func rasterMaker(m draw.MouseEvent, ec <-chan interface{}) {
 		if m.Buttons&4 != 0 {
 			return
 		}
-fmt.Printf("add point %v\n", m.Loc)
+		fmt.Printf("add point %v\n", m.Loc)
 		obj.AddPoint(m.Buttons&2 == 0, m.Loc)
 		cvs.Flush()
 	}
 }
-
 
 const size = 4
 
 type ControlPoint struct {
 	backing  canvas.Backing
 	p        image.Point
-	col      *image.ColorImage
+	col      *image.Uniform
 	value    values.Value // Point Value
 	colValue values.Value // draw.Color Value
 }
 
 type moveEvent struct {
-	i int        // index of control point that's moved
+	i int         // index of control point that's moved
 	p image.Point // where it's moved to
 }
 
@@ -166,7 +166,7 @@ func (cp *ControlPoint) listener() {
 				break
 			}
 			cp.backing.Atomically(func(flush canvas.FlushFunc) {
-				cp.col = col.(*image.ColorImage)
+				cp.col = col.(*image.Uniform)
 				flush(cp.Bbox(), nil)
 			})
 		}
@@ -215,7 +215,6 @@ func (obj *rasterPlay) AddPoint(new bool, p image.Point) {
 	})
 	obj.c.AddItem(cp)
 }
-
 
 func addSome(raster *canvas.RasterItem, p []raster.Point) {
 	switch len(p) {
@@ -268,17 +267,17 @@ func (obj *rasterPlay) SetContainer(b canvas.Backing) {
 	obj.HandlerItem.SetContainer(b)
 }
 
-func (obj *rasterPlay) SetControlPointColor(col *image.ColorImage) {
+func (obj *rasterPlay) SetControlPointColor(col *image.Uniform) {
 	obj.colValue.Set(col)
 }
 
-var blue = &image.ColorImage{image.RGBAColor{0, 0, 0xff, 0xff}}
+var blue = &image.Uniform{color.RGBA{0, 0, 0xff, 0xff}}
 
 func newRasterPlay() *rasterPlay {
 	obj := new(rasterPlay)
 	obj.points = make([]rpoint, 0, 100) // expansion later
 	obj.moved = make(chan moveEvent)
-	obj.raster.SetFill(&image.ColorImage{image.AlphaMultiply(blue, 0x8000)})
+	obj.raster.SetFill(&image.Uniform{image.AlphaMultiply(blue, 0x8000)})
 	obj.c = canvas.NewCanvas(nil, cvs.Bbox())
 	obj.colValue = values.NewValue(nil)
 	obj.colValue.Set(image.Black)
@@ -314,7 +313,7 @@ func flushFunc(ctxt draw.Window) func(r image.Rectangle) {
 	}
 }
 
-func opaqueColor(col image.Color) bool {
+func opaqueColor(col color.Color) bool {
 	_, _, _, a := col.RGBA()
 	return a == 0xffff
 }

@@ -1,29 +1,30 @@
 package main
 
 import (
-	"rog-go.googlecode.com/hg/x11"
-	"rog-go.googlecode.com/hg/draw"
+	"code.google.com/p/x-go-binding/ui/x11"
+	"code.google.com/p/x-go-binding/ui"
+	"code.google.com/p/freetype-go/freetype/truetype"
+	"code.google.com/p/rog-go/canvas"
 	"image"
-	"io/ioutil"
+	"code.google.com/p/rog-go/values"
 	"fmt"
+	"image/color"
+	"io/ioutil"
 	"log"
 	"math"
+	"math/rand"
 	"os"
-	"rand"
 	"time"
-	"rog-go.googlecode.com/hg/canvas"
-	"rog-go.googlecode.com/hg/values"
-	"freetype-go.googlecode.com/hg/freetype/truetype"
 )
 
 // to add:
 // modifications for mac os X11
 // should it crash if Draw is passed a non-canonical rectangle?
-// it's a pity that image.RGBAColor isn't a draw.Color
+// it's a pity that image.RGBAColor isn't a image.Color
 
 type line struct {
 	obj    *canvas.Line
-	p0, p1 draw.Point
+	p0, p1 image.Point
 }
 
 type realPoint struct {
@@ -33,7 +34,7 @@ type realPoint struct {
 type ball struct {
 	p   realPoint
 	v   realPoint
-	col draw.Color
+	col color.Color
 }
 
 type lineList struct {
@@ -49,18 +50,22 @@ var window *canvas.Canvas
 var lines *lineList
 var lineVersion int
 
-var sleepTime = int64(0.01e9)
+var sleepTime = 10 * time.Millisecond
 
 const ballSize = 8
+
+var red = color.RGBA{0xff, 0, 0, 0xff}
+var blue = color.RGBA{0, 0, 0xff, 0xff}
+
 
 func main() {
 	rand.Seed(0)
 	ctxt, err := x11.NewWindow()
 	if ctxt == nil {
-		log.Exitf("no window: %v", err)
+		log.Fatalf("no window: %v", err)
 	}
 	screen := ctxt.Screen()
-	bg := canvas.NewBackground(screen.(*image.RGBA), draw.White, flushFunc(ctxt))
+	bg := canvas.NewBackground(screen.(*image.RGBA), image.White, flushFunc(ctxt))
 	window = canvas.NewCanvas(nil, bg.Rect())
 	bg.SetItem(window)
 	nballs := 0
@@ -69,15 +74,15 @@ func main() {
 	csz := window.Rect().Max
 
 	// add edges of window
-	addLine(draw.Pt(-1, -1), draw.Pt(csz.X, -1))
-	addLine(draw.Pt(csz.X, -1), draw.Pt(csz.X, csz.Y))
-	addLine(draw.Pt(csz.X, csz.Y), draw.Pt(-1, csz.Y))
-	addLine(draw.Pt(-1, csz.Y), draw.Pt(-1, -1))
+	addLine(image.Pt(-1, -1), image.Pt(csz.X, -1))
+	addLine(image.Pt(csz.X, -1), image.Pt(csz.X, csz.Y))
+	addLine(image.Pt(csz.X, csz.Y), image.Pt(-1, csz.Y))
+	addLine(image.Pt(-1, csz.Y), image.Pt(-1, -1))
 
 	go sliderProc()
 
-	makeRect(draw.Rect(30, 30, 200, 100), draw.Red.SetAlpha(128))
-	makeRect(draw.Rect(150, 90, 230, 230), draw.Blue.SetAlpha(128))
+	makeRect(image.Rect(30, 30, 200, 100), setAlpha(red, 128))
+	makeRect(image.Rect(150, 90, 230, 230), setAlpha(blue, 128))
 
 	window.Flush()
 
@@ -90,43 +95,46 @@ func main() {
 	for i := 0; i < nballs; i++ {
 		mkball <- randBall()
 	}
-	mc := ctxt.MouseChan()
-	mcc := make(chan (<-chan draw.Mouse))
-	qc := ctxt.QuitChan()
-	kc := ctxt.KeyboardChan()
+	ecc := make(chan (<-chan interface{}))
+	ec := ctxt.EventChan()
 	for {
 		select {
-		case <-qc:
-			fmt.Printf("quitting\n")
-			return
-		case m := <-mc:
-			if m.Buttons == 0 {
-				break
+		case e, ok := <-ec:
+			if !ok {
+				return
 			}
-			if window.HandleMouse(window, m, mc) {
-				break
+			switch e := e.(type) {
+			case ui.MouseEvent:
+				if e.Buttons == 0 {
+					break
+				}
+				if window.HandleMouse(window, e, ec) {
+					break
+				}
+				switch {
+				case e.Buttons&1 != 0:
+					go handleMouse(e, ec, ecc, lineMaker)
+					ec = nil
+				case e.Buttons&2 != 0:
+					go handleMouse(e, ec, ecc, func(m ui.MouseEvent, ec <-chan interface{}) {
+						ballMaker(e, ec, mkball)
+					})
+					ec = nil
+				case e.Buttons&4 != 0:
+					delball <- true
+				}
+			case ui.KeyEvent:
+				fmt.Printf("got key %c (%d)\n", e.Key, e.Key)
+				switch e.Key {
+				case ' ':
+					pause <- true
+				case 'd':
+					delball <- true
+				}
+			default:
+				fmt.Printf("unknown event %v\n", e)
 			}
-			switch {
-			case m.Buttons&1 != 0:
-				go handleMouse(m, mc, mcc, lineMaker)
-				mc = nil
-			case m.Buttons&2 != 0:
-				go handleMouse(m, mc, mcc, func(m draw.Mouse, mc <-chan draw.Mouse) {
-					ballMaker(m, mc, mkball)
-				})
-				mc = nil
-			case m.Buttons&4 != 0:
-				delball <- true
-			}
-		case k := <-kc:
-			fmt.Printf("got key %c (%d)\n", k, k)
-			switch k {
-			case ' ':
-				pause <- true
-			case 'd':
-				delball <- true
-			}
-		case mc = <-mcc:
+		case ec = <-ecc:
 			break
 		}
 	}
@@ -134,63 +142,68 @@ func main() {
 
 // this will go.
 type RectFlusherContext interface {
-	draw.Context
-	FlushImageRect(r draw.Rectangle)
+	ui.Window
+	FlushImageRect(r image.Rectangle)
 }
-func flushFunc(ctxt draw.Context) func(r draw.Rectangle) {
+
+func flushFunc(ctxt ui.Window) func(r image.Rectangle) {
 	if fctxt, ok := ctxt.(RectFlusherContext); ok {
-		return func(r draw.Rectangle) {
+		return func(r image.Rectangle) {
 			fctxt.FlushImageRect(r)
 		}
 	}
-	return func(_ draw.Rectangle) {
+	return func(_ image.Rectangle) {
 		ctxt.FlushImage()
 	}
 }
 
 func sliderProc() {
-	val := values.NewValue(float64(0.0))
-	window.AddItem(canvas.NewSlider(draw.Rect(10, 10, 100, 40), draw.White, draw.Blue, val))
-	window.AddItem(canvas.NewSlider(draw.Rect(15, 35, 100, 70), draw.White, draw.Red.SetAlpha(128), val))
+	val := values.NewValue(float64(0.0), nil)
+	window.AddItem(canvas.NewSlider(image.Rect(10, 10, 100, 40), image.White, blue, val))
+	window.AddItem(canvas.NewSlider(image.Rect(15, 35, 100, 70), image.White, setAlpha(red, 128), val))
 	window.Flush()
-	rval := values.Transform(val, values.UnitFloat2RangedFloat(0.001e9, 0.1e9))
+	rval := values.Transform(val, values.UnitFloat64ToRangedFloat64(0.001e9, 0.1e9))
 	timeText := canvas.NewText(
-		draw.Pt(10, 80), canvas.N|canvas.W, "", defaultFont(), 12, values.Transform(rval, values.FloatMultiply(1e-6).Combine(values.Float2String("%6.2gms", "%gms"))))
+		image.Pt(10, 80), canvas.N|canvas.W, "", defaultFont(), 12, values.Transform(rval, values.Float64Multiply(1e-6).Combine(values.Float64ToString("%6.2gms", "%gms"))))
 	window.AddItem(timeText)
-	for x := range rval.Iter() {
-		sleepTime = int64(x.(float64))
+	g := rval.Getter()
+	for {
+		x, ok := g.Get()
+		if !ok {
+			break
+		}
+		sleepTime = time.Duration(x.(float64))
 	}
 }
 
 func defaultFont() *truetype.Font {
 	goroot := os.Getenv("GOROOT")
 	if goroot == "" {
-		log.Exit("no goroot set")
+		log.Fatal("no goroot set")
 	}
 	path := goroot + "/src/pkg/freetype-go.googlecode.com/hg/luxi-fonts/luxisr.ttf"
 	// Read the font data.
 	fontBytes, err := ioutil.ReadFile(path)
 	if err != nil {
-		log.Exit(err)
+		log.Fatal(err)
 	}
 	font, err := truetype.Parse(fontBytes)
 	if err != nil {
-		log.Exit(err)
+		log.Fatal(err)
 	}
 	return font
 }
-
 
 // Start a modal loop to handle mouse events, running f.
 // f is passed the mouse event that caused the modal loop
 // to be started, and the mouse channel.
 // When f finishes, the mouse channel is handed back
-// on mcc.
-func handleMouse(m draw.Mouse, mc <-chan draw.Mouse, mcc chan (<-chan draw.Mouse), f func(first draw.Mouse, mc <-chan draw.Mouse)) {
+// on ecc.
+func handleMouse(m ui.MouseEvent, ec <-chan interface{}, ecc chan (<-chan interface{}), f func(first ui.MouseEvent, ec <-chan interface{})) {
 	defer func() {
-		mcc <- mc
+		ecc <- ec
 	}()
-	f(m, mc)
+	f(m, ec)
 }
 
 func randBall() ball {
@@ -210,18 +223,24 @@ func randBall() ball {
 	return b
 }
 
-func randPoint(size draw.Point) realPoint {
+func randPoint(size image.Point) realPoint {
 	return realPoint{
 		rand.Float64() * float64(size.X-1),
 		rand.Float64() * float64(size.Y-1),
 	}
 }
 
-func randColour() (c draw.Color) {
-	return draw.Color(uint32(rand.Int63()<<8) | 0x808080ff)
+func randColour() (c color.RGBA) {
+	v := uint32(rand.Int63()<<8) | 0x808080ff
+	return color.RGBA{
+		R: uint8(v >> 24),
+		G: uint8(v >> 16),
+		B: uint8(v >> 8),
+		A: 0xff,
+	}
 }
 
-func addLine(p0, p1 draw.Point) *line {
+func addLine(p0, p1 image.Point) *line {
 	obj := canvas.NewLine(image.Black, p0, p1, 3)
 	window.AddItem(obj)
 	ln := line{obj, p0, p1}
@@ -230,34 +249,56 @@ func addLine(p0, p1 draw.Point) *line {
 	return &lines.line
 }
 
-func (p realPoint) point() draw.Point {
-	return draw.Point{round(p.x), round(p.y)}
+func (p realPoint) point() image.Point {
+	return image.Point{round(p.x), round(p.y)}
 }
 
-func lineMaker(m draw.Mouse, mc <-chan draw.Mouse) {
+func getMouse(ec <-chan interface{}) (ui.MouseEvent, bool) {
+	for {
+		switch e := (<-ec).(type) {
+		case ui.MouseEvent:
+			return e, true
+		case nil:
+			return ui.MouseEvent{}, false
+		default:
+			fmt.Printf("discard %v", e)
+		}
+	}
+	panic("not reached")
+}
+
+func lineMaker(m ui.MouseEvent, ec <-chan interface{}) {
 	m0 := m
-	ln := addLine(m0.Point, m0.Point)
+	ln := addLine(m0.Loc, m0.Loc)
 	for m.Buttons&1 != 0 {
-		m = <-mc
-		ln.obj.SetEndPoints(m0.Point, m.Point)
-		ln.p1 = m.Point
+		var ok bool
+		m, ok = getMouse(ec)
+		if !ok {
+			return
+		}
+		ln.obj.SetEndPoints(m0.Loc, m.Loc)
+		ln.p1 = m.Loc
 		lineVersion++
 		window.Flush()
 	}
 }
 
-func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<- ball) {
-	const sampleTime = 0.25e9
+func ballMaker(m ui.MouseEvent, ec <-chan interface{}, mkball chan<- ball) {
+	const sampleTime = 250 * time.Millisecond
 	var vecs [8]realPoint // approx sampleTime's worth of velocities
 	i := 0
 	n := 0
 	m0 := m
 	m1 := m
 	for {
-		m1 = <-mc
-		dt := m1.Nsec - m.Nsec
-		if dt >= sampleTime/int64(len(vecs)) || m.Buttons&2 == 0 {
-			delta := draw2realPoint(m1.Sub(m.Point))
+		var ok bool
+		m1, ok = getMouse(ec)
+		if !ok {
+			break
+		}
+		dt := m1.Time.Sub(m.Time)
+		if dt >= sampleTime/time.Duration(len(vecs)) || m.Buttons&2 == 0 {
+			delta := draw2realPoint(m1.Loc.Sub(m.Loc))
 			vecs[i].x = delta.x / float64(dt)
 			vecs[i].y = delta.y / float64(dt)
 			i = (i + 1) % len(vecs)
@@ -282,13 +323,13 @@ func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<- ball) {
 	if speed < 10e-9 {
 		// a click with no drag starts a ball with random velocity.
 		b = randBall()
-		b.p = draw2realPoint(m0.Point)
+		b.p = draw2realPoint(m0.Loc)
 	} else {
-		v, _ := makeUnit(draw2realPoint(m1.Sub(m0.Point)))
+		v, _ := makeUnit(draw2realPoint(m1.Loc.Sub(m0.Loc)))
 		v.x *= speed
 		v.y *= speed
 		b = ball{
-			realPoint{float64(m0.X), float64(m0.Y)},
+			realPoint{float64(m0.Loc.X), float64(m0.Loc.Y)},
 			v,
 			randColour(),
 		}
@@ -296,26 +337,26 @@ func ballMaker(m draw.Mouse, mc <-chan draw.Mouse, mkball chan<- ball) {
 	mkball <- b
 }
 
-func draw2realPoint(p draw.Point) realPoint {
+func draw2realPoint(p image.Point) realPoint {
 	return realPoint{float64(p.X), float64(p.Y)}
 }
 
-func makeRect(r draw.Rectangle, col draw.Color) {
-	img := canvas.Box(r.Dx(), r.Dy(), col, 1, image.Black)
+func makeRect(r image.Rectangle, col color.Color) {
+	img := canvas.Box(r.Dx(), r.Dy(), image.NewUniform(col), 1, image.Black)
 	item := canvas.NewImage(img, opaqueColor(col), r.Min)
 	window.AddItem(canvas.Draggable(item))
 }
 
-func opaqueColor(col image.Color) bool {
+func opaqueColor(col color.Color) bool {
 	_, _, _, a := col.RGBA()
 	return a == 0xffff
 }
 
 func monitor(mkball <-chan ball, delball <-chan bool, pause <-chan bool) {
 	ballcountText := canvas.NewText(
-		draw.Pt(window.Rect().Max.X-5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30, nil)
+		image.Pt(window.Rect().Max.X-5, 5), canvas.N|canvas.E, "0 balls", defaultFont(), 30, nil)
 	window.AddItem(canvas.Draggable(ballcountText))
-	ballcountText.SetFill(draw.Red)
+	ballcountText.SetFill(image.NewUniform(red))
 	window.Flush()
 	ctl := make(chan (chan<- bool))
 	nballs := 0
@@ -353,8 +394,8 @@ type Ball struct {
 }
 
 func makeBall(b ball) Ball {
-	img := canvas.Box(ballSize, ballSize, b.col, 1, image.Black)
-	p := b.p.point().Sub(draw.Pt(ballSize/2, ballSize/2))
+	img := canvas.Box(ballSize, ballSize, image.NewUniform(b.col), 1, image.Black)
+	p := b.p.point().Sub(image.Pt(ballSize/2, ballSize/2))
 	item := canvas.NewImage(img, true, p)
 	window.AddItem(item)
 	window.Raise(item, nil, false)
@@ -362,7 +403,7 @@ func makeBall(b ball) Ball {
 }
 
 func (obj *Ball) SetCentre(p realPoint) {
-	obj.item.SetCentre(draw.Point{round(p.x), round(p.y)})
+	obj.item.SetCentre(image.Point{round(p.x), round(p.y)})
 }
 
 const large = 1000000
@@ -404,9 +445,9 @@ loop:
 			smallcount = 0
 		}
 		bouncev := boing(b.v, hitline)
-		t0 := time.Nanoseconds()
-		dt := int64(dist / speed)
-		t := int64(0)
+		t0 := time.Now()
+		dt := time.Duration(dist / speed)
+		t := time.Duration(0)
 		for {
 			s := float64(t) * speed
 			currp := realPoint{b.p.x + s*b.v.x, b.p.y + s*b.v.y}
@@ -416,7 +457,7 @@ loop:
 				b.p, hitline, version = currp, oldline, lineVersion
 				continue loop
 			}
-			select{
+			select {
 			case reply := <-c:
 				if reply == nil {
 					window.Delete(obj.item)
@@ -425,11 +466,11 @@ loop:
 				}
 				reply <- false
 				// we were paused, so pretend no time went by
-				t0 = time.Nanoseconds() - t
+				t0 = time.Now().Add(-t)
 			default:
 			}
 			time.Sleep(sleepTime)
-			t = time.Nanoseconds() - t0
+			t = time.Now().Sub(t0)
 			if t >= dt {
 				break
 			}
@@ -497,4 +538,26 @@ func round(x float64) int {
 		x += 0.5
 	}
 	return int(x)
+}
+
+func mult(v, alpha, oldAlpha uint8) uint8 {
+	nv := int(v) * int(alpha) / int(oldAlpha)
+	if nv < 0 {
+		return 0
+	}
+	if nv > 0xff {
+		return 0xff
+	}
+	return uint8(nv)
+}
+
+func setAlpha(c color.RGBA, a uint8) color.RGBA {
+	if c.A == 0 {
+		return c
+	}
+	c.R = mult(c.R, a, c.A)
+	c.G = mult(c.G, a, c.A)
+	c.B = mult(c.B, a, c.A)
+	c.A = a
+	return c
 }

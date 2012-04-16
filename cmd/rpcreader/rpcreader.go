@@ -16,13 +16,14 @@ package main
 
 import (
 	"bufio"
+	"code.google.com/p/rog-go/ncrpc"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"net"
 	"netchan"
 	"os"
-	"rog-go.googlecode.com/hg/ncrpc"
 	"strings"
 	"sync"
 )
@@ -40,27 +41,27 @@ type ReadReq struct {
 }
 
 type ReadResponse struct {
-	Info  []struct{ X *os.FileInfo }
+	Info  []struct{ X os.FileInfo }
 	Error []string
 	Chan  string // name of channel to receive data on.
 }
 
-func openFile(path string) (fd *os.File, info *os.FileInfo, err os.Error) {
+func openFile(path string) (fd *os.File, info os.FileInfo, err error) {
 	fd, err = os.Open(path)
 	if fd == nil {
 		return
 	}
 	info, err = fd.Stat()
-	if info.IsDirectory() {
+	if info.IsDir() {
 		fd.Close()
 		fd = nil
 		info = nil
-		err = os.ErrorString("cannot read directory")
+		err = errors.New("cannot read directory")
 	}
 	return
 }
 
-func (srv *Server) Read(req *ReadReq, resp *ReadResponse) os.Error {
+func (srv *Server) Read(req *ReadReq, resp *ReadResponse) error {
 	srv.mu.Lock()
 	id := srv.chanId
 	srv.chanId++
@@ -68,13 +69,13 @@ func (srv *Server) Read(req *ReadReq, resp *ReadResponse) os.Error {
 
 	n := len(req.Paths)
 	fd := make([]*os.File, n)
-	resp.Info = make([]struct{ X *os.FileInfo }, n)
+	resp.Info = make([]struct{ X os.FileInfo }, n)
 	resp.Error = make([]string, n)
 	for i, path := range req.Paths {
-		var err os.Error
+		var err error
 		fd[i], resp.Info[i].X, err = openFile(path)
 		if err != nil {
-			resp.Error[i] = err.String()
+			resp.Error[i] = err.Error()
 		}
 	}
 	resp.Chan = fmt.Sprintf("data%d", id)
@@ -140,7 +141,7 @@ func main() {
 
 type command struct {
 	narg int
-	f    func(client *ncrpc.Client, args []string) os.Error
+	f    func(client *ncrpc.Client, args []string) error
 }
 
 var commands = map[string]command{
@@ -175,7 +176,7 @@ func interact(client *ncrpc.Client) {
 	}
 }
 
-func readcmd(client *ncrpc.Client, paths []string) os.Error {
+func readcmd(client *ncrpc.Client, paths []string) error {
 	if len(paths) == 0 {
 		return nil
 	}

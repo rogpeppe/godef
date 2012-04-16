@@ -4,15 +4,12 @@
 
 package g9pc
 
-import (
-	"os"
-	"rog-go.googlecode.com/hg/go9p/g9p"
-)
+import "code.google.com/p/rog-go/go9p/g9p"
 
 // Reads count bytes starting from offset from the file associated with the fid.
 // Returns a slice with the data read, if the operation was successful, or an
 // Error.
-func (fid *Fid) BRead(offset uint64, count int) ([]byte, os.Error) {
+func (fid *Fid) BRead(offset uint64, count int) ([]byte, error) {
 	clnt := fid.Client
 	tc := clnt.newFcall()
 	err := g9p.PackTread(tc, fid.Fid, offset, uint32(count))
@@ -31,7 +28,7 @@ func (fid *Fid) BRead(offset uint64, count int) ([]byte, os.Error) {
 	return rc.Data, nil
 }
 
-func (fid *Fid) ReadAt(buf []byte, offset uint64) (int, os.Error) {
+func (fid *Fid) ReadAt(buf []byte, offset uint64) (int, error) {
 	data, err := fid.BRead(offset, len(buf))
 	if err != nil {
 		return 0, err
@@ -41,7 +38,7 @@ func (fid *Fid) ReadAt(buf []byte, offset uint64) (int, os.Error) {
 
 // Reads up to len(buf) bytes from the File. Returns the number
 // of bytes read, or an Error.
-func (file *File) Read(buf []byte) (int, os.Error) {
+func (file *File) Read(buf []byte) (int, error) {
 	n, err := file.ReadAt(buf, file.offset)
 	if err == nil {
 		file.offset += uint64(n)
@@ -52,14 +49,14 @@ func (file *File) Read(buf []byte) (int, os.Error) {
 
 // Reads up to len(buf) bytes from the file starting from offset.
 // Returns the number of bytes read, or an Error.
-func (file *File) ReadAt(buf []byte, offset uint64) (int, os.Error) {
+func (file *File) ReadAt(buf []byte, offset uint64) (int, error) {
 	return file.fid.ReadAt(buf, offset)
 }
 
 // Reads exactly len(buf) bytes from the File starting from offset.
 // Returns the number of bytes read (could be less than len(buf) if
 // end-of-file is reached), or an Error.
-func (file *File) Readn(buf []byte, offset uint64) (int, os.Error) {
+func (file *File) Readn(buf []byte, offset uint64) (int, error) {
 	ret := 0
 	for len(buf) > 0 {
 		n, err := file.ReadAt(buf, offset)
@@ -83,7 +80,7 @@ func (file *File) Readn(buf []byte, offset uint64) (int, os.Error) {
 // Returns an array of maximum num entries (if num is 0, returns
 // all entries from the directory). If the operation fails, returns
 // an Error.
-func (file *File) Readdir(num int) ([]*g9p.Dir, os.Error) {
+func (file *File) Readdir(num int) ([]*g9p.Dir, error) {
 	buf := make([]byte, file.fid.Client.msize-g9p.IOHDRSZ)
 	dirs := make([]*g9p.Dir, 32)
 	pos := 0

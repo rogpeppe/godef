@@ -1,38 +1,38 @@
 package g9plog
 
 import (
-	"fmt"
-	"http"
-	"sync"
+	"code.google.com/p/rog-go/go9p/g9p"
 	"container/list"
-	"rog-go.googlecode.com/hg/go9p/g9p"
+	"fmt"
+	"net/http"
+	"sync"
 )
 
 type httpStats struct {
-	mu sync.Mutex
+	mu    sync.Mutex
 	conns list.List
 	maxId int
 }
 
 const (
-	Packets = 1<<iota
+	Packets = 1 << iota
 )
 
 type Logger struct {
-	mu sync.Mutex
-	history list.List
-	maxHist int
+	mu       sync.Mutex
+	history  list.List
+	maxHist  int
 	isClient bool
-	flags int
-	path string
-	name string
+	flags    int
+	path     string
+	name     string
 
 	// traffic stats:
-	nreqs int
+	nreqs    int
 	tmsgsize int64
 	rmsgsize int64
-	npend int
-	maxpend int
+	npend    int
+	maxpend  int
 }
 
 var stats httpStats
@@ -42,6 +42,7 @@ func init() {
 }
 
 var _ g9p.Logger = (*Logger)(nil)
+
 func NewClient(name string, maxHist int, flags int) *Logger {
 	stats.mu.Lock()
 	id := stats.maxId
@@ -74,7 +75,7 @@ func (log *Logger) Log9p(f *g9p.Fcall) {
 			log.maxpend = log.npend
 		}
 		log.tmsgsize += int64(f.Size)
-	}else{
+	} else {
 		log.rmsgsize += int64(f.Size)
 		// TODO: cater for flushes
 		log.npend--
@@ -85,15 +86,15 @@ func (log *Logger) Log9p(f *g9p.Fcall) {
 		if log.flags&Packets != 0 {
 			nf.Pkt = make([]byte, len(f.Pkt))
 			copy(nf.Pkt, f.Pkt)
-		}else{
+		} else {
 			nf.Pkt = nil
 		}
 		log.history.PushFront(nf)
-		if log.history.Len() > log.maxHist && log.maxHist != -1{
+		if log.history.Len() > log.maxHist && log.maxHist != -1 {
 			log.history.Remove(log.history.Back())
 		}
 	}
-		
+
 	log.mu.Unlock()
 }
 
@@ -150,8 +151,8 @@ func (log *internalLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	h := &log.history
 	type tag struct {
-		t int
-		r int
+		t   int
+		r   int
 		err bool
 	}
 	if h.Len() == 0 {
@@ -159,7 +160,7 @@ func (log *internalLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	fmt.Fprintf(w, "<h2>Last %d 9P messages</h2>", h.Len())
-	tags := make(map[uint16] *tag)
+	tags := make(map[uint16]*tag)
 	ftags := make([]*tag, h.Len())
 	i := 0
 	// scan through history, matching tmsgs with rmsgs
@@ -169,12 +170,12 @@ func (log *internalLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if f.IsTmsg() {
 			ftags[i] = &tag{t: i, r: -1, err: old != nil}
 			tags[f.Tag] = ftags[i]
-		}else {
+		} else {
 			if old != nil {
 				old.r = i
 				ftags[i] = old
 				tags[f.Tag] = nil
-			}else {
+			} else {
 				// if we've previously seen an r-message, then the
 				// tag map entry will exist, but be nil, so we know
 				// there's an error
@@ -192,7 +193,7 @@ func (log *internalLogger) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if t.r != -1 {
 				label = fmt.Sprintf("<a href='#fc%d'>&#10164;</a>", t.r)
 			}
-		}else{
+		} else {
 			if t.t != -1 {
 				label = fmt.Sprintf("<a href='#fc%d'>&#10166;</a>", t.t)
 			}

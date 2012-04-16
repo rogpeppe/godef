@@ -1,20 +1,23 @@
 // Timestamp recording (for debugging).
 package stamp
+
 import (
 	"bytes"
 	"fmt"
+	"sort"
 	"sync"
 	"time"
-	"sort"
 )
 
 type stamp struct {
 	msg string
-	t int64
+	t   int64
 }
 
 var mu sync.Mutex
+
 type stampVector []stamp
+
 var stamps = make(stampVector, 0, 100)
 
 // AddTime records a timestamp at the given time.
@@ -26,7 +29,7 @@ func AddTime(msg string, t int64) {
 
 // Add records a timestamp at the current time.
 func Add(msg string) {
-	AddTime(msg, time.Nanoseconds())
+	AddTime(msg, time.Now())
 }
 
 // String returns a textual representation of all the time stamps with

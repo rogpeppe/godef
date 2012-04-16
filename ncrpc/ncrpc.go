@@ -3,23 +3,23 @@
 package ncrpc
 
 import (
-	"os"
+	"code.google.com/p/rog-go/ncnet"
+	"errors"
 	"fmt"
 	"io"
 	"log"
 	"net"
-	"rog-go.googlecode.com/hg/ncnet"
+	"net/rpc"
 	"netchan"
-	"rpc"
 	"sync"
 )
 
 type Server struct {
-	Exporter      *netchan.Exporter
+	Exporter  *netchan.Exporter
 	RPCServer *rpc.Server
-	mu       sync.Mutex
-	clients  map[string]*rpc.Client
-	clientid int
+	mu        sync.Mutex
+	clients   map[string]*rpc.Client
+	clientid  int
 }
 
 // Client gets the RPC connection for a given client.
@@ -52,7 +52,7 @@ func (srv *Server) ClientNames() (a []string) {
 //  Conventionally Register is called on the rpc.Server to export some
 //  server RPC methods, and ListenAndServe is then called on the
 //  netchan.Exporter to listen on the network.
-func NewServer(acceptClientRPC bool) (*Server, os.Error) {
+func NewServer(acceptClientRPC bool) (*Server, error) {
 	rpcsrv := rpc.NewServer()
 	exp := netchan.NewExporter()
 	nclis, err := ncnet.Listen(exp, "ncrpc.ctl")
@@ -60,8 +60,8 @@ func NewServer(acceptClientRPC bool) (*Server, os.Error) {
 		return nil, err
 	}
 	srv := &Server{
-		clients: make(map[string]*rpc.Client),
-		Exporter: exp,
+		clients:   make(map[string]*rpc.Client),
+		Exporter:  exp,
 		RPCServer: rpcsrv,
 	}
 	rpcsrv.RegisterName("Ncnet-publisher", publisher{acceptClientRPC, srv})
@@ -77,11 +77,11 @@ func NewServer(acceptClientRPC bool) (*Server, os.Error) {
 // RPC interface.
 type Client struct {
 	Importer *netchan.Importer
-	Server *rpc.Client
+	Server   *rpc.Client
 }
 
 // Import makes a connection to an ncrpc server and calls NewClient on it.
-func Import(network, addr string) (*Client, os.Error) {
+func Import(network, addr string) (*Client, error) {
 	conn, err := net.Dial(network, addr)
 	if err != nil {
 		return nil, err
@@ -92,7 +92,7 @@ func Import(network, addr string) (*Client, os.Error) {
 // NewClient makes a netchan connection from the given connection,
 // imports the rpc service from that, and returns both in a new Client
 // instance.  It assumes that the server has been started with Server.
-func NewClient(conn io.ReadWriter) (*Client, os.Error) {
+func NewClient(conn io.ReadWriter) (*Client, error) {
 	imp := netchan.NewImporter(conn)
 	srvconn, err := ncnet.Dial(imp, "ncrpc.ctl")
 	if err != nil {
@@ -103,12 +103,12 @@ func NewClient(conn io.ReadWriter) (*Client, os.Error) {
 
 // Serve announces an RPC service on the client using the given name
 // (which must currently be unique amongst all clients).
-func (c *Client) Serve(clientName string, rpcServer *rpc.Server) os.Error {
+func (c *Client) Serve(clientName string, rpcServer *rpc.Server) error {
 	var clientId string
-	rpcServer.RegisterName("ClientRPC", clientRPC{})		// TODO better name
+	rpcServer.RegisterName("ClientRPC", clientRPC{}) // TODO better name
 	if err := c.Server.Call("Ncnet-publisher.Publish", &clientName, &clientId); err != nil {
 		return err
-	} 
+	}
 	clientconn, err := ncnet.Dial(c.Importer, clientId)
 	if err != nil {
 		return err
@@ -119,36 +119,36 @@ func (c *Client) Serve(clientName string, rpcServer *rpc.Server) os.Error {
 }
 
 // clientRPC implements the methods that Server.Publish expects of a client.
-type clientRPC struct {}
+type clientRPC struct{}
 
 // Ping is used by the server to check that the client is actually there.
-func (clientRPC) Ping(*struct{}, *struct{}) os.Error {
+func (clientRPC) Ping(*struct{}, *struct{}) error {
 	return nil
 }
 
 // Wait blocks until the client is ready to leave.  Currently that's
 // forever.
-func (clientRPC) Wait(*struct{}, *struct{}) os.Error {
+func (clientRPC) Wait(*struct{}, *struct{}) error {
 	select {}
 	return nil
 }
 
 type publisher struct {
 	acceptClientRPC bool
-	srv *Server
+	srv             *Server
 }
 
 // Publish is the RPC method that allows a client to publish its own RPC
 // interface.  It is called (remotely) by Client.Serve.
-func (p publisher) Publish(name *string, clientId *string) os.Error {
+func (p publisher) Publish(name *string, clientId *string) error {
 	if !p.acceptClientRPC {
-		return os.ErrorString("client RPC connections not accepted")
+		return errors.New("client RPC connections not accepted")
 	}
 	srv := p.srv
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 	if srv.clients[*name] != nil {
-		return os.ErrorString("client name already exists")
+		return errors.New("client name already exists")
 	}
 	*clientId = fmt.Sprintf("ncrpc.client%d", srv.clientid)
 	srv.clientid++
@@ -175,7 +175,7 @@ func (p publisher) Publish(name *string, clientId *string) os.Error {
 		// when call completes, client has left.
 		client.Call("ClientRPC.Wait", &struct{}{}, &struct{}{})
 		srv.mu.Lock()
-		srv.clients[*name] = nil, false
+		delete(srv.clients, *name)
 		srv.mu.Unlock()
 	}()
 	return nil

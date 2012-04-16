@@ -40,7 +40,7 @@ package event
 //
 import "C"
 import (
-	"rog-go.googlecode.com/hg/exp/callback"
+	"code.google.com/p/rog-go/exp/callback"
 	"unsafe"
 )
 
@@ -51,7 +51,7 @@ func init() {
 }
 
 type Window struct {
-	w *C.Window
+	w        *C.Window
 	callback func(event int)
 }
 
@@ -68,9 +68,8 @@ func (w *Window) SetCallback(f func(int)) {
 }
 
 //export eventCallback
-func eventCallback(a unsafe.Pointer){
+func eventCallback(a unsafe.Pointer) {
 	arg := (*C.args)(a)
 	w := (*Window)(arg.goWindow)
 	w.callback(int(arg.event))
 }
-

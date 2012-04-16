@@ -17,14 +17,15 @@ package main
 
 import (
 	"bufio"
+	"code.google.com/p/rog-go/ncrpc"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
 	"net"
+	"net/rpc"
 	"os"
-	"rog-go.googlecode.com/hg/ncrpc"
-	"rpc"
 	"strings"
 )
 
@@ -78,22 +79,22 @@ type Server struct {
 	ncsrv *ncrpc.Server
 }
 
-func (srv *Server) List(_ *Void, names *[]string) os.Error {
+func (srv *Server) List(_ *Void, names *[]string) error {
 	*names = srv.ncsrv.ClientNames()
 	return nil
 }
 
-func (srv *Server) Read(req *ReadReq, data *[]byte) os.Error {
+func (srv *Server) Read(req *ReadReq, data *[]byte) error {
 	client := srv.ncsrv.Client(req.Client)
 	if client == nil {
-		return os.ErrorString("unknown client")
+		return errors.New("unknown client")
 	}
 	return client.Call("Client.Read", &req.Path, data)
 }
 
 type Client struct{}
 
-func (Client) Read(file *string, data *[]byte) (err os.Error) {
+func (Client) Read(file *string, data *[]byte) (err error) {
 	f, err := os.Open(*file)
 	if err != nil {
 		return err
@@ -104,7 +105,7 @@ func (Client) Read(file *string, data *[]byte) (err os.Error) {
 
 type command struct {
 	narg int
-	f    func(srv *rpc.Client, args []string) os.Error
+	f    func(srv *rpc.Client, args []string) error
 }
 
 var commands = map[string]command{
@@ -140,7 +141,7 @@ func interact(srv *rpc.Client) {
 	}
 }
 
-func readcmd(srv *rpc.Client, args []string) os.Error {
+func readcmd(srv *rpc.Client, args []string) error {
 	var data []byte
 	err := srv.Call("Server.Read", &ReadReq{Client: args[0], Path: args[1]}, &data)
 	if err != nil {
@@ -150,7 +151,7 @@ func readcmd(srv *rpc.Client, args []string) os.Error {
 	return nil
 }
 
-func listcmd(srv *rpc.Client, _ []string) os.Error {
+func listcmd(srv *rpc.Client, _ []string) error {
 	var clients []string
 	err := srv.Call("Server.List", &Void{}, &clients)
 	if err != nil {

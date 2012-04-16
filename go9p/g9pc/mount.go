@@ -5,14 +5,13 @@
 package g9pc
 
 import (
+	"code.google.com/p/rog-go/go9p/g9p"
 	"net"
-	"os"
-	"rog-go.googlecode.com/hg/go9p/g9p"
 )
 
 // Creates an authentication fid for the specified user. Returns the fid, if
 // successful, or an Error.
-func (clnt *Client) Auth(user g9p.User, aname string) (*Fid, os.Error) {
+func (clnt *Client) Auth(user g9p.User, aname string) (*Fid, error) {
 	fid := clnt.fidAlloc()
 	tc := clnt.newFcall()
 	err := g9p.PackTauth(tc, fid.Fid, user.Name(), aname, uint32(user.Id()), clnt.dotu)
@@ -32,7 +31,7 @@ func (clnt *Client) Auth(user g9p.User, aname string) (*Fid, os.Error) {
 // Creates a fid for the specified user that points to the root
 // of the file server's file tree. Returns a Fid pointing to the root,
 // if successful, or an Error.
-func (clnt *Client) Attach(afid *Fid, user g9p.User, aname string) (*Fid, os.Error) {
+func (clnt *Client) Attach(afid *Fid, user g9p.User, aname string) (*Fid, error) {
 	var afno uint32
 
 	if afid != nil {
@@ -60,8 +59,9 @@ func (clnt *Client) Attach(afid *Fid, user g9p.User, aname string) (*Fid, os.Err
 	fid.User = user
 	return fid, nil
 }
+
 // Connects to a file server and attaches to it as the specified user.
-func Mount(netw, addr, aname string, user g9p.User, log g9p.Logger) (*Client, os.Error) {
+func Mount(netw, addr, aname string, user g9p.User, log g9p.Logger) (*Client, error) {
 	conn, err := net.Dial(netw, addr)
 	if conn == nil {
 		return nil, err

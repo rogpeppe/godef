@@ -4,15 +4,11 @@
 
 package g9pc
 
-import (
-	"os"
-	"rog-go.googlecode.com/hg/go9p/g9p"
-)
-
+import "code.google.com/p/rog-go/go9p/g9p"
 
 // Removes the file associated with the Fid. Returns nil if the
 // operation is successful.
-func (clnt *Client) Remove(fid *Fid) os.Error {
+func (clnt *Client) Remove(fid *Fid) error {
 	tc := clnt.newFcall()
 	err := g9p.PackTremove(tc, fid.Fid)
 	if err != nil {
@@ -31,8 +27,8 @@ func (clnt *Client) Remove(fid *Fid) os.Error {
 }
 
 // Removes the named file. Returns nil if the operation is successful.
-func (clnt *Client) FRemove(path string) os.Error {
-	var err os.Error
+func (clnt *Client) FRemove(path string) error {
+	var err error
 	fid, err := clnt.FWalk(path)
 	if err != nil {
 		return err

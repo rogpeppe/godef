@@ -3,14 +3,14 @@
 package main
 
 import (
-	"rog-go.googlecode.com/hg/x11"
+	"code.google.com/p/freetype-go/freetype/truetype"
+	"code.google.com/p/rog-go/canvas"
+	"code.google.com/p/rog-go/x11"
 	"exp/draw"
-	"log"
 	"image"
 	"io/ioutil"
+	"log"
 	"os"
-	"rog-go.googlecode.com/hg/canvas"
-	"freetype-go.googlecode.com/hg/freetype/truetype"
 )
 
 var cvs *canvas.Canvas
@@ -36,18 +36,17 @@ func main() {
 			nil)))
 	item.SetCentre(image.Pt(cvs.Rect().Dx()/2, cvs.Rect().Dy()/3))
 	cvs.AddItem(item)
-//	txtitem :=	canvas.NewText(
-//			image.Pt(100, 100),
-//			0,
-//			"Working?",
-//			defaultFont(),
-//			20,
-//			nil)
+	//	txtitem :=	canvas.NewText(
+	//			image.Pt(100, 100),
+	//			0,
+	//			"Working?",
+	//			defaultFont(),
+	//			20,
+	//			nil)
 
+	//	img := canvas.ImageOf(txtitem)
 
-//	img := canvas.ImageOf(txtitem)
-
-//	cvs.AddItem(canvas.NewImage(img, false, image.Pt(cvs.Width() / 2, cvs.Height()*2/3)))
+	//	cvs.AddItem(canvas.NewImage(img, false, image.Pt(cvs.Width() / 2, cvs.Height()*2/3)))
 
 	cvs.Flush()
 	ec := win.EventChan()
@@ -96,6 +95,7 @@ type RectFlusherContext interface {
 	draw.Window
 	FlushImageRect(r image.Rectangle)
 }
+
 func flushFunc(ctxt draw.Window) func(r image.Rectangle) {
 	if fctxt, ok := ctxt.(RectFlusherContext); ok {
 		return func(r image.Rectangle) {

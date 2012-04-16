@@ -66,8 +66,8 @@ type uintPtrGetter interface {
 }
 
 func eqPtr(x, y interface{}) bool {
-	v := reflect.NewValue(x).(uintPtrGetter)
-	w := reflect.NewValue(y).(uintPtrGetter)
+	v := reflect.ValueOf(x).(uintPtrGetter)
+	w := reflect.ValueOf(y).(uintPtrGetter)
 
 	return v.Get() == w.Get()
 }

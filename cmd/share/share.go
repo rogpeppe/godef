@@ -17,14 +17,15 @@ package main
 
 import (
 	"bufio"
+	"code.google.com/p/rog-go/ncnet"
+	"errors"
 	"flag"
 	"fmt"
 	"io/ioutil"
 	"log"
+	"net/rpc"
 	"netchan"
 	"os"
-	"rog-go.googlecode.com/hg/ncnet"
-	"rpc"
 	"strings"
 	"sync"
 	"time"
@@ -47,11 +48,11 @@ type ReadReq struct {
 
 type Void struct{}
 
-func (srv *Server) Publish(name *string, clientId *string) os.Error {
+func (srv *Server) Publish(name *string, clientId *string) error {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 	if srv.clients[*name] != nil {
-		return os.ErrorString("client name already exists")
+		return errors.New("client name already exists")
 	}
 	*clientId = fmt.Sprintf("client%d", srv.clientid)
 	srv.clientid++
@@ -78,13 +79,13 @@ func (srv *Server) Publish(name *string, clientId *string) os.Error {
 		// when call completes, client has left.
 		client.Call("Client.Wait", &Void{}, &Void{})
 		srv.mu.Lock()
-		srv.clients[*name] = nil, false
+		delete(srv.clients, *name)
 		srv.mu.Unlock()
 	}()
 	return nil
 }
 
-func (srv *Server) List(_ *Void, names *[]string) os.Error {
+func (srv *Server) List(_ *Void, names *[]string) error {
 	srv.mu.Lock()
 	defer srv.mu.Unlock()
 	for name := range srv.clients {
@@ -93,30 +94,30 @@ func (srv *Server) List(_ *Void, names *[]string) os.Error {
 	return nil
 }
 
-func (srv *Server) Read(req *ReadReq, data *[]byte) os.Error {
+func (srv *Server) Read(req *ReadReq, data *[]byte) error {
 	srv.mu.Lock()
 	client := srv.clients[req.Client]
 	srv.mu.Unlock()
 	if client == nil {
-		return os.ErrorString("unknown client")
+		return errors.New("unknown client")
 	}
 	return client.Call("Client.Read", &req.Path, data)
 }
 
 type Client struct{}
 
-func (Client) Init(*Void, *Void) os.Error {
+func (Client) Init(*Void, *Void) error {
 	return nil
 }
 
 // Wait blocks until the client is ready to leave.
 // Currently that's forever.
-func (Client) Wait(*Void, *Void) os.Error {
+func (Client) Wait(*Void, *Void) error {
 	<-make(chan int)
 	return nil
 }
 
-func (Client) Read(file *string, data *[]byte) (err os.Error) {
+func (Client) Read(file *string, data *[]byte) (err error) {
 	f, err := os.Open(*file)
 	if err != nil {
 		return err
@@ -192,7 +193,7 @@ func main() {
 
 type command struct {
 	narg int
-	f    func(srv *rpc.Client, args []string) os.Error
+	f    func(srv *rpc.Client, args []string) error
 }
 
 var commands = map[string]command{
@@ -228,7 +229,7 @@ func interact(srv *rpc.Client) {
 	}
 }
 
-func readcmd(srv *rpc.Client, args []string) os.Error {
+func readcmd(srv *rpc.Client, args []string) error {
 	var data []byte
 	err := srv.Call("Server.Read", &ReadReq{Client: args[0], Path: args[1]}, &data)
 	if err != nil {
@@ -238,7 +239,7 @@ func readcmd(srv *rpc.Client, args []string) os.Error {
 	return nil
 }
 
-func listcmd(srv *rpc.Client, _ []string) os.Error {
+func listcmd(srv *rpc.Client, _ []string) error {
 	var clients []string
 	err := srv.Call("Server.List", &Void{}, &clients)
 	if err != nil {

@@ -1,15 +1,14 @@
 package abc
 
 import (
+	"container/vector"
 	"fmt"
+	"os"
 	"reflect"
-	"scanner"
 	"strconv"
 	"strings"
-	"container/vector"
-	"os"
+	"text/scanner"
 )
-
 
 type Type struct {
 	Name string
@@ -53,13 +52,13 @@ func Register(name string, t map[string]Socket, fn func(status *Status, args map
 }
 
 func Unregister(name string) {
-	widgets[name] = widgetFactory{}, false
+	delete(widgets, name)
 }
 
 type context struct {
 	idents map[string]*ident
 	tok    *scanner.Scanner
-	sym int
+	sym    int
 }
 
 type ident struct {
@@ -158,7 +157,7 @@ func Exec(s string) {
 	fmt.Printf("read %d commands\n", len(cmds))
 	ctxt.run(cmds)
 }
-	
+
 func (ctxt *context) run(cmds []*command) {
 	// check types
 	for _, c := range cmds {
@@ -185,7 +184,7 @@ func (ctxt *context) run(cmds []*command) {
 
 	sync := make(chan bool)
 	for _, c := range cmds {
-		m.Go(func(status *Status){
+		m.Go(func(status *Status) {
 			ctxt.startWidget(c, status, sync)
 		})
 		<-sync
@@ -193,7 +192,6 @@ func (ctxt *context) run(cmds []*command) {
 
 	m.Wait()
 }
-
 
 func (ctxt *context) startWidget(c *command, status *Status, sync chan bool) {
 	args := make(map[string]interface{})
@@ -367,7 +365,7 @@ func (ctxt *context) stringEndpoint(text string, c *command) *endpoint {
 		id.wire <- text
 		ctxt.idents[name] = id
 	}
-	
+
 	e.ident = id
 	id.nfemales++
 	return e
@@ -406,8 +404,8 @@ func toktext(t int) string {
 }
 
 func IsType(t interface{}) func(x interface{}) bool {
-	typ := reflect.Typeof(t)
+	typ := reflect.TypeOf(t)
 	return func(x interface{}) bool {
-		return reflect.Typeof(x) == typ
+		return reflect.TypeOf(x) == typ
 	}
 }

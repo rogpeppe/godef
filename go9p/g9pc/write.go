@@ -4,14 +4,11 @@
 
 package g9pc
 
-import (
-	"os"
-	"rog-go.googlecode.com/hg/go9p/g9p"
-)
+import "code.google.com/p/rog-go/go9p/g9p"
 
 // Write up to len(data) bytes starting from offset. Returns the
 // number of bytes written, or an Error.
-func (fid *Fid) WriteAt(data []byte, offset uint64) (int, os.Error) {
+func (fid *Fid) WriteAt(data []byte, offset uint64) (int, error) {
 	clnt := fid.Client
 	tc := clnt.newFcall()
 	err := g9p.PackTwrite(tc, fid.Fid, offset, uint32(len(data)), data)
@@ -32,7 +29,7 @@ func (fid *Fid) WriteAt(data []byte, offset uint64) (int, os.Error) {
 
 // Writes up to len(buf) bytes to a file. Returns the number of
 // bytes written, or an Error.
-func (file *File) Write(buf []byte) (int, os.Error) {
+func (file *File) Write(buf []byte) (int, error) {
 	n, err := file.WriteAt(buf, file.offset)
 	if err == nil {
 		file.offset += uint64(n)
@@ -43,14 +40,14 @@ func (file *File) Write(buf []byte) (int, os.Error) {
 
 // Writes up to len(buf) bytes starting from offset. Returns the number
 // of bytes written, or an Error.
-func (file *File) WriteAt(buf []byte, offset uint64) (int, os.Error) {
+func (file *File) WriteAt(buf []byte, offset uint64) (int, error) {
 	return file.fid.WriteAt(buf, offset)
 }
 
 // Writes exactly len(buf) bytes starting from offset. Returns the number of
 // bytes written. If Error is returned the number of bytes can be less
 // than len(buf).
-func (file *File) Writen(buf []byte, offset uint64) (int, os.Error) {
+func (file *File) Writen(buf []byte, offset uint64) (int, error) {
 	ret := 0
 	for len(buf) > 0 {
 		n, err := file.WriteAt(buf, offset)

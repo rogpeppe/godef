@@ -1,30 +1,31 @@
 package client
 
 import (
-	"os"
+	plan9 "code.google.com/p/rog-go/new9p"
+	"code.google.com/p/rog-go/new9p/seq"
+	"errors"
+	"fmt"
 	"io"
-	"rog-go.googlecode.com/hg/new9p/seq"
-"fmt"
 	"strings"
-	plan9 "rog-go.googlecode.com/hg/new9p"
 )
 
 type Ns struct {
 	Root *NsFile
-	Dot *NsFile
+	Dot  *NsFile
 }
 
 type NsFile struct {
 	offset int64
-	f seq.File
+	f      seq.File
 }
 
 type nsResultType bool
 type OpResults []seq.Result
+
 func (OpResults) Rtype() interface{} { return nsResultType(false) }
-	
 
 type PathWalkResult []plan9.Qid
+
 func (PathWalkResult) Rtype() interface{} { return nsResultType(true) }
 
 func (f *NsFile) IsDir() bool {
@@ -82,8 +83,8 @@ func (ns *Ns) path(name string) (*NsFile, []string) {
 	}
 	return f, elem[0:j]
 }
-	
-func (ns *Ns) Walk(name string) (*NsFile, os.Error) {
+
+func (ns *Ns) Walk(name string) (*NsFile, error) {
 	sq, results := seq.NewSequencer()
 	f, elem := ns.path(name)
 	go func() {
@@ -109,7 +110,7 @@ func (ns *Ns) SeqWalk(sq *seq.Sequencer, name string) *NsFile {
 	return f.SeqWalk(sq, elem...)
 }
 
-func (ns *Ns) Open(name string, mode uint8) (f *NsFile, err os.Error) {
+func (ns *Ns) Open(name string, mode uint8) (f *NsFile, err error) {
 	f, _, err = ns.ops(name, seq.OpenReq{mode})
 	return
 }
@@ -117,9 +118,9 @@ func (ns *Ns) Open(name string, mode uint8) (f *NsFile, err os.Error) {
 func (ns *Ns) ReadStream(name string, nreqs, iounit int) io.ReadCloser {
 	sq, replies := seq.NewSequencer()
 	go func() {
-		<-replies		// walk
-		<-replies		// open
-		<-replies		// stream
+		<-replies // walk
+		<-replies // open
+		<-replies // stream
 		sq.Do(nil, nil)
 		_, ok := <-replies
 		if ok {
@@ -135,26 +136,26 @@ func (ns *Ns) ReadStream(name string, nreqs, iounit int) io.ReadCloser {
 func (ns *Ns) SeqCreate(sq *seq.Sequencer, path string, mode uint8, perm plan9.Perm) *NsFile {
 	f, elem := ns.path(path)
 	if len(elem) == 0 {
-		panic("no path elements")		// TODO more sensible error handling
+		panic("no path elements") // TODO more sensible error handling
 	}
 	subseq, results := sq.Subsequencer("seqcreate")
 	go func() {
-		<-results			// walk result
-		<-results			// create result
+		<-results // walk result
+		<-results // create result
 		_, ok := <-results
 		if ok {
 			panic("expected closed")
 		}
 		subseq.Result(nil, subseq.Error())
 	}()
-	elem, name := elem[0 : len(elem)-1], elem[len(elem)-1]
+	elem, name := elem[0:len(elem)-1], elem[len(elem)-1]
 	f = f.SeqWalk(subseq, elem...)
 	f.seqops(subseq, seq.CreateReq{name, perm, mode})
 	subseq.Do(nil, nil)
 	return f
 }
 
-func (ns *Ns) Create(name string, mode uint8, perm plan9.Perm) (*NsFile, os.Error) {
+func (ns *Ns) Create(name string, mode uint8, perm plan9.Perm) (*NsFile, error) {
 	sq, replies := seq.NewSequencer()
 	go func() {
 		<-replies
@@ -166,7 +167,7 @@ func (ns *Ns) Create(name string, mode uint8, perm plan9.Perm) (*NsFile, os.Erro
 
 	f := ns.SeqCreate(sq, name, mode, perm)
 	sq.Do(nil, nil)
-	
+
 	if err := sq.Wait(); err != nil {
 		return nil, err
 	}
@@ -177,27 +178,27 @@ func (ns *Ns) SeqRemove(sq *seq.Sequencer, name string) {
 	ns.seqops(sq, name, seq.RemoveReq{})
 }
 
-func (ns *Ns) Remove(name string) (err os.Error) {
+func (ns *Ns) Remove(name string) (err error) {
 	_, _, err = ns.ops(name, seq.RemoveReq{})
 	return
 }
 
-func (ns *Ns) Access(name string, mode uint8) (err os.Error) {
+func (ns *Ns) Access(name string, mode uint8) (err error) {
 	_, _, err = ns.ops(name, seq.RemoveReq{}, seq.ClunkReq{})
 	return
 }
 
-func (ns *Ns) Stat(name string) (*plan9.Dir, os.Error) {
+func (ns *Ns) Stat(name string) (*plan9.Dir, error) {
 	_, replies, err := ns.ops(name, seq.StatReq{}, seq.ClunkReq{})
 	if err != nil {
 		return nil, err
 	}
-//log.Printf("stat replies: %#v\n", replies)
+	//log.Printf("stat replies: %#v\n", replies)
 	d := replies[0].(seq.StatResult).Stat
 	return &d, nil
 }
-	
-func (ns *Ns) Wstat(name string, d *plan9.Dir) os.Error {
+
+func (ns *Ns) Wstat(name string, d *plan9.Dir) error {
 	_, _, err := ns.ops(name, seq.WstatReq{*d}, seq.ClunkReq{})
 	return err
 }
@@ -212,27 +213,27 @@ func (ns *Ns) Wstat(name string, d *plan9.Dir) os.Error {
 //	so we don't need Ns.Filesys... i think!
 //}
 
-func (ns *Ns) Chdir(name string) os.Error {
+func (ns *Ns) Chdir(name string) error {
 	f, err := ns.Walk(name)
 	if err != nil {
 		return err
 	}
 	if !f.IsDir() {
 		f.Close()
-		return os.NewError("cannot chdir to non-directory")
+		return errors.New("cannot chdir to non-directory")
 	}
 	ns.Dot.Close()
 	ns.Dot = f
 	return nil
 }
 
-func (ns *Ns) ops(name string, ops ...seq.Req) (*NsFile, []seq.Result, os.Error) {
+func (ns *Ns) ops(name string, ops ...seq.Req) (*NsFile, []seq.Result, error) {
 	sq, replies := seq.NewSequencer()
 	c := make(chan []seq.Result)
 	go func() {
 		r, ok := <-replies
 		if !ok {
-//log.Printf("ops got premature eof, seq %p, error %#v", seq, seq.Error())
+			//log.Printf("ops got premature eof, seq %p, error %#v", seq, seq.Error())
 			c <- nil
 			return
 		}
@@ -248,14 +249,14 @@ func (ns *Ns) ops(name string, ops ...seq.Req) (*NsFile, []seq.Result, os.Error)
 	if err := sq.Wait(); err != nil {
 		return nil, r, err
 	}
-//log.Printf("ops got eof, chan %p, seq %p, error %#v", replies, seq, seq.Error())
+	//log.Printf("ops got eof, chan %p, seq %p, error %#v", replies, seq, seq.Error())
 	return f, r, sq.Error()
 }
 
 func (ns *Ns) seqops(sq *seq.Sequencer, name string, ops ...seq.Req) *NsFile {
 	subseq, results := sq.Subsequencer(fmt.Sprintf("ns.seqops(%#v)", ([]seq.Req)(ops)))
 	go func() {
-		<-results			// walk result
+		<-results // walk result
 		r := <-results
 		_, ok := <-results
 		if ok {
@@ -271,7 +272,7 @@ func (ns *Ns) seqops(sq *seq.Sequencer, name string, ops ...seq.Req) *NsFile {
 	return f
 }
 
-func (f *NsFile) Clone() (*NsFile, os.Error) {
+func (f *NsFile) Clone() (*NsFile, error) {
 	nf, err := f.f.FileSys().NewFile()
 	if err != nil {
 		return nil, err
@@ -283,7 +284,7 @@ func (f *NsFile) Clone() (*NsFile, os.Error) {
 	return NewNsFile(nf), nil
 }
 
-func (f *NsFile) Stat() (*plan9.Dir, os.Error) {
+func (f *NsFile) Stat() (*plan9.Dir, error) {
 	r, err := f.f.Do(seq.StatReq{})
 	if err != nil {
 		return nil, err
@@ -292,19 +293,19 @@ func (f *NsFile) Stat() (*plan9.Dir, os.Error) {
 	return &d, nil
 }
 
-func (f *NsFile) Wstat(dir *plan9.Dir) os.Error {
+func (f *NsFile) Wstat(dir *plan9.Dir) error {
 	_, err := f.f.Do(seq.WstatReq{*dir})
 	return err
 }
 
-func (f *NsFile) Remove() os.Error {
+func (f *NsFile) Remove() error {
 	_, err := f.f.Do(seq.RemoveReq{})
 	return err
 }
 
-func (f *NsFile) Open(mode uint8) os.Error {
+func (f *NsFile) Open(mode uint8) error {
 	if f.IsOpen() {
-		return os.NewError("file is already opened")
+		return errors.New("file is already opened")
 	}
 	_, err := f.f.Do(seq.OpenReq{mode})
 	return err
@@ -313,7 +314,7 @@ func (f *NsFile) Open(mode uint8) os.Error {
 func (f *NsFile) ReadStream(nreqs, iounit int) io.ReadCloser {
 	sq, replies := seq.NewSequencer()
 	go func() {
-		<-replies	// ReadStream
+		<-replies // ReadStream
 		_, ok := <-replies
 		if ok {
 			panic("expected eof")
@@ -326,15 +327,15 @@ func (f *NsFile) Close() {
 	f.f.Do(seq.ClunkReq{})
 }
 
-func (f *NsFile) Read(buf []byte) (int, os.Error) {
+func (f *NsFile) Read(buf []byte) (int, error) {
 	n, err := f.ReadAt(buf, f.offset)
-	f.offset += int64(n)			// TODO lock
+	f.offset += int64(n) // TODO lock
 	return n, err
 }
 
-func (f *NsFile) ReadAt(buf []byte, at int64) (int, os.Error) {
+func (f *NsFile) ReadAt(buf []byte, at int64) (int, error) {
 	if !f.IsOpen() {
-		return 0, os.NewError("file is not opened")
+		return 0, errors.New("file is not opened")
 	}
 	r, err := f.f.Do(seq.ReadReq{buf, f.offset})
 	if err != nil {
@@ -344,21 +345,21 @@ func (f *NsFile) ReadAt(buf []byte, at int64) (int, os.Error) {
 	if n == 0 {
 		// TODO there's no unambiguous EOF indication in 9p,
 		// so this is kinda incorrect.
-		err = os.EOF
+		err = io.EOF
 	}
 	return n, err
 }
 
-func (f *NsFile) Write(data []byte) (n int, err os.Error) {
-//log.Printf("%#v Write %d bytes", f, len(data))
+func (f *NsFile) Write(data []byte) (n int, err error) {
+	//log.Printf("%#v Write %d bytes", f, len(data))
 	n, err = f.WriteAt(data, f.offset)
-	f.offset += int64(n)	// TODO lock
+	f.offset += int64(n) // TODO lock
 	return
 }
 
-func (f *NsFile) WriteAt(data []byte, offset int64) (int, os.Error) {
+func (f *NsFile) WriteAt(data []byte, offset int64) (int, error) {
 	if !f.IsOpen() {
-		return 0, os.NewError("file is not opened")
+		return 0, errors.New("file is not opened")
 	}
 	r, err := f.f.Do(seq.WriteReq{data, f.offset})
 	if err != nil {
@@ -368,9 +369,9 @@ func (f *NsFile) WriteAt(data []byte, offset int64) (int, os.Error) {
 	return n, err
 }
 
-func (f *NsFile) Dirread() ([]*plan9.Dir, os.Error) {
+func (f *NsFile) Dirread() ([]*plan9.Dir, error) {
 	if !f.IsDir() {
-		return nil, os.NewError("not a directory")
+		return nil, errors.New("not a directory")
 	}
 	buf := make([]byte, plan9.STATMAX)
 	n, err := f.Read(buf)
@@ -380,7 +381,7 @@ func (f *NsFile) Dirread() ([]*plan9.Dir, os.Error) {
 	return plan9.UnmarshalDirs(buf[0:n])
 }
 
-func (f *NsFile) ops(ops ...seq.Req) ([]seq.Result, os.Error) {
+func (f *NsFile) ops(ops ...seq.Req) ([]seq.Result, error) {
 	c := make(chan OpResults)
 	seq, replies := seq.NewSequencer()
 	go func() {
@@ -401,7 +402,7 @@ func (f *NsFile) ops(ops ...seq.Req) ([]seq.Result, os.Error) {
 }
 
 func (f *NsFile) seqops(sq *seq.Sequencer, ops ...seq.Req) {
-//log.Printf("file.seqops %#v", ([]seq.Req)(ops))
+	//log.Printf("file.seqops %#v", ([]seq.Req)(ops))
 	subseq, results := sq.Subsequencer(fmt.Sprintf("nsfile.seqops(%#v)", ([]seq.Req)(ops)))
 	go func() {
 		result := make(OpResults, len(ops))
@@ -409,7 +410,7 @@ func (f *NsFile) seqops(sq *seq.Sequencer, ops ...seq.Req) {
 		for result[i] = range results {
 			i++
 		}
-//log.Printf("seqops [%#v] got eof, error %#v\n", ([]seq.Req)(ops), subseq.Error())
+		//log.Printf("seqops [%#v] got eof, error %#v\n", ([]seq.Req)(ops), subseq.Error())
 		// TODO(?): replies will be lost on error.
 		subseq.Result(result, subseq.Error())
 	}()
@@ -419,10 +420,10 @@ func (f *NsFile) seqops(sq *seq.Sequencer, ops ...seq.Req) {
 	subseq.Do(nil, nil)
 }
 
-func (f *NsFile) Walk(elem ...string) (*NsFile, os.Error) {
+func (f *NsFile) Walk(elem ...string) (*NsFile, error) {
 	seq, results := seq.NewSequencer()
 	go func() {
-		<-results		// Walk
+		<-results // Walk
 		_, ok := <-results
 		if ok {
 			panic("expected closed")
@@ -441,13 +442,13 @@ func (f *NsFile) SeqWalk(sq *seq.Sequencer, path ...string) *NsFile {
 	subseq, results := sq.Subsequencer(fmt.Sprintf("seqwalk(%#v)", ([]string)(path)))
 	go func() {
 		var qids PathWalkResult
-//log.Printf("seqwalk waiting on result chan %p", results)
+		//log.Printf("seqwalk waiting on result chan %p", results)
 		<-results
 		for r := range results {
 			qids = append(qids, r.(seq.WalkResult).Q)
 		}
-//log.Printf("seqwalk got result eof")
-//log.Printf("seqwalk %p, %q, error %#v", subseq, subseq.name, subseq.Error())
+		//log.Printf("seqwalk got result eof")
+		//log.Printf("seqwalk %p, %q, error %#v", subseq, subseq.name, subseq.Error())
 		if err := subseq.Error(); err != nil {
 			subseq.Result(nil, err)
 			return
@@ -458,7 +459,7 @@ func (f *NsFile) SeqWalk(sq *seq.Sequencer, path ...string) *NsFile {
 	if err != nil {
 		panic("out of files")
 	}
-//log.Printf("NewFile -> %#v\n", nfile)
+	//log.Printf("NewFile -> %#v\n", nfile)
 	subseq.Do(f.f, seq.CloneReq{nfile})
 	for _, name := range path {
 		subseq.Do(nfile, seq.WalkReq{name})
