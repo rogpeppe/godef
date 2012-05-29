@@ -1,9 +1,9 @@
 package loopback
+
 import (
+	"code.google.com/p/rog-go/fakenet"
 	"io"
-	"os"
 	"net"
-	"rog-go.googlecode.com/hg/fakenet"
 )
 
 // Dial is the same as net.Dial except that it also recognises
@@ -11,15 +11,15 @@ import (
 // the prefix, dials the original network, and then applies
 // the given loopback Options. Incoming data has inOpts
 // applied; outgoing data has outOpts applied.
-func Dial(netw, laddr, raddr string) (net.Conn, os.Error) {
+func Dial(netw, addr string) (net.Conn, error) {
 	if netw != "" && netw[0] != '[' {
-		return net.Dial(netw, laddr, raddr)
+		return net.Dial(netw, addr)
 	}
 	inOpts, outOpts, actualNet, err := parseNetwork(netw)
 	if err != nil {
 		return nil, err
 	}
-	c, err := net.Dial(actualNet, laddr, raddr)
+	c, err := net.Dial(actualNet, addr)
 	if err != nil {
 		return nil, err
 	}
@@ -43,7 +43,7 @@ func NewConn(c net.Conn, inOpts, outOpts Options) net.Conn {
 
 type listener struct {
 	inOpts, outOpts Options
-	l net.Listener
+	l               net.Listener
 }
 
 // Dial is the same as net.Listen except that it also recognises
@@ -51,7 +51,7 @@ type listener struct {
 // the prefix, listens on the original network, and then applies
 // the given loopback Options to each connection. Incoming data has inOpts
 // applied; outgoing data has outOpts applied.
-func Listen(netw, laddr string) (net.Listener, os.Error) {
+func Listen(netw, laddr string) (net.Listener, error) {
 	if netw != "" && netw[0] != '[' {
 		return net.Listen(netw, laddr)
 	}
@@ -62,7 +62,7 @@ func Listen(netw, laddr string) (net.Listener, os.Error) {
 	return ListenOpts(actualNet, laddr, inOpts, outOpts)
 }
 
-func ListenOpts(netw, laddr string, inOpts, outOpts Options) (net.Listener, os.Error) {
+func ListenOpts(netw, laddr string, inOpts, outOpts Options) (net.Listener, error) {
 	l, err := net.Listen(netw, laddr)
 	if err != nil {
 		return nil, err
@@ -74,7 +74,7 @@ func (l *listener) Addr() net.Addr {
 	return l.l.Addr()
 }
 
-func (l *listener) Accept() (net.Conn, os.Error) {
+func (l *listener) Accept() (net.Conn, error) {
 	c, err := l.l.Accept()
 	if err != nil {
 		return nil, err
@@ -82,6 +82,6 @@ func (l *listener) Accept() (net.Conn, os.Error) {
 	return NewConn(c, l.inOpts, l.outOpts), nil
 }
 
-func (l *listener) Close() os.Error {
+func (l *listener) Close() error {
 	return l.l.Close()
 }

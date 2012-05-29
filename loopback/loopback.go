@@ -1,9 +1,9 @@
 package loopback
 
 import (
-	"sync"
+	"errors"
 	"io"
-	"os"
+	"sync"
 	"time"
 )
 
@@ -12,7 +12,7 @@ import (
 //	send close as a block with nil data.
 
 type block struct {
-	t    int64
+	t    time.Time
 	data []byte
 	prev *block
 	next *block
@@ -21,19 +21,19 @@ type block struct {
 type streamReader stream
 type streamWriter stream
 
-func (r *streamReader) Read(data []byte) (int, os.Error) {
+func (r *streamReader) Read(data []byte) (int, error) {
 	return (*stream)(r).Read(data)
 }
 
-func (r *streamReader) Close() os.Error {
+func (r *streamReader) Close() error {
 	return (*stream)(r).closeInput()
 }
 
-func (w *streamWriter) Write(data []byte) (int, os.Error) {
+func (w *streamWriter) Write(data []byte) (int, error) {
 	return (*stream)(w).Write(data)
 }
 
-func (w *streamWriter) Close() os.Error {
+func (w *streamWriter) Close() error {
 	return (*stream)(w).closeOutput()
 }
 
@@ -54,22 +54,21 @@ type stream struct {
 	inLimit int // total size of input queue.
 	inAvail int // free bytes in input queue.
 
-	byteDelay int64
-	latency   int64
+	byteDelay time.Duration
+	latency   time.Duration
 	mtu       int
 
 	rwait sync.Cond
-	wwait  sync.Cond
+	wwait sync.Cond
 }
 
 // Loopback options for use with Pipe.
 type Options struct {
 	// ByteDelay controls the time a packet takes in the link.  A packet
-	// n bytes long takes ByteDelay * n nanoseconds to exit
-	// the output queue and is available for reading Latency
-	// nanoseconds later.
-	ByteDelay int64
-	Latency   int64
+	// n bytes long takes time ByteDelay * n to exit
+	// the output queue and is available for reading Latency time later.
+	ByteDelay time.Duration
+	Latency   time.Duration
 
 	// MTU gives the maximum packet size that can
 	// be tranferred atomically across the link.
@@ -131,13 +130,13 @@ func Pipe(opt Options) (r io.ReadCloser, w io.WriteCloser) {
 // TODO what do we do about latency for
 // blocked packets - as it is a blocked packet
 // will incur less latency.
-func (s *stream) outBlocked(now int64) bool {
+func (s *stream) outBlocked(now time.Time) bool {
 	return s.transitHead != s.outHead &&
-		now >= s.transitHead.t+s.latency &&
+		!s.transitHead.t.Add(s.latency).Before(now) &&
 		s.inAvail < len(s.transitHead.data)
 }
 
-func (s *stream) closeInput() os.Error {
+func (s *stream) closeInput() error {
 	s.mu.Lock()
 	s.inClosed = true
 	s.rwait.Broadcast()
@@ -146,7 +145,7 @@ func (s *stream) closeInput() os.Error {
 	return nil
 }
 
-func (s *stream) closeOutput() os.Error {
+func (s *stream) closeOutput() error {
 	s.mu.Lock()
 	s.outClosed = true
 	s.rwait.Broadcast()
@@ -155,17 +154,17 @@ func (s *stream) closeOutput() os.Error {
 	return nil
 }
 
-func (s *stream) pushLink(now int64) {
+func (s *stream) pushLink(now time.Time) {
 	if !s.outBlocked(now) {
 		// move blocks from out queue to transit queue.
-		for s.outTail != s.outHead && now >= s.outHead.t {
-			s.outHead.t += s.latency
+		for s.outTail != s.outHead && !now.Before(s.outHead.t) {
+			s.outHead.t = s.outHead.t.Add(s.latency)
 			s.outAvail += len(s.outHead.data)
 			s.outHead = s.outHead.next
 		}
 	}
 	// move blocks from transit queue to input queue
-	for s.transitHead != s.outHead && now >= s.transitHead.t {
+	for s.transitHead != s.outHead && !now.Before(s.transitHead.t) {
 		if s.inAvail < len(s.transitHead.data) {
 			break // or discard packet
 		}
@@ -174,7 +173,9 @@ func (s *stream) pushLink(now int64) {
 	}
 }
 
-func (s *stream) Write(data []byte) (int, os.Error) {
+var ErrPipeWrite = errors.New("write on closed pipe")
+
+func (s *stream) Write(data []byte) (int, error) {
 	// split the packet into MTU-sized portions if necessary.
 	tot := 0
 	for len(data) > s.mtu {
@@ -186,16 +187,16 @@ func (s *stream) Write(data []byte) (int, os.Error) {
 		data = data[s.mtu:]
 	}
 	s.mu.Lock()
-	now := time.Nanoseconds()
+	now := time.Now()
 	for {
 		s.pushLink(now)
 		if s.outAvail >= len(data) || s.outClosed {
 			break
 		}
-		if s.outBlocked(time.Nanoseconds()) {
+		if s.outBlocked(time.Now()) {
 			if s.inClosed {
 				s.mu.Unlock()
-				return 0, os.EPIPE
+				return 0, ErrPipeWrite
 			}
 			s.wwait.Wait()
 			continue
@@ -205,17 +206,17 @@ func (s *stream) Write(data []byte) (int, os.Error) {
 	}
 	if s.outClosed {
 		s.mu.Unlock()
-		return 0, os.EPIPE
+		return 0, ErrPipeWrite
 	}
-	delay := int64(len(data)) * s.byteDelay
-	var t int64
+	delay := time.Duration(len(data)) * s.byteDelay
+	var t time.Time
 	// If there's a block in the queue that's not yet due
 	// for transit, then this block leaves delay ns after
 	// that one.
-	if s.outHead != s.outTail && now < s.outTail.prev.t {
-		t = s.outTail.prev.t + delay
+	if s.outHead != s.outTail && now.Before(s.outTail.prev.t) {
+		t = s.outTail.prev.t.Add(delay)
 	} else {
-		t = now + delay
+		t = now.Add(delay)
 	}
 	s.addBlock(t, s.copy(data))
 	s.outAvail -= len(data)
@@ -226,10 +227,10 @@ func (s *stream) Write(data []byte) (int, os.Error) {
 	return len(data), nil
 }
 
-func (s *stream) Read(buf []byte) (int, os.Error) {
+func (s *stream) Read(buf []byte) (int, error) {
 	s.mu.Lock()
 	// Loop until there's something to read from the input queue.
-	now := time.Nanoseconds()
+	now := time.Now()
 	for {
 		s.pushLink(now)
 		if s.inHead != s.transitHead {
@@ -241,7 +242,7 @@ func (s *stream) Read(buf []byte) (int, os.Error) {
 			// then we see EOF.
 			if s.outClosed {
 				s.mu.Unlock()
-				return 0, os.EOF
+				return 0, io.EOF
 			}
 			s.rwait.Wait()
 			continue
@@ -251,7 +252,7 @@ func (s *stream) Read(buf []byte) (int, os.Error) {
 	if s.inClosed {
 		// input queue has been forcibly closed:
 		// TODO is os.EOF the right error here?
-		return 0, os.EOF
+		return 0, io.EOF
 	}
 	b := s.inHead
 	n := copy(buf, b.data)
@@ -269,16 +270,16 @@ func (s *stream) Read(buf []byte) (int, os.Error) {
 // earliestReadTime returns the earliest time that
 // some data might arrive into the input queue.
 // It assumes that there is some data in the system.
-func (s *stream) earliestReadTime() int64 {
+func (s *stream) earliestReadTime() time.Time {
 	if s.inAvail < s.inLimit {
 		// data is available right now.
-		return 0
+		return time.Time{}
 	}
 	if s.transitHead != s.outHead {
 		return s.transitHead.t
 	}
 	if s.outHead != s.outTail {
-		return s.outHead.t + s.latency
+		return s.outHead.t.Add(s.latency)
 	}
 	panic("no data")
 }
@@ -287,10 +288,10 @@ func (s *stream) earliestReadTime() int64 {
 // there may be space for n bytes of data to be
 // placed into the output queue (it might be later
 // if packets are dropped).
-func (s *stream) earliestWriteTime(n int) int64 {
+func (s *stream) earliestWriteTime(n int) time.Time {
 	if s.outAvail < s.outLimit {
 		// space is available now.
-		return 0
+		return time.Time{}
 	}
 	tot := s.outAvail
 	for b := s.outHead; b != s.outTail; b = b.next {
@@ -304,15 +305,15 @@ func (s *stream) earliestWriteTime(n int) int64 {
 
 // sleep until the absolute time t.
 // Called with lock held.
-func (s *stream) sleepUntil(t int64) int64 {
-	now := time.Nanoseconds()
-	if now >= t {
+func (s *stream) sleepUntil(t time.Time) time.Time {
+	now := time.Now()
+	if !now.Before(t) {
 		return now
 	}
 	s.mu.Unlock()
-	time.Sleep(t - now)
+	time.Sleep(t.Sub(now))
 	s.mu.Lock()
-	return time.Nanoseconds()
+	return time.Now()
 }
 
 func (s *stream) copy(x []byte) []byte {
@@ -323,7 +324,7 @@ func (s *stream) copy(x []byte) []byte {
 
 // addBlock adds a block to the head of the queue.
 // It does not adjust queue stats.
-func (s *stream) addBlock(t int64, data []byte) {
+func (s *stream) addBlock(t time.Time, data []byte) {
 	// If there are no items in output queue, replace sentinel block
 	// so that other pointers into queue do not need
 	// to change.

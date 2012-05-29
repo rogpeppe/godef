@@ -1,22 +1,20 @@
 package loopback
+
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
-	"os"
 	"strings"
+	"time"
 	"unicode"
 )
 
-type errEmpty int
+var errEmpty = errors.New("empty")
 
-func (errEmpty) String() string {
-	return "empty"
-}
-
-func parseNetwork(net string) (inOpts, outOpts Options, actualNet string, err os.Error) {
+func parseNetwork(net string) (inOpts, outOpts Options, actualNet string, err error) {
 	if net == "" {
-		err = os.ErrorString("empty network name")
+		err = errors.New("empty network name")
 		return
 	}
 	if net[0] != '[' {
@@ -28,14 +26,14 @@ func parseNetwork(net string) (inOpts, outOpts Options, actualNet string, err os
 	for {
 		_, err = fmt.Fscan(buf, opts{&inOpts, &outOpts})
 		if err != nil {
-			if err == errEmpty(0) {
+			if err == errEmpty {
 				err = nil
 				return
 			}
 			break
 		}
 
-		var r int
+		var r rune
 		r, err = nextRune(buf)
 		if err != nil {
 			return
@@ -52,15 +50,17 @@ func parseNetwork(net string) (inOpts, outOpts Options, actualNet string, err os
 	return
 }
 
+var _ = fmt.Scanner(opts{})
+
 type opts struct {
-	inOpts *Options
+	inOpts  *Options
 	outOpts *Options
 }
 
-func (o opts) Scan(state fmt.ScanState, verb int) os.Error {
+func (o opts) Scan(state fmt.ScanState, verb rune) error {
 	var attr string
-	var t int64
-	if _, err := fmt.Fscanf(state, "%v=%v", (*word)(&attr), (*unit)(&t)); err != nil {
+	var u unit
+	if _, err := fmt.Fscanf(state, "%v=%v", (*word)(&attr), (*unit)(&u)); err != nil {
 		return err
 	}
 	var in *Options
@@ -76,24 +76,24 @@ func (o opts) Scan(state fmt.ScanState, verb int) os.Error {
 		in = o.inOpts
 		out = o.outOpts
 	}
-	if err := setOpt(in, attr, t); err != nil {
+	if err := setOpt(in, attr, u); err != nil {
 		return err
 	}
-	if err := setOpt(out, attr, t); err != nil {
+	if err := setOpt(out, attr, u); err != nil {
 		return err
 	}
 	return nil
 }
-	
-func setOpt(opt *Options, attr string, t int64) os.Error {
+
+func setOpt(opt *Options, attr string, t unit) error {
 	if opt == nil {
 		return nil
 	}
 	switch attr {
 	case "latency":
-		opt.Latency = t
+		opt.Latency = time.Duration(t)
 	case "bytedelay":
-		opt.ByteDelay = t
+		opt.ByteDelay = time.Duration(t)
 	case "mtu":
 		opt.MTU = int(t)
 	case "inlimit":
@@ -108,10 +108,10 @@ func setOpt(opt *Options, attr string, t int64) os.Error {
 
 type word string
 
-func (w *word) Scan(state fmt.ScanState, verb int) os.Error {
-	tok, err := state.Token(false, func(r int)bool{return unicode.IsLetter(r) || r == '.'})
+func (w *word) Scan(state fmt.ScanState, verb int) error {
+	tok, err := state.Token(false, func(r rune) bool { return unicode.IsLetter(r) || r == '.' })
 	if err == nil && len(tok) == 0 {
-		return errEmpty(0)
+		return errEmpty
 	}
 	*w = word(tok)
 	return err
@@ -119,7 +119,7 @@ func (w *word) Scan(state fmt.ScanState, verb int) os.Error {
 
 type unit int64
 
-func (u *unit) Scan(state fmt.ScanState, verb int) os.Error {
+func (u *unit) Scan(state fmt.ScanState, verb int) error {
 	var x float64
 	_, err := fmt.Fscan(state, &x)
 	if err != nil {
@@ -142,7 +142,7 @@ func (u *unit) Scan(state fmt.ScanState, verb int) os.Error {
 	case "k", "kb", "K", "KB":
 		x *= 1024
 	case "m", "mb", "M", "MB":
-		x *= 1024*1024
+		x *= 1024 * 1024
 	default:
 		return fmt.Errorf("unknown time or size unit %q", units)
 	}
@@ -150,7 +150,7 @@ func (u *unit) Scan(state fmt.ScanState, verb int) os.Error {
 	return nil
 }
 
-func nextRune(rd io.RuneReader) (r int, err os.Error) {
+func nextRune(rd io.RuneReader) (r rune, err error) {
 	for {
 		r, _, err = rd.ReadRune()
 		if err != nil {
