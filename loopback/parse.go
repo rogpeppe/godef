@@ -106,9 +106,11 @@ func setOpt(opt *Options, attr string, t unit) error {
 	return nil
 }
 
+var _ = fmt.Scanner((*word)(nil))
+
 type word string
 
-func (w *word) Scan(state fmt.ScanState, verb int) error {
+func (w *word) Scan(state fmt.ScanState, verb rune) error {
 	tok, err := state.Token(false, func(r rune) bool { return unicode.IsLetter(r) || r == '.' })
 	if err == nil && len(tok) == 0 {
 		return errEmpty
@@ -117,9 +119,11 @@ func (w *word) Scan(state fmt.ScanState, verb int) error {
 	return err
 }
 
+var _ = fmt.Scanner((*word)(nil))
+
 type unit int64
 
-func (u *unit) Scan(state fmt.ScanState, verb int) error {
+func (u *unit) Scan(state fmt.ScanState, verb rune) error {
 	var x float64
 	_, err := fmt.Fscan(state, &x)
 	if err != nil {
