@@ -36,7 +36,6 @@ var stop = make(chan struct{})
 var wg sync.WaitGroup
 
 func main() {
-	runtime.GOMAXPROCS(1)
 	go server()
 
 	info := &Info{Stats: make([]Stat, 10000)}
