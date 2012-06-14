@@ -31,6 +31,7 @@ func main() {
 	latency(info.Stats)
 	connect(info.Stats)
 	delay(info.Stats)
+	errors(info.Stats)
 }
 
 func latency(stats []Stat) {
@@ -42,6 +43,23 @@ func latency(stats []Stat) {
 	}
 	ds.prepare()
 	fmt.Printf("latency: min %v; max %v; mean %v; median %v\n", ds.min(), ds.max(), ds.mean(), ds.median())
+}
+
+func errors(stats []Stat) {
+	n := 0
+	msgs := make(map[string]bool)
+	for _, s := range stats {
+		if s.Error != "" {
+			n++
+			msgs[s.Error] = true
+		}
+	}
+	if n > 0 {
+		fmt.Printf("%d errors\n", n)
+		for m := range msgs {
+			fmt.Printf("\t%s\n", m)
+		}
+	}
 }
 
 func connect(stats []Stat) {
