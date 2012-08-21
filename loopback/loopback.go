@@ -5,6 +5,7 @@ import (
 	"io"
 	"sync"
 	"time"
+	"log"
 )
 
 // TODO implement CloseWithError.
@@ -12,6 +13,8 @@ import (
 //	send close as a block with nil data.
 
 type block struct {
+	// t holds the time that the block is due to emerge into the
+	// input queue.
 	t    time.Time
 	data []byte
 	prev *block
@@ -60,6 +63,21 @@ type stream struct {
 
 	rwait sync.Cond
 	wwait sync.Cond
+}
+
+func (s *stream) printStatus(now time.Time) {
+	log.Printf("in: %d/%d available", s.inAvail, s.inLimit)
+	log.Printf("out: %d/%d available", s.outAvail, s.outLimit)
+	log.Printf("\tin")
+	for h := s.inHead; h != s.outTail; h = h.next {
+		if h == s.transitHead {
+			log.Printf("\ttransit")
+		}
+		if h == s.outHead {
+			log.Printf("\tout")
+		}
+		log.Printf("\t%v %d bytes", h.t.Sub(now), len(h.data))
+	}
 }
 
 // Loopback options for use with Pipe.
@@ -123,16 +141,14 @@ func Pipe(opt Options) (r io.ReadCloser, w io.WriteCloser) {
 }
 
 // Dodgy heuristic:
-// If there's stuff in the transit queue that's ready to
-// enter the input queue, but the input queue is full
-// and it's been waiting for at least latency ns,
-// then we block the output queue.
-// TODO what do we do about latency for
-// blocked packets - as it is a blocked packet
-// will incur less latency.
+// If there's stuff in the transit queue that's ready to enter the input
+// queue, but the input queue is full and it's been waiting for at least
+// latency ns, then we block the output queue.
+// TODO what do we do about latency for blocked packets - as it is a
+// blocked packet will incur less latency.
 func (s *stream) outBlocked(now time.Time) bool {
 	return s.transitHead != s.outHead &&
-		!s.transitHead.t.Add(s.latency).Before(now) &&
+		!now.Before(s.transitHead.t.Add(s.latency)) &&
 		s.inAvail < len(s.transitHead.data)
 }
 
@@ -186,7 +202,9 @@ func (s *stream) Write(data []byte) (int, error) {
 		}
 		data = data[s.mtu:]
 	}
+	
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	now := time.Now()
 	for {
 		s.pushLink(now)
@@ -195,7 +213,6 @@ func (s *stream) Write(data []byte) (int, error) {
 		}
 		if s.outBlocked(time.Now()) {
 			if s.inClosed {
-				s.mu.Unlock()
 				return 0, ErrPipeWrite
 			}
 			s.wwait.Wait()
@@ -205,7 +222,6 @@ func (s *stream) Write(data []byte) (int, error) {
 		now = s.sleepUntil(t)
 	}
 	if s.outClosed {
-		s.mu.Unlock()
 		return 0, ErrPipeWrite
 	}
 	delay := time.Duration(len(data)) * s.byteDelay
@@ -222,13 +238,13 @@ func (s *stream) Write(data []byte) (int, error) {
 	s.outAvail -= len(data)
 
 	s.rwait.Broadcast()
-	s.mu.Unlock()
 	// TODO runtime.Gosched() ?
-	return len(data), nil
+	return tot + len(data), nil
 }
 
 func (s *stream) Read(buf []byte) (int, error) {
 	s.mu.Lock()
+	defer s.mu.Unlock()
 	// Loop until there's something to read from the input queue.
 	now := time.Now()
 	for {
@@ -241,7 +257,6 @@ func (s *stream) Read(buf []byte) (int, error) {
 			// If the queue is empty and the output queue is closed,
 			// then we see EOF.
 			if s.outClosed {
-				s.mu.Unlock()
 				return 0, io.EOF
 			}
 			s.rwait.Wait()
@@ -263,7 +278,6 @@ func (s *stream) Read(buf []byte) (int, error) {
 	}
 	// Wake up any writers blocked on a full queue.
 	s.wwait.Broadcast()
-	s.mu.Unlock()
 	return n, nil
 }
 
