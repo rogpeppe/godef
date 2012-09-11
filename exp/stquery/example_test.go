@@ -1,4 +1,5 @@
-package query_test
+package stquery_test
+
 import (
 	"code.google.com/p/rog-go/exp/query"
 	"database/sql"
@@ -9,7 +10,7 @@ func ExampleGetter(t *testing.T) {
 	db := openDatabase()
 	var row struct {
 		Name string
-		Age int
+		Age  int
 	}
 	rows, err := db.Query(stquery.Statement(&row, `SELECT $fields
 		FROM sge_job
