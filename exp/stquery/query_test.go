@@ -1,4 +1,4 @@
-package query_test
+package stquery_test
 
 import (
 	"code.google.com/p/rog-go/exp/query"
@@ -27,11 +27,13 @@ var accountingValue = Accounting{
 func TestQuery(t *testing.T) {
 	var acct Accounting
 
-	scan := newRowScanner(row)
-	query, getter := query.Query(&acct, scan, "select $fields from somewhere")
-	if query != "select JobNumber, TaskNumber, PETaskId, Name, CPU from somewhere" {
-		t.Errorf("invalid query generated; got %q", query)
+	q := query.Query(&acct, "select $fields from somewhere")
+	if q != "select JobNumber, TaskNumber, PETaskId, Name, CPU from somewhere" {
+		t.Errorf("invalid query generated; got %q", q)
 	}
+	scan := newRowScanner(row)
+
+	getter := query.NewGetter(&acct, scan)
 	err := getter.Get()
 	if err != nil {
 		t.Fatal(err)
