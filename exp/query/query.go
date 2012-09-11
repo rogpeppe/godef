@@ -6,18 +6,22 @@ import (
 	"strings"
 )
 
-// Query constructs a query string for an SQL select query,
-// and returns a Getter which get a new row from the
-// query result, and will fill in the fields of the
-// dest value (which must be a pointer to a struct).
+// Scanner represents a database row that can scan itself.
+type Scanner interface {
+	Scan(dest ...interface{}) error
+}
+
+// Query constructs a query string for an SQL select statement,
+// and returns a Getter that will scan values
+// into the fields of dest, which must be a pointer to a struct.
 //
-// The template should hold an SQL SELECT statement;
-// it must contain an occurrence of the string "$fields";
-// the first such instance will be replaced with the field
-// in the dest struct separated by commas.
-//
-// the first occurrence of the string "$fields" will be replaced
-// [details of type conversion]
+// The template holds an SQL statement, which must
+// contain an occurrence of the string "$fields".
+// The returned query is the result of replacing the
+// first occurrence of $fields by a list of the fields in the
+// dest struct separated by commas.
+// 
+// TODO support tags for freer column naming.
 func Query(dest interface{}, scan Scanner, template string) (query string, g *Getter) {
 	v := reflect.ValueOf(dest)
 	t := v.Type()
@@ -54,9 +58,4 @@ type Getter struct {
 // in fields of the destination value.
 func (g *Getter) Get() error {
 	return g.scan.Scan(g.values...)
-}
-
-// Scanner represents a database row that can scan itself.
-type Scanner interface {
-	Scan(dest ...interface{}) error
 }
