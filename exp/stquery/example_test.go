@@ -1,9 +1,11 @@
 package stquery_test
 
 import (
-	"code.google.com/p/rog-go/exp/query"
+	"code.google.com/p/rog-go/exp/stquery"
 	"database/sql"
+	"fmt"
 	"log"
+	"testing"
 )
 
 func ExampleGetter(t *testing.T) {
@@ -19,7 +21,7 @@ func ExampleGetter(t *testing.T) {
 	if err != nil {
 		log.Fatal(err)
 	}
-	getter := NewGetter(&row, rows)
+	getter := stquery.NewGetter(&row, rows)
 	for rows.Next() {
 		if err := getter.Get(); err != nil {
 			log.Fatal(err)

@@ -31,7 +31,12 @@ func Statement(dest interface{}, template string) (query string) {
 	}
 	names := make([]string, 0, t.NumField())
 	for i := 0; i < t.NumField(); i++ {
-		names = append(names, t.Field(i).Name)
+		f := t.Field(i)
+		name := f.Name
+		if tag := f.Tag.Get("stquery"); tag != "" {
+			name = tag
+		}
+		names = append(names, name)
 	}
 	return strings.Replace(template, "$fields", strings.Join(names, ", "), 1)
 }

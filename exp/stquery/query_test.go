@@ -1,7 +1,7 @@
 package stquery_test
 
 import (
-	"code.google.com/p/rog-go/exp/query"
+	"code.google.com/p/rog-go/exp/stquery"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -10,7 +10,7 @@ import (
 
 type Accounting struct {
 	JobNumber  int
-	TaskNumber int
+	TaskNumber int `stquery:"j_task_nunber"`
 	PETaskId   string
 	Name       string
 	CPU        float64
@@ -27,13 +27,13 @@ var accountingValue = Accounting{
 func TestQuery(t *testing.T) {
 	var acct Accounting
 
-	q := query.Query(&acct, "select $fields from somewhere")
-	if q != "select JobNumber, TaskNumber, PETaskId, Name, CPU from somewhere" {
+	q := stquery.Statement(&acct, "select $fields from somewhere")
+	if q != "select JobNumber, j_task_nunber, PETaskId, Name, CPU from somewhere" {
 		t.Errorf("invalid query generated; got %q", q)
 	}
 	scan := newRowScanner(row)
 
-	getter := query.NewGetter(&acct, scan)
+	getter := stquery.NewGetter(&acct, scan)
 	err := getter.Get()
 	if err != nil {
 		t.Fatal(err)
@@ -47,7 +47,7 @@ type rowScanner struct {
 	row []string
 }
 
-func newRowScanner(row []string) query.Scanner {
+func newRowScanner(row []string) stquery.Scanner {
 	return &rowScanner{row}
 }
 
