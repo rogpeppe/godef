@@ -9,9 +9,9 @@ package parser
 import (
 	"bytes"
 	"errors"
-	"go/ast"
-	"go/scanner"
-	"go/token"
+	"code.google.com/p/rog-go/exp/go/ast"
+	"code.google.com/p/rog-go/exp/go/scanner"
+	"code.google.com/p/rog-go/exp/go/token"
 	"io"
 	"io/ioutil"
 	"os"

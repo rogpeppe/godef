@@ -1,6 +1,6 @@
 package parser
 
-import "go/ast"
+import "code.google.com/p/rog-go/exp/go/ast"
 var Universe = ast.NewScope(nil)
 
 func declObj(kind ast.ObjKind, name string) {
@@ -32,6 +32,7 @@ func init() {
 	declObj(ast.Typ, "float64")
 
 	declObj(ast.Typ, "string")
+	declObj(ast.Typ, "error")
 
 	// predeclared constants
 	// TODO(gri) provide constant value
