@@ -36,5 +36,4 @@ The acme directory in the godef source holds
 some files to enable godef to be used inside the acme editor.
 
 */
-
 package documentation

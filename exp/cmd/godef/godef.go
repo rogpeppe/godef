@@ -2,13 +2,13 @@ package main
 
 import (
 	"bytes"
+	"code.google.com/p/rog-go/exp/go/ast"
 	"code.google.com/p/rog-go/exp/go/parser"
+	"code.google.com/p/rog-go/exp/go/printer"
 	"code.google.com/p/rog-go/exp/go/types"
 	"errors"
 	"flag"
 	"fmt"
-	"code.google.com/p/rog-go/exp/go/ast"
-	"code.google.com/p/rog-go/exp/go/printer"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -22,7 +22,8 @@ var offset = flag.Int("o", -1, "file offset of identifier")
 var debug = flag.Bool("debug", false, "debug mode")
 var rflag = flag.Bool("r", false, "offset is specified in unicode code points instead of bytes")
 var tflag = flag.Bool("t", false, "print type information")
-var aflag = flag.Bool("a", false, "print type and member information")
+var aflag = flag.Bool("a", false, "print public type and member information")
+var Aflag = flag.Bool("A", false, "print all type and members information")
 
 func fail(s string, a ...interface{}) {
 	fmt.Fprint(os.Stderr, "godef: "+fmt.Sprintf(s, a...)+"\n")
@@ -57,7 +58,7 @@ func main() {
 		os.Exit(2)
 	}
 	types.Debug = *debug
-	*tflag = *tflag || *aflag
+	*tflag = *tflag || *aflag || *Aflag
 	searchpos := *offset
 	filename := flag.Arg(0)
 
@@ -153,34 +154,35 @@ func (o orderedObjects) Len() int           { return len(o) }
 func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
 func done(obj *ast.Object, typ types.Type) {
+	defer os.Exit(0)
 	pos := types.FileSet.Position(types.DeclPos(obj))
 	if pos.Column > 0 {
 		pos.Column--
 	}
 	fmt.Printf("%v\n", pos)
-	if typ.Kind != ast.Bad {
-		if *tflag {
-			fmt.Printf("\t%s (%s)\n", strings.Replace(typeStr(obj, typ), "\n", "\n\t", -1), typ.Pkg)
+	if typ.Kind == ast.Bad || !*tflag {
+		fmt.Printf("\n")
+		return
+	}
+	fmt.Printf("%s\n", strings.Replace(typeStr(obj, typ), "\n", "\n\t", -1))
+	if *aflag || *Aflag {
+		var m orderedObjects
+		for obj := range typ.Iter(types.DefaultImporter) {
+			m = append(m, obj)
 		}
-		if *aflag {
-			var m orderedObjects
-			for obj := range typ.Iter(types.DefaultImporter) {
-				m = append(m, obj)
+		sort.Sort(m)
+		for _, obj := range m {
+			// Ignore unexported members unless Aflag is set.
+			if !*Aflag && (typ.Pkg != "" || !ast.IsExported(obj.Name)) {
+				continue
 			}
-			sort.Sort(m)
-			for _, obj := range m {
-				if typ.Pkg != "" && !ast.IsExported(obj.Name) {
-					continue
-				}
-				fmt.Printf("\t%v\n", types.FileSet.Position(types.DeclPos(obj)))
-				id := ast.NewIdent(obj.Name)
-				id.Obj = obj
-				_, mt := types.ExprType(id, types.DefaultImporter)
-				fmt.Printf("\t\t%s\n", strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
-			}
+			id := ast.NewIdent(obj.Name)
+			id.Obj = obj
+			_, mt := types.ExprType(id, types.DefaultImporter)
+			fmt.Printf("\t%s\n", strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
+			fmt.Printf("\t\t%v\n", types.FileSet.Position(types.DeclPos(obj)))
 		}
 	}
-	os.Exit(0)
 }
 
 func typeStr(obj *ast.Object, typ types.Type) string {
