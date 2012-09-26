@@ -8,22 +8,23 @@ Godef prints the source location of definitions in Go programs.
 
 Usage:
 
-	godef [-o offset] [-b] [-i] file [expr]
+	godef [-o offset] [-i] [-f file] [-acme] [expr]
 
 File specifies the source file in which to evaluate expr.
-Expr must be an identifier, or a Go expression
+Expr must be an identifier or a Go expression
 terminated with a field selector.
 
 If expr is not given, then offset specifies a location
 within file, which should be within, or adjacent to
-an identifier or field selector. By default the location
-is specified in unicode characters; the -b flag
-causes it to be interpreted in bytes.
+an identifier or field selector.
 
 If the -i flag is specified, the source is read
 from standard input, although file must still
 be specified so that other files in the same source
 package may be found.
+
+If the -acme flag is given, the offset, file name and contents
+are read from the current acme window.
 
 Example:
 
@@ -31,9 +32,6 @@ Example:
 	$ godef src/pkg/xml/read.go 'NewParser().Skip'
 	src/pkg/xml/read.go:384:18
 	$
-
-The acme directory in the godef source holds
-some files to enable godef to be used inside the acme editor.
 
 */
 package documentation

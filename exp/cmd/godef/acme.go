@@ -1,5 +1,3 @@
-// acmedot prints the address of the selection in the current
-// acme window as two numbers.
 package main
 
 import (
@@ -11,51 +9,94 @@ import (
 	"strings"
 )
 
-func main() {
+func acmeCurrentWin() (*acme.Win, error) {
 	winid := os.Getenv("winid")
 	if winid == "" {
-		fatal("$winid not set - not running inside acme?")
+		return nil, fmt.Errorf("$winid not set - not running inside acme?")
 	}
 	id, err := strconv.Atoi(winid)
 	if err != nil {
-		fatal("invalid $winid %q", winid)
+		return nil, fmt.Errorf("invalid $winid %q", winid)
 	}
-	setNameSpace()
+	if err := setNameSpace(); err != nil {
+		return nil, err
+	}
 	win, err := acme.Open(id, nil)
 	if err != nil {
-		fatal("cannot open acme window: %v", err)
+		return nil, fmt.Errorf("cannot open acme window: %v", err)
+	}
+	return win, nil
+}
+
+type acmeFile struct {
+	name       string
+	body       []byte
+	offset     int
+	runeOffset int
+}
+
+func acmeCurrentFile() (*acmeFile, error) {
+	win, err := acmeCurrentWin()
+	if err != nil {
+		return nil, err
 	}
 	defer win.CloseFiles()
 	_, _, err = win.ReadAddr() // make sure address file is already open.
 	if err != nil {
-		fatal("cannot read address: %v", err)
+		return nil, fmt.Errorf("cannot read address: %v", err)
 	}
 	err = win.Ctl("addr=dot")
 	if err != nil {
-		fatal("cannot set addr=dot: %v", err)
+		return nil, fmt.Errorf("cannot set addr=dot: %v", err)
 	}
-	q0, q1, err := win.ReadAddr()
+	q0, _, err := win.ReadAddr()
 	if err != nil {
-		fatal("cannot read address: %v", err)
+		return nil, fmt.Errorf("cannot read address: %v", err)
 	}
-	fmt.Println(q0, q1)
+	body, err := win.ReadAll("body")
+	if err != nil {
+		return nil, fmt.Errorf("cannot read body: %v", err)
+	}
+	tagb, err := win.ReadAll("tag")
+	if err != nil {
+		return nil, fmt.Errorf("cannot read tag: %v", err)
+	}
+	tag := string(tagb)
+	i := strings.Index(tag, " ")
+	if i == -1 {
+		return nil, fmt.Errorf("strange tag with no spaces")
+	}
+
+	w := &acmeFile{
+		name:       tag[0:i],
+		body:       body,
+		offset:     runeOffset2ByteOffset(body, q0),
+		runeOffset: q0,
+	}
+	return w, nil
 }
 
-func fatal(f string, args ...interface{}) {
-	msg := fmt.Sprintf(f, args...)
-	fmt.Fprintf(os.Stderr, "%s\n", msg)
-	os.Exit(1)
+func runeOffset2ByteOffset(b []byte, off int) int {
+	r := 0
+	for i, _ := range string(b) {
+		if r == off {
+			return i
+		}
+		r++
+	}
+	return len(b)
 }
 
-func setNameSpace() {
+func setNameSpace() error {
 	if ns := os.Getenv("NAMESPACE"); ns != "" {
-		return
+		return nil
 	}
 	ns, err := nsFromDisplay()
 	if err != nil {
-		fatal("cannot get name space: %v", err)
+		return fmt.Errorf("cannot get name space: %v", err)
 	}
 	os.Setenv("NAMESPACE", ns)
+	return nil
 }
 
 // taken from src/lib9/getns.c

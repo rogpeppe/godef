@@ -18,12 +18,13 @@ import (
 )
 
 var readStdin = flag.Bool("i", false, "read file from stdin")
-var offset = flag.Int("o", -1, "file offset of identifier")
+var offset = flag.Int("o", -1, "file offset of identifier in stdin")
 var debug = flag.Bool("debug", false, "debug mode")
-var rflag = flag.Bool("r", false, "offset is specified in unicode code points instead of bytes")
 var tflag = flag.Bool("t", false, "print type information")
 var aflag = flag.Bool("a", false, "print public type and member information")
 var Aflag = flag.Bool("A", false, "print all type and members information")
+var fflag = flag.String("f", "", "Go source filename")
+var acmeFlag = flag.Bool("acme", false, "use current acme window")
 
 func fail(s string, a ...interface{}) {
 	fmt.Fprint(os.Stderr, "godef: "+fmt.Sprintf(s, a...)+"\n")
@@ -49,23 +50,32 @@ func init() {
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: godef [flags] file [expr]\n")
+		fmt.Fprintf(os.Stderr, "usage: godef [flags] [expr]\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
-	if flag.NArg() < 1 || flag.NArg() > 2 {
+	if flag.NArg() > 1 {
 		flag.Usage()
 		os.Exit(2)
 	}
 	types.Debug = *debug
 	*tflag = *tflag || *aflag || *Aflag
 	searchpos := *offset
-	filename := flag.Arg(0)
+	filename := *fflag
 
+	var afile *acmeFile
 	var src []byte
-	if *readStdin {
+	if *acmeFlag {
+		var err error
+		if afile, err = acmeCurrentFile(); err != nil {
+			fail("%v", err)
+		}
+		filename, src, searchpos = afile.name, afile.body, afile.offset
+	} else if *readStdin {
 		src, _ = ioutil.ReadAll(os.Stdin)
 	} else {
+		// TODO if there's no filename, look in the current
+		// directory and do something plausible.
 		b, err := ioutil.ReadFile(filename)
 		if err != nil {
 			fail("cannot read %s: %v", filename, err)
@@ -84,15 +94,16 @@ func main() {
 		e = parseExpr(f.Scope, flag.Arg(1))
 
 	case searchpos >= 0:
-		if *rflag {
-			searchpos = runeOffset2ByteOffset(src, searchpos)
-		}
 		e = findIdentifier(f, searchpos)
 
 	default:
 		fmt.Fprintf(os.Stderr, "no expression or offset specified\n")
 		flag.Usage()
 		os.Exit(2)
+	}
+	// print old source location to facilitate backtracking
+	if *acmeFlag {
+		fmt.Printf("\t%s:#%d\n", afile.name, afile.runeOffset)
 	}
 	if !*tflag {
 		// try local declarations only
@@ -161,7 +172,6 @@ func done(obj *ast.Object, typ types.Type) {
 	}
 	fmt.Printf("%v\n", pos)
 	if typ.Kind == ast.Bad || !*tflag {
-		fmt.Printf("\n")
 		return
 	}
 	fmt.Printf("%s\n", strings.Replace(typeStr(obj, typ), "\n", "\n\t", -1))
@@ -199,7 +209,7 @@ func typeStr(obj *ast.Object, typ types.Type) string {
 		typ = typ.Underlying(false, types.DefaultImporter)
 		return fmt.Sprintf("type %s %v", obj.Name, pretty{typ.Node})
 	}
-	return fmt.Sprintf("unknown %s %v\n", obj.Name, typ.Kind)
+	return fmt.Sprintf("unknown %s %v", obj.Name, typ.Kind)
 }
 
 func parseExpr(s *ast.Scope, expr string) ast.Expr {
@@ -222,17 +232,6 @@ func (f FVisitor) Visit(n ast.Node) ast.Visitor {
 		return f
 	}
 	return nil
-}
-
-func runeOffset2ByteOffset(b []byte, off int) int {
-	r := 0
-	for i, _ := range string(b) {
-		if r == off {
-			return i
-		}
-		r++
-	}
-	return len(b)
 }
 
 var errNoPkgFiles = errors.New("no more package files found")
