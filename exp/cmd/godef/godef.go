@@ -90,8 +90,8 @@ func main() {
 
 	var e ast.Expr
 	switch {
-	case flag.NArg() > 1:
-		e = parseExpr(f.Scope, flag.Arg(1))
+	case flag.NArg() > 0:
+		e = parseExpr(f.Scope, flag.Arg(0))
 
 	case searchpos >= 0:
 		e = findIdentifier(f, searchpos)
