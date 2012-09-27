@@ -167,9 +167,6 @@ func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 func done(obj *ast.Object, typ types.Type) {
 	defer os.Exit(0)
 	pos := types.FileSet.Position(types.DeclPos(obj))
-	if pos.Column > 0 {
-		pos.Column--
-	}
 	fmt.Printf("%v\n", pos)
 	if typ.Kind == ast.Bad || !*tflag {
 		return
