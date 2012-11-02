@@ -63,4 +63,7 @@ func init() {
 	// by storing the same object for both name
 	// entries
 	Universe.Objects["byte"] = Universe.Objects["uint8"]
+
+	// The same applies to rune.
+	Universe.Objects["rune"] = Universe.Objects["uint32"]
 }

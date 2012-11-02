@@ -262,7 +262,9 @@ func exprType(n ast.Node, expectTuple bool, pkg string, importer Importer) (xobj
 			return nil, badType
 		}
 		if t.Kind == ast.Pkg {
-			return exprType(&ast.Ident{Name: obj.Name, Obj: obj}, false, t.Pkg, importer)
+			eobj, et := exprType(&ast.Ident{Name: obj.Name, Obj: obj}, false, t.Pkg, importer)
+			et.Pkg = litToString(t.Node.(*ast.ImportSpec).Path)
+			return eobj, et
 		}
 		// a method turns into a function type;
 		// the number of formal arguments depends
@@ -471,11 +473,11 @@ func litToString(lit *ast.BasicLit) (v string) {
 	if lit.Kind != token.STRING {
 		panic("expected string")
 	}
-	if lit.Value[0] == '`' {
-		return string(lit.Value[1 : len(lit.Value)-1])
+	v, err := strconv.Unquote(string(lit.Value))
+	if err != nil {
+		panic("cannot unquote")
 	}
-	v, _ = strconv.Unquote(string(lit.Value))
-	return
+	return v
 }
 
 // doMembers iterates through a type's members, calling
