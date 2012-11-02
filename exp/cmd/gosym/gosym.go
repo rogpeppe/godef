@@ -1,3 +1,4 @@
+// The gosym command prints symbols in Go source code.
 package main
 
 import (
