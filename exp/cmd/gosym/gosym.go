@@ -24,10 +24,10 @@ var objKinds = map[string]ast.ObjKind{
 }
 
 var (
-	verbose   = flag.Bool("v", false, "print warnings for unresolved symbols")
-	kinds     = flag.String("k", allKinds(), "kinds of symbol types to include")
+	verbose = flag.Bool("v", false, "print warnings for unresolved symbols")
+	kinds   = flag.String("k", allKinds(), "kinds of symbol types to include")
 	printType = flag.Bool("t", false, "print symbol type")
-	internal  = flag.Bool("internal", false, "print internal references too")
+	internal = flag.Bool("internal", false, "print internal references too")
 )
 
 func main() {
@@ -35,6 +35,8 @@ func main() {
 	flag.Usage = func() {
 		printf("usage: gosym [flags] pkgpath...\n")
 		flag.PrintDefaults()
+		printf("Each line printed has the following format:\n")
+		printf("file-position package referenced-package type-name type-kind\n")
 		os.Exit(2)
 	}
 	flag.Parse()
