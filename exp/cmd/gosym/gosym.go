@@ -24,9 +24,10 @@ var objKinds = map[string]ast.ObjKind{
 }
 
 var (
-	verbose = flag.Bool("v", false, "print warnings for unresolved symbols")
-	kinds   = flag.String("k", allKinds(), "kinds of symbol types to include")
+	verbose   = flag.Bool("v", false, "print warnings for unresolved symbols")
+	kinds     = flag.String("k", allKinds(), "kinds of symbol types to include")
 	printType = flag.Bool("t", false, "print symbol type")
+	internal  = flag.Bool("internal", false, "print internal references too")
 )
 
 func main() {
@@ -201,6 +202,9 @@ func printSelector(importPath string, e *ast.SelectorExpr, importer types.Import
 		}
 		pkgPath = dirToImportPath(filepath.Dir(pos.Filename))
 		xexpr = (pretty{depointer(xt.Node)}).String() + "."
+	}
+	if !*internal && pkgPath == importPath {
+		return
 	}
 	typeStr := ""
 	if *printType {
