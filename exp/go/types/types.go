@@ -179,7 +179,7 @@ func (t Type) Iter(importer Importer) <-chan *ast.Object {
 // and the object that represents it, if there is one.
 // All variables, methods, top level functions, packages, struct and
 // interface members, and types have objects.
-// The returns object can be used with DeclPos to find out
+// The returned object can be used with DeclPos to find out
 // the source location of the definition of the object.
 //
 func ExprType(e ast.Expr, importer Importer) (obj *ast.Object, typ Type) {

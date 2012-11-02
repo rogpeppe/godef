@@ -412,22 +412,16 @@ func (s *FileSet) AddFile(filename string, base, size int) *File {
 
 
 // Files returns the files added to the file set.
-func (s *FileSet) Files() <-chan *File {
-	ch := make(chan *File)
-	go func() {
-		for i := 0; ; i++ {
-			var f *File
-			s.mutex.RLock()
-			if i < len(s.files) {
-				f = s.files[i]
-			}
-			s.mutex.RUnlock()
-			if f == nil {
-				break
-			}
-			ch <- f
+func (s *FileSet) Iterate(f func(*File) bool) {
+	for i := 0; ; i++ {
+		var file *File
+		s.mutex.RLock()
+		if i < len(s.files) {
+			file = s.files[i]
 		}
-		close(ch)
-	}()
-	return ch
+		s.mutex.RUnlock()
+		if file == nil || !f(file) {
+			break
+		}
+	}
 }

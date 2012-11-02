@@ -8,6 +8,7 @@ import (
 	"code.google.com/p/rog-go/exp/go/types"
 	"flag"
 	"fmt"
+	"go/build"
 	"log"
 	"os"
 	"path/filepath"
@@ -24,12 +25,12 @@ var objKinds = map[string]ast.ObjKind{
 
 var (
 	verbose = flag.Bool("v", false, "print warnings for unresolved symbols")
-	kinds   = flag.String("t", "", "kinds of symbol types to include")
+	kinds   = flag.String("k", allKinds(), "kinds of symbol types to include")
+	printType = flag.Bool("t", false, "print symbol type")
 )
 
 func main() {
 	printf := func(f string, a ...interface{}) { fmt.Fprintf(os.Stderr, f, a...) }
-	printf("args %q\n", os.Args)
 	flag.Usage = func() {
 		printf("usage: gosym [flags] pkgpath...\n")
 		flag.PrintDefaults()
@@ -61,7 +62,7 @@ func main() {
 	for _, path := range pkgs {
 		if pkg := importer(path); pkg != nil {
 			for _, f := range pkg.Files {
-				checkExprs(f, importer, mask)
+				checkExprs(path, f, importer, mask)
 			}
 		}
 	}
@@ -71,7 +72,6 @@ func parseKindMask(kinds string) (uint, error) {
 	mask := uint(0)
 	ks := strings.Split(kinds, ",")
 	for _, k := range ks {
-		fmt.Printf("looking at %s\n", k)
 		c, ok := objKinds[k]
 		if ok {
 			mask |= 1 << uint(c)
@@ -116,7 +116,7 @@ func (f astVisitor) Visit(n ast.Node) ast.Visitor {
 	return nil
 }
 
-func checkExprs(pkg *ast.File, importer types.Importer, kindMask uint) {
+func checkExprs(importPath string, pkg *ast.File, importer types.Importer, kindMask uint) {
 	var visit astVisitor
 	stopped := false
 	visit = func(n ast.Node) bool {
@@ -153,7 +153,7 @@ func checkExprs(pkg *ast.File, importer types.Importer, kindMask uint) {
 
 		case *ast.SelectorExpr:
 			ast.Walk(visit, n.X)
-			printSelector(n, importer, kindMask)
+			printSelector(importPath, n, importer, kindMask)
 			return false
 
 		case *ast.File:
@@ -168,7 +168,7 @@ func checkExprs(pkg *ast.File, importer types.Importer, kindMask uint) {
 	ast.Walk(visit, pkg)
 }
 
-func printSelector(e *ast.SelectorExpr, importer types.Importer, kindMask uint) {
+func printSelector(importPath string, e *ast.SelectorExpr, importer types.Importer, kindMask uint) {
 	_, xt := types.ExprType(e.X, importer)
 	if xt.Node == nil {
 		if *verbose {
@@ -189,19 +189,32 @@ func printSelector(e *ast.SelectorExpr, importer types.Importer, kindMask uint) 
 	}
 
 	var pkgPath, xexpr string
-	switch {
-	case xt.Kind == ast.Pkg:
+	if xt.Kind == ast.Pkg {
 		// TODO make the Node of the package its identifier.
 		// and put the package name in xt.Pkg.
 		pkgPath = litToString(xt.Node.(*ast.ImportSpec).Path)
 		xexpr = ""
-	case t.Pkg == "":
-		return
-	default:
-		pkgPath = t.Pkg
+	} else {
+		pos := position(types.DeclPos(obj))
+		if pos.Filename == "" {
+			panic("empty file name")
+		}
+		pkgPath = dirToImportPath(filepath.Dir(pos.Filename))
 		xexpr = (pretty{depointer(xt.Node)}).String() + "."
 	}
-	fmt.Printf("%v: %s %s%s %s\n", position(e.Pos()), pkgPath, xexpr, e.Sel.Name, pretty{t.Node})
+	typeStr := ""
+	if *printType {
+		typeStr = " " + (pretty{t.Node}).String()
+	}
+	fmt.Printf("%v: %s %s %s%s %s%s\n", position(e.Pos()), importPath, pkgPath, xexpr, e.Sel.Name, obj.Kind, typeStr)
+}
+
+func dirToImportPath(dir string) string {
+	bpkg, err := build.Import(".", dir, build.FindOnly)
+	if err != nil {
+		panic(fmt.Errorf("cannot reverse-map filename to package: %v", err))
+	}
+	return bpkg.ImportPath
 }
 
 func depointer(x ast.Node) ast.Node {
