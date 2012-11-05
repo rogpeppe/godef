@@ -1,23 +1,24 @@
 package main
+
 import (
-	"fmt"
 	"code.google.com/p/rog-go/exp/go/ast"
 	"code.google.com/p/rog-go/exp/go/token"
+	"fmt"
 	"regexp"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 type symLine struct {
 	pos      token.Position // file address of identifier; addr.Offset is zero.
-	long bool			// line is in long format.
+	long     bool           // line is in long format.
 	exprPkg  string         // package containing identifier (long format only)
 	referPkg string         // package containing referred-to object (long format only)
 	expr     string         // name of identifier. fully qualified.
 	local    bool           // identifier is function-local (long format only)
 	kind     ast.ObjKind    // kind of identifier (long format only)
 	plus     bool           // line is, or refers to, definition of object. (long format only)
-	newExpr string		// new name of identifier, unqualified.
+	newExpr  string         // new name of identifier, unqualified.
 	exprType string         // type of expression (unparsed). (long format only)
 }
 
@@ -26,18 +27,18 @@ type symLine struct {
 // short format:
 // filename.go:35.5: expr newExpr
 
-var linePat = regexp.MustCompile(`^`+
-	`([^:]+):(\d+):(\d+):`+			// 1,2,3: filename
-	`(`+
-	`\s+([^\s]+)`+				// 5: exprPkg
-	`\s+([^\s]+)`+				// 6: referPkg
-	`\s+([^\s]+)`+				// 7: expr
-	`\s+(local)?([^\s+]+)(\+)?`+	// 8, 9, 10: local, kind, plus
-	`(\s+([^\s].*))?`+			// 12: exprType
-	`|`+
-	`\s+([^\s]+)`+				// 13: expr
-	`\s+([^\s]+)`+				// 14: newExpr
-	`)`+
+var linePat = regexp.MustCompile(`^` +
+	`([^:]+):(\d+):(\d+):` + // 1,2,3: filename
+	`(` +
+	`\s+([^\s]+)` + // 5: exprPkg
+	`\s+([^\s]+)` + // 6: referPkg
+	`\s+([^\s]+)` + // 7: expr
+	`\s+(local)?([^\s+]+)(\+)?` + // 8, 9, 10: local, kind, plus
+	`(\s+([^\s].*))?` + // 12: exprType
+	`|` +
+	`\s+([^\s]+)` + // 13: expr
+	`\s+([^\s]+)` + // 14: newExpr
+	`)` +
 	`$`)
 
 func atoi(s string) int {
@@ -94,6 +95,9 @@ func (l *symLine) String() string {
 			exprType = " " + l.exprType
 		}
 		return fmt.Sprintf("%v: %s %s %s %s%s%s%s", l.pos, l.exprPkg, l.referPkg, l.expr, local, l.kind, def, exprType)
+	}
+	if l.newExpr == "" {
+		panic("no new expr in short-form sym line")
 	}
 	return fmt.Sprintf("%v: %s %s", l.pos, l.expr, l.newExpr)
 }

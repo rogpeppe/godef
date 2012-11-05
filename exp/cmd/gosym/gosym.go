@@ -390,7 +390,6 @@ func (ctxt *context) printf(f string, a ...interface{}) {
 	fmt.Fprintf(ctxt.stdout, f, a...)
 }
 
-
 func visitPrint(ctxt *context, info *sym.Info, kindMask uint) bool {
 	if (1<<uint(info.ReferObj.Kind))&kindMask == 0 {
 		return true
@@ -426,6 +425,7 @@ func visitPrint(ctxt *context, info *sym.Info, kindMask uint) bool {
 		}
 	}
 	line := &symLine{
+		long:     true,
 		pos:      eposition,
 		exprPkg:  exprPkg,
 		referPkg: referPkg,
