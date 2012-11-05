@@ -55,6 +55,9 @@ func declPos(name string, decl ast.Node) token.Pos {
 // This should be called ast.Object.Pos.
 func DeclPos(obj *ast.Object) token.Pos {
 	decl, _ := obj.Decl.(ast.Node)
+	if decl == nil {
+		return token.NoPos
+	}
 	pos := declPos(obj.Name, decl)
 	if !pos.IsValid() {
 		pos = decl.Pos()

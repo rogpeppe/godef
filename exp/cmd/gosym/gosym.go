@@ -1,7 +1,15 @@
 // The gosym command prints symbols in Go source code.
 package main
 
+// caveats:
+// - no declaration for init
+// - type switches?
+// - embedded types
+// - import to .
+// - test files.
+
 import (
+	"bufio"
 	"bytes"
 	"code.google.com/p/rog-go/exp/go/parser"
 	"code.google.com/p/rog-go/exp/go/ast"
@@ -9,6 +17,7 @@ import (
 	"code.google.com/p/rog-go/exp/go/token"
 	"code.google.com/p/rog-go/exp/go/types"
 	"flag"
+	"io"
 	"fmt"
 	"go/build"
 	"log"
@@ -33,31 +42,92 @@ var (
 	kinds   = flag.String("k", allKinds(), "kinds of symbol types to include")
 	printType = flag.Bool("t", false, "print symbol type")
 	all = flag.Bool("a", false, "print internal and universe symbols too")
-	writeMode = flag.Bool("w", false, "read lines; change symbols in source code")
+	wflag = flag.Bool("w", false, "read lines; change symbols in source code")
 )
 
 func main() {
 	printf := func(f string, a ...interface{}) { fmt.Fprintf(os.Stderr, f, a...) }
 	flag.Usage = func() {
-		printf("usage: gosym [flags] pkgpath...\n")
+		printf("usage: gosym [flags] [pkgpath...]\n")
 		flag.PrintDefaults()
 		printf("Each line printed has the following format:\n")
 		printf("file-position package referenced-package type-name type-kind\n")
 		os.Exit(2)
 	}
 	flag.Parse()
-	if flag.NArg() < 1 || *kinds == "" {
+	if *kinds == "" {
 		flag.Usage()
 	}
 	pkgs := flag.Args()
+	if len(pkgs) == 0 {
+		pkgs = []string{"."}
+	}
 	mask, err := parseKindMask(*kinds)
 	if err != nil {
 		printf("gosym: %v", err)
 		flag.Usage()
 	}
 	initGoPath()
-
 	ctxt := newContext()
+	defer ctxt.stdout.Flush()
+	if *wflag {
+		writeSyms(ctxt, pkgs)
+	} else {
+		printSyms(ctxt, mask, pkgs)
+	}
+}
+
+type wcontext struct {
+	ctxt *context
+	lines map[token.Position] symLine
+	symPkgs map[string]bool
+	global bool
+}
+
+func writeSyms(ctxt *context, pkgs []string) error {
+	wctxt := &wcontext{
+		ctxt: ctxt,
+		lines: make(map[token.Position] symLine),
+		symPkgs: make(map[string]bool),
+	}
+	if err := wctxt.readSymbols(os.Stdin); err != nil {
+		return fmt.Errorf("failed to read symbols: %v", err)
+	}
+	ctxt.printf("read %d symbols; global: %v\n", len(wctxt.lines), wctxt.global)
+	return nil
+}
+
+// readSymbols reads all the symbols from stdin.
+func (wctxt *wcontext) readSymbols(stdin io.Reader) error {
+	r := bufio.NewReader(stdin)
+	for {
+		line, isPrefix, err := r.ReadLine()
+		if err != nil {
+			break
+		}
+		if isPrefix {
+			log.Printf("line too long")
+			break
+		}
+		sl, err := parseSymLine(string(line))
+		if err != nil {
+			log.Printf("cannot parse line %q: %v", line, err)
+			continue
+		}
+		if old, ok := wctxt.lines[sl.pos]; ok {
+			log.Printf("%v: duplicate symbol location; original at %v", sl.pos, old.pos)
+			continue
+		}
+		wctxt.lines[sl.pos] = sl
+		if sl.definition {
+			wctxt.global = true
+		}
+		wctxt.symPkgs[wctxt.ctxt.positionToImportPath(sl.pos)] = true
+	}
+	return nil
+}
+
+func printSyms(ctxt *context, mask uint, pkgs []string) {
 	visitor := func(info *symInfo) bool {
 		return visitPrint(ctxt, info, mask)
 	}
@@ -74,12 +144,16 @@ func main() {
 type context struct {
 	mu sync.Mutex
 	pkgCache map[string]*ast.Package
+	pkgDirs map[string]string		// map from directory to package name.
 	importer func(path string) *ast.Package
+	stdout *bufio.Writer
 }
 
 func newContext() *context {
 	ctxt := &context {
 		pkgCache: make(map[string]*ast.Package),
+		pkgDirs: make(map[string]string),
+		stdout: bufio.NewWriter(os.Stdout),
 	}
 	ctxt.importer =  func(path string) *ast.Package {
 		ctxt.mu.Lock()
@@ -227,6 +301,10 @@ func (ctxt *context) visitExpr(visitf func(*symInfo) bool, importPath string, e 
 	info.referObj = obj
 	if parser.Universe.Lookup(obj.Name) != obj {
 		info.referPos = types.DeclPos(obj)
+		if info.referPos == token.NoPos {
+			log.Printf("%v: no declaration for %s", position(e.Pos()), pretty{e})
+			return true
+		}
 	} else {
 		info.universe = true
 	}
@@ -234,15 +312,24 @@ func (ctxt *context) visitExpr(visitf func(*symInfo) bool, importPath string, e 
 	return visitf(&info)
 }
 
-func positionToImportPath(p token.Position) string {
+func (ctxt *context) positionToImportPath(p token.Position) string {
 	if p.Filename == "" {
 		panic("empty file name")
 	}
-	bpkg, err := build.Import(".", filepath.Dir(p.Filename), build.FindOnly)
+	dir := filepath.Dir(p.Filename)
+	if pkg, ok := ctxt.pkgDirs[dir]; ok {
+		return pkg
+	}
+	bpkg, err := build.Import(".", dir, build.FindOnly)
 	if err != nil {
 		panic(fmt.Errorf("cannot reverse-map filename to package: %v", err))
 	}
+	ctxt.pkgDirs[dir] = bpkg.ImportPath
 	return bpkg.ImportPath
+}
+
+func (ctxt *context) printf(f string, a ...interface{}) {
+	fmt.Fprintf(ctxt.stdout, f, a...)
 }
 
 type symLine struct {
@@ -256,7 +343,7 @@ type symLine struct {
 	exprType string	// type of expression (unparsed).
 }
 
-var linePat = regexp.MustCompile(`^([^:]+):(\d+):(\d+):\s+([^ ]+)\s+([^\s]+)\s+(local)?([^\s+]+)(\+)?(\s+([^\s].*))?$`)
+var linePat = regexp.MustCompile(`^([^:]+):(\d+):(\d+):\s+([^ ]+)\s+([^\s]+)\s+([^\s]+)\s+(local)?([^\s+]+)(\+)?(\s+([^\s].*))?$`)
 
 func atoi(s string) int {
 	i, err := strconv.Atoi(s)
@@ -277,15 +364,16 @@ func parseSymLine(line string) (symLine, error) {
 	l.pos.Column = atoi(m[3])
 	l.exprPkg = m[4]
 	l.referPkg = m[5]
-	l.local = m[6] == "local"
+	l.expr = m[6]		// TODO check for invalid chars in expr
+	l.local = m[7] == "local"
 	var ok bool
-	l.kind, ok = objKinds[m[7]]
+	l.kind, ok = objKinds[m[8]]
 	if !ok {
-		return symLine{}, fmt.Errorf("invalid kind %q", m[7])
+		return symLine{}, fmt.Errorf("invalid kind %q", m[8])
 	}
-	l.definition = m[8] == "+"
-	if m[9] != "" {
-		l.exprType = m[10]
+	l.definition = m[9] == "+"
+	if m[10] != "" {
+		l.exprType = m[11]
 	}
 	return l, nil
 }
@@ -314,12 +402,12 @@ func visitPrint(ctxt *context, info *symInfo, kindMask uint) bool {
 		return true
 	}
 	eposition := position(info.pos)
-	exprPkg := positionToImportPath(eposition)
+	exprPkg := ctxt.positionToImportPath(eposition)
 	var referPkg string
 	if info.universe {
 		referPkg = "universe"
 	} else {
-		referPkg = positionToImportPath(position(info.referPos))
+		referPkg = ctxt.positionToImportPath(position(info.referPos))
 	}
 	var name string
 	switch e := info.expr.(type) {
@@ -350,7 +438,7 @@ func visitPrint(ctxt *context, info *symInfo, kindMask uint) bool {
 	if *printType {
 		line.exprType = (pretty{info.exprType.Node}).String()
 	}
-	fmt.Println(line)
+	ctxt.printf("%s\n", line)
 	return true
 }
 

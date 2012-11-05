@@ -19,7 +19,7 @@ var parseSymLineTests = []struct {
 	expect symLine
 	err string
 } {{
-	in: "foo.go:23:45: \tfoo/bar \tarble/bletch \tlocalvar+\t func(int) bool",
+	in: "foo.go:23:45: \tfoo/bar \tarble/bletch \tX.Y\tlocalvar+\t func(int) bool",
 	expect: symLine{
 		pos: token.Position{
 			Filename: "foo.go",
@@ -31,10 +31,11 @@ var parseSymLineTests = []struct {
 		local: true,
 		kind: ast.Var,
 		definition: true,
+		expr: "X.Y",
 		exprType: "func(int) bool",
 	},
 }, {
-	in: "x/y/z:1:0: x y const",
+	in: "x/y/z:1:0: x y z const",
 	expect: symLine{
 		pos: token.Position{
 			Filename: "x/y/z",
@@ -46,13 +47,14 @@ var parseSymLineTests = []struct {
 		local: false,
 		kind: ast.Con,
 		definition: false,
+		expr: "z",
 		exprType: "",
 	},
 }, {
-	in: "x/y/z:1:0: x y xxx",
+	in: "x/y/z:1:0: x y z xxx",
 	err: `invalid kind "xxx"`,
 }, {
-	in: "x/y/z:1:0: x y xxx  ",
+	in: "x/y/z:1:0: x y z xxx  ",
 	err: "invalid line .*",
 }}
 
@@ -66,6 +68,10 @@ func (suite) TestParseSymLine(c *C) {
 		} else {
 			c.Assert(err, IsNil)
 			c.Assert(sl, DeepEquals, test.expect)
+			s := sl.String()
+			sl2, err := parseSymLine(s)
+			c.Assert(err, IsNil)
+			c.Assert(sl2, DeepEquals, sl)
 		}
 	}
 }
