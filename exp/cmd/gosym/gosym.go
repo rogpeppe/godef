@@ -3,6 +3,7 @@ package main
 
 import (
 	"bytes"
+	"code.google.com/p/rog-go/exp/go/parser"
 	"code.google.com/p/rog-go/exp/go/ast"
 	"code.google.com/p/rog-go/exp/go/printer"
 	"code.google.com/p/rog-go/exp/go/token"
@@ -15,8 +16,11 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"regexp"
+	"sync"
 )
 
+// TODO allow changing of package identifiers too.
 var objKinds = map[string]ast.ObjKind{
 	"const": ast.Con,
 	"type":  ast.Typ,
@@ -28,7 +32,7 @@ var (
 	verbose = flag.Bool("v", false, "print warnings for unresolved symbols")
 	kinds   = flag.String("k", allKinds(), "kinds of symbol types to include")
 	printType = flag.Bool("t", false, "print symbol type")
-	internal = flag.Bool("internal", false, "print internal references too")
+	all = flag.Bool("a", false, "print internal and universe symbols too")
 )
 
 func main() {
@@ -52,24 +56,41 @@ func main() {
 	}
 	initGoPath()
 
-	cache := make(map[string]*ast.Package)
-	importer := func(path string) *ast.Package {
-		if pkg := cache[path]; pkg != nil {
-			return pkg
-		}
-		pkg := types.DefaultImporter(path)
-		cache[path] = pkg
-		return pkg
+	ctxt := newContext()
+	visitor := func(info *symInfo) bool {
+		return visitPrint(ctxt, info, mask)
 	}
-
 	types.Panic = false
 	for _, path := range pkgs {
-		if pkg := importer(path); pkg != nil {
+		if pkg := ctxt.importer(path); pkg != nil {
 			for _, f := range pkg.Files {
-				checkExprs(path, f, importer, mask)
+				ctxt.visitExprs(visitor, path, f, mask)
 			}
 		}
 	}
+}
+
+type context struct {
+	mu sync.Mutex
+	pkgCache map[string]*ast.Package
+	importer func(path string) *ast.Package
+}
+
+func newContext() *context {
+	ctxt := &context {
+		pkgCache: make(map[string]*ast.Package),
+	}
+	ctxt.importer =  func(path string) *ast.Package {
+		ctxt.mu.Lock()
+		defer ctxt.mu.Unlock()
+		if pkg := ctxt.pkgCache[path]; pkg != nil {
+			return pkg
+		}
+		pkg := types.DefaultImporter(path)
+		ctxt.pkgCache[path] = pkg
+		return pkg
+	}
+	return ctxt
 }
 
 func parseKindMask(kinds string) (uint, error) {
@@ -120,11 +141,12 @@ func (f astVisitor) Visit(n ast.Node) ast.Visitor {
 	return nil
 }
 
-func checkExprs(importPath string, pkg *ast.File, importer types.Importer, kindMask uint) {
+func (ctxt *context) visitExprs(visitf func(*symInfo) bool, importPath string, pkg *ast.File, kindMask uint) {
 	var visit astVisitor
-	stopped := false
+	ok := true
+	local := false		// TODO set to true inside function body
 	visit = func(n ast.Node) bool {
-		if stopped {
+		if !ok {
 			return false
 		}
 		switch n := n.(type) {
@@ -132,7 +154,8 @@ func checkExprs(importPath string, pkg *ast.File, importer types.Importer, kindM
 			// If the file imports a package to ".", abort
 			// because we don't support that (yet).
 			if n.Name != nil && n.Name.Name == "." {
-				stopped = true
+				log.Printf("import to . not supported")
+				ok = false
 				return false
 			}
 			return true
@@ -145,6 +168,7 @@ func checkExprs(importPath string, pkg *ast.File, importer types.Importer, kindM
 			return true
 
 		case *ast.Ident:
+			ok = ctxt.visitExpr(visitf, importPath, n, local)
 			return false
 
 		case *ast.KeyValueExpr:
@@ -157,7 +181,7 @@ func checkExprs(importPath string, pkg *ast.File, importer types.Importer, kindM
 
 		case *ast.SelectorExpr:
 			ast.Walk(visit, n.X)
-			printSelector(importPath, n, importer, kindMask)
+			ok = ctxt.visitExpr(visitf, importPath, n, local)
 			return false
 
 		case *ast.File:
@@ -172,56 +196,161 @@ func checkExprs(importPath string, pkg *ast.File, importer types.Importer, kindM
 	ast.Walk(visit, pkg)
 }
 
-func printSelector(importPath string, e *ast.SelectorExpr, importer types.Importer, kindMask uint) {
-	_, xt := types.ExprType(e.X, importer)
-	if xt.Node == nil {
-		if *verbose {
-			log.Printf("%v: no type for %s", position(e.Pos()), pretty{e.X})
-		}
+type symInfo struct {
+	pos token.Pos			// position of symbol.
+	expr ast.Expr			// expression for symbol (*ast.Ident or *ast.SelectorExpr)
+	exprType types.Type	// type of expression.
+	referPos token.Pos		// position of referred-to symbol.
+	referObj *ast.Object		// object referred to. 
+	local bool				// whether referred-to object is function-local.
+	universe bool			// whether referred-to object is in universe.
+}
+
+func (ctxt *context) visitExpr(visitf func(*symInfo) bool, importPath string, e ast.Expr, local bool) bool {
+	var info symInfo
+	info.expr = e
+	switch e := e.(type) {
+	case *ast.Ident:
+		info.pos = e.Pos()
+	case *ast.SelectorExpr:
+		info.pos = e.Sel.Pos()
 	}
-	obj, t := types.ExprType(e, importer)
+	obj, t := types.ExprType(e, ctxt.importer)
 	if obj == nil {
 		if *verbose {
 			log.Printf("%v: no object for %s", position(e.Pos()), pretty{e})
 		}
-		return
+		return true
 	}
-
-	// Exclude any type kinds not in the user-specified mask.
-	if (1<<uint(obj.Kind))&kindMask == 0 {
-		return
-	}
-
-	var pkgPath, xexpr string
-	if xt.Kind == ast.Pkg {
-		// TODO make the Node of the package its identifier.
-		// and put the package name in xt.Pkg.
-		pkgPath = litToString(xt.Node.(*ast.ImportSpec).Path)
-		xexpr = ""
+	info.exprType = t
+	info.referObj = obj
+	if parser.Universe.Lookup(obj.Name) != obj {
+		info.referPos = types.DeclPos(obj)
 	} else {
-		pos := position(types.DeclPos(obj))
-		if pos.Filename == "" {
-			panic("empty file name")
-		}
-		pkgPath = dirToImportPath(filepath.Dir(pos.Filename))
-		xexpr = (pretty{depointer(xt.Node)}).String() + "."
+		info.universe = true
 	}
-	if !*internal && pkgPath == importPath {
-		return
-	}
-	typeStr := ""
-	if *printType {
-		typeStr = " " + (pretty{t.Node}).String()
-	}
-	fmt.Printf("%v: %s %s %s%s %s%s\n", position(e.Pos()), importPath, pkgPath, xexpr, e.Sel.Name, obj.Kind, typeStr)
+	info.local = local
+	return visitf(&info)
 }
 
-func dirToImportPath(dir string) string {
-	bpkg, err := build.Import(".", dir, build.FindOnly)
+func positionToImportPath(p token.Position) string {
+	if p.Filename == "" {
+		panic("empty file name")
+	}
+	bpkg, err := build.Import(".", filepath.Dir(p.Filename), build.FindOnly)
 	if err != nil {
 		panic(fmt.Errorf("cannot reverse-map filename to package: %v", err))
 	}
 	return bpkg.ImportPath
+}
+
+type symLine struct {
+	pos token.Position	// file address of identifier; addr.Offset is zero.
+	exprPkg string		// package containing identifier
+	referPkg string		// package containing referred-to object.
+	local bool			// identifier is function-local
+	kind ast.ObjKind		// kind of identifier
+	definition bool		// line is, or refers to, definition of object.
+	expr string		// expression.
+	exprType string	// type of expression (unparsed).
+}
+
+var linePat = regexp.MustCompile(`^([^:]+):(\d+):(\d+):\s+([^ ]+)\s+([^\s]+)\s+(local)?([^\s+]+)(\+)?(\s+([^\s].*))?$`)
+
+func atoi(s string) int {
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		panic("bad number")
+	}
+	return i
+}
+
+func parseSymLine(line string) (symLine, error) {
+	m := linePat.FindStringSubmatch(line)
+	if m == nil {
+		return symLine{}, fmt.Errorf("invalid line %q", line)
+	}
+	var l symLine
+	l.pos.Filename = m[1]
+	l.pos.Line = atoi(m[2])
+	l.pos.Column = atoi(m[3])
+	l.exprPkg = m[4]
+	l.referPkg = m[5]
+	l.local = m[6] == "local"
+	var ok bool
+	l.kind, ok = objKinds[m[7]]
+	if !ok {
+		return symLine{}, fmt.Errorf("invalid kind %q", m[7])
+	}
+	l.definition = m[8] == "+"
+	if m[9] != "" {
+		l.exprType = m[10]
+	}
+	return l, nil
+}
+
+func (l symLine) String() string {
+	local := ""
+	if l.local {
+		local = "local"
+	}
+	def := ""
+	if l.definition {
+		def = "+"
+	}
+	exprType := ""
+	if len(l.exprType) > 0 {
+		exprType = " " + l.exprType
+	}
+	return fmt.Sprintf("%v: %s %s %s %s%s%s%s", l.pos, l.exprPkg, l.referPkg, l.expr, local, l.kind, def, exprType)
+}
+
+func visitPrint(ctxt *context, info *symInfo, kindMask uint) bool {
+	if (1<<uint(info.referObj.Kind))&kindMask == 0 {
+		return true
+	}
+	if info.universe && !*all {
+		return true
+	}
+	eposition := position(info.pos)
+	exprPkg := positionToImportPath(eposition)
+	var referPkg string
+	if info.universe {
+		referPkg = "universe"
+	} else {
+		referPkg = positionToImportPath(position(info.referPos))
+	}
+	var name string
+	switch e := info.expr.(type) {
+	case *ast.Ident:
+		name = e.Name
+	case *ast.SelectorExpr:
+		_, xt := types.ExprType(e.X, ctxt.importer)
+		if xt.Node == nil {
+			if *verbose {
+				log.Printf("%v: no type for %s", position(e.Pos()), pretty{e.X})
+				return true
+			}
+		}
+		name = e.Sel.Name
+		if xt.Kind != ast.Pkg {
+			name = (pretty{depointer(xt.Node)}).String() + "." + name
+		}
+	}
+	line := symLine{
+		pos: eposition,
+		exprPkg: exprPkg,
+		referPkg: referPkg,
+		local: info.local,
+		kind: info.referObj.Kind,
+		definition: info.referPos == info.pos,
+		expr: name,
+	}
+	if *printType {
+		line.exprType = (pretty{info.exprType.Node}).String()
+	}
+	fmt.Println(line)
+	return true
 }
 
 func depointer(x ast.Node) ast.Node {
