@@ -22,6 +22,7 @@ var parseSymLineTests = []struct {
 }{{
 	in: "foo.go:23:45: \tfoo/bar \tarble/bletch \tX.Y\tlocalvar+\t func(int) bool",
 	expect: symLine{
+		long: true,
 		pos: token.Position{
 			Filename: "foo.go",
 			Line:     23,
@@ -38,6 +39,7 @@ var parseSymLineTests = []struct {
 }, {
 	in: "x/y/z:1:0: x y z const",
 	expect: symLine{
+		long: true,
 		pos: token.Position{
 			Filename: "x/y/z",
 			Line:     1,
@@ -50,6 +52,18 @@ var parseSymLineTests = []struct {
 		plus:     false,
 		expr:     "z",
 		exprType: "",
+	},
+}, {
+	in: "x.go:2:4: old new",
+	expect: symLine{
+		long: false,
+		pos: token.Position{
+			Filename: "x.go",
+			Line:2,
+			Column:4,
+		},
+		expr: "old",
+		newExpr: "new",
 	},
 }, {
 	in:  "x/y/z:1:0: x y z xxx",

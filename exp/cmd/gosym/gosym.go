@@ -16,8 +16,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"regexp"
-	"strconv"
 	"strings"
 	"sync"
 )
@@ -48,6 +46,40 @@ var (
 	all       = flag.Bool("a", false, "print internal and universe symbols too")
 	wflag     = flag.Bool("w", false, "read lines; change symbols in source code")
 )
+
+//gosym list [-l] [-t] [pkg...]
+//
+//list all symbols in all named packages.
+//	foo/filename.go:23:3: package referenced-package name type-kind
+//
+//gosym used pkg...
+//
+//	reads lines in long format; prints any definitions (in long format)
+//	found in pkgs that are used by any other packages.
+//
+//gosym unused pkg
+//	reads lines in long format; prints any definitions (in long format)
+//	found in pkgs that are not used by any other packages.
+//
+//gosym export
+//	reads lines in long or short format; changes any
+//	identifier names to be capitalised.
+//	Prints identifiers in short format.
+//
+//gosym unexport
+//	reads lines in long or short format; changes any
+//	identifier names to be uncapitalised.
+//
+//gosym short
+//	reads lines in long or short format; prints them in short format.
+//
+//gosym rename from1 to1 from2 to2 ...
+//	reads lines in long or short format; renames symbols according
+//	to the given rules.
+//
+//gosym write [pkg...]
+//	reads lines in short format; makes any requested changes,
+//	restricting changes to the listed packages.
 
 func main() {
 	printf := func(f string, a ...interface{}) { fmt.Fprintf(os.Stderr, f, a...) }
@@ -358,74 +390,6 @@ func (ctxt *context) printf(f string, a ...interface{}) {
 	fmt.Fprintf(ctxt.stdout, f, a...)
 }
 
-type symLine struct {
-	pos      token.Position // file address of identifier; addr.Offset is zero.
-	exprPkg  string         // package containing identifier
-	referPkg string         // package containing referred-to object.
-	local    bool           // identifier is function-local
-	kind     ast.ObjKind    // kind of identifier
-	plus     bool           // line is, or refers to, definition of object.
-	expr     string         // expression.
-	exprType string         // type of expression (unparsed).
-}
-
-var linePat = regexp.MustCompile(`^([^:]+):(\d+):(\d+):\s+([^ ]+)\s+([^\s]+)\s+([^\s]+)\s+(local)?([^\s+]+)(\+)?(\s+([^\s].*))?$`)
-
-func atoi(s string) int {
-	i, err := strconv.Atoi(s)
-	if err != nil {
-		panic("bad number")
-	}
-	return i
-}
-
-func parseSymLine(line string) (*symLine, error) {
-	m := linePat.FindStringSubmatch(line)
-	if m == nil {
-		return nil, fmt.Errorf("invalid line %q", line)
-	}
-	var l symLine
-	l.pos.Filename = m[1]
-	l.pos.Line = atoi(m[2])
-	l.pos.Column = atoi(m[3])
-	l.exprPkg = m[4]
-	l.referPkg = m[5]
-	l.expr = m[6] // TODO check for invalid chars in expr
-	l.local = m[7] == "local"
-	var ok bool
-	l.kind, ok = objKinds[m[8]]
-	if !ok {
-		return nil, fmt.Errorf("invalid kind %q", m[8])
-	}
-	l.plus = m[9] == "+"
-	if m[10] != "" {
-		l.exprType = m[11]
-	}
-	return &l, nil
-}
-
-func (l *symLine) String() string {
-	local := ""
-	if l.local {
-		local = "local"
-	}
-	def := ""
-	if l.plus {
-		def = "+"
-	}
-	exprType := ""
-	if len(l.exprType) > 0 {
-		exprType = " " + l.exprType
-	}
-	return fmt.Sprintf("%v: %s %s %s %s%s%s%s", l.pos, l.exprPkg, l.referPkg, l.expr, local, l.kind, def, exprType)
-}
-
-func (l *symLine) symName() string {
-	if i := strings.LastIndex(l.expr, "."); i >= 0 {
-		return l.expr[i+1:]
-	}
-	return l.expr
-}
 
 func visitPrint(ctxt *context, info *sym.Info, kindMask uint) bool {
 	if (1<<uint(info.ReferObj.Kind))&kindMask == 0 {
