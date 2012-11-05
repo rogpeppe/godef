@@ -7,6 +7,7 @@ import (
 	"code.google.com/p/rog-go/exp/go/ast"
 	"code.google.com/p/rog-go/exp/go/parser"
 	"code.google.com/p/rog-go/exp/go/printer"
+	"code.google.com/p/rog-go/exp/go/sym"
 	"code.google.com/p/rog-go/exp/go/token"
 	"code.google.com/p/rog-go/exp/go/types"
 	"flag"
@@ -146,7 +147,7 @@ func writeSyms(ctxt *context, pkgs []string) error {
 // replace replaces all symbols in files as directed by
 // the input lines.
 func (wctxt *wcontext) replace(pkgs []string) {
-	visitor := func(info *SymInfo, changed *bool) bool {
+	visitor := func(info *sym.Info, changed *bool) bool {
 		globSym, globRepl := wctxt.globalReplace[info.ReferObj]
 		p := wctxt.position(info.Pos)
 		p.Offset = 0
@@ -191,7 +192,7 @@ func (wctxt *wcontext) replace(pkgs []string) {
 			// TODO when no global replacements, don't bother if file
 			// isn't mentioned in input lines.
 			changed := false
-			wctxt.VisitSyms(f, func(info *SymInfo) bool {
+			wctxt.VisitSyms(f, func(info *sym.Info) bool {
 				return visitor(info, &changed)
 			})
 			if changed {
@@ -216,7 +217,7 @@ func (wctxt *wcontext) replace(pkgs []string) {
 
 func (wctxt *wcontext) addGlobals() {
 	// visitor adds a symbol to wctxt.globalReplace if necessary.
-	visitor := func(info *SymInfo) bool {
+	visitor := func(info *sym.Info) bool {
 		p := wctxt.position(info.Pos)
 		p.Offset = 0
 		line, ok := wctxt.lines[p]
@@ -284,7 +285,7 @@ func (wctxt *wcontext) readSymbols(stdin io.Reader) error {
 }
 
 func printSyms(ctxt *context, mask uint, pkgs []string) {
-	visitor := func(info *SymInfo) bool {
+	visitor := func(info *sym.Info) bool {
 		return visitPrint(ctxt, info, mask)
 	}
 	types.Panic = false
@@ -299,7 +300,7 @@ func printSyms(ctxt *context, mask uint, pkgs []string) {
 
 type context struct {
 	mu sync.Mutex
-	VContext
+	sym.Context
 	fset     *token.FileSet
 	pkgCache map[string]*ast.Package
 	pkgDirs  map[string]string // map from directory to package name.
@@ -483,7 +484,7 @@ func (l *symLine) symName() string {
 	return l.expr
 }
 
-func visitPrint(ctxt *context, info *SymInfo, kindMask uint) bool {
+func visitPrint(ctxt *context, info *sym.Info, kindMask uint) bool {
 	if (1<<uint(info.ReferObj.Kind))&kindMask == 0 {
 		return true
 	}
@@ -562,4 +563,11 @@ func (ctxt *context) gofmtFile(f *ast.File) ([]byte, error) {
 		return nil, err
 	}
 	return buf.Bytes(), nil
+}
+
+var emptyFileSet = token.NewFileSet()
+func pretty(n ast.Node) string {
+	var b bytes.Buffer
+	printer.Fprint(&b, emptyFileSet, n)
+	return b.String()
 }

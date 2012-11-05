@@ -1,4 +1,4 @@
-package main
+package sym
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"strconv"
 )
 
-type SymInfo struct {
+type Info struct {
 	Pos      token.Pos   // position of symbol.
 	Expr     ast.Expr    // expression for symbol (*ast.Ident or *ast.SelectorExpr)
 	Ident    *ast.Ident  // identifier in parse tree (changing ident.Name changes the parse tree)
@@ -21,13 +21,13 @@ type SymInfo struct {
 	Universe bool        // whether referred-to object is in universe.
 }
 
-type VContext struct {
+type Context struct {
 	Importer types.Importer
 	Logf     func(pos token.Pos, f string, a ...interface{})
 }
 
 // visitSyms calls visitf for each identifier in the given file.
-func (ctxt *VContext) VisitSyms(pkg *ast.File, visitf func(*SymInfo) bool) {
+func (ctxt *Context) VisitSyms(pkg *ast.File, visitf func(*Info) bool) {
 	var visit astVisitor
 	ok := true
 	local := false // TODO set to true inside function body
@@ -82,8 +82,8 @@ func (ctxt *VContext) VisitSyms(pkg *ast.File, visitf func(*SymInfo) bool) {
 	ast.Walk(visit, pkg)
 }
 
-func (ctxt *VContext) visitExpr(e ast.Expr, local bool, visitf func(*SymInfo) bool) bool {
-	var info SymInfo
+func (ctxt *Context) visitExpr(e ast.Expr, local bool, visitf func(*Info) bool) bool {
+	var info Info
 	info.Expr = e
 	switch e := e.(type) {
 	case *ast.Ident:
