@@ -78,7 +78,7 @@ func DefaultImporter(path string) *ast.Package {
 	debugp("getting package %s", path)
 	for _, pd := range GoPath {
 		dir := pd + "/" + path
-		pkgs, err := parser.ParseDir(FileSet, dir, isGoFile, 0)
+		pkgs, err := parser.ParseDir(FileSet, dir, isGoFile, parser.ParseComments)
 		if err != nil {
 			if Debug {
 				switch err := err.(type) {

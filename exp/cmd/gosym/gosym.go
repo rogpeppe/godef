@@ -18,6 +18,7 @@ import (
 	"code.google.com/p/rog-go/exp/go/types"
 	"flag"
 	"io"
+	"io/ioutil"
 	"fmt"
 	"go/build"
 	"log"
@@ -117,7 +118,7 @@ func writeSyms(ctxt *context, pkgs []string) error {
 // replace replaces all symbols in files as directed by
 // the input lines.
 func (wctxt *wcontext) replace(pkgs []string) {
-	visitor := func(info *symInfo) bool {
+	visitor := func(info *symInfo, changed *bool) bool {
 		globSym, globRepl := wctxt.globalReplace[info.referObj]
 		p := position(info.pos)
 		p.Offset = 0
@@ -147,21 +148,42 @@ func (wctxt *wcontext) replace(pkgs []string) {
 			// The symbol is not changing, so ignore it.
 			return true
 		}
-		wctxt.printf("%v: %s -> %s\n", p, info.referObj.Name, newSym)
-		//info.ident.Name = newSym
+		info.ident.Name = newSym
+		*changed = true
 		return true
 	}
+	changedFiles := make(map[string] *ast.File)
 	for _, path := range pkgs {
 		pkg := wctxt.importer(path)
 		if pkg == nil {
 			log.Printf("gosym: could not find package %q", path)
 			continue
 		}
-		for _, f := range pkg.Files {
+		for name, f := range pkg.Files {
 			// TODO when no global replacements, don't bother if file
 			// isn't mentioned in input lines.
-			wctxt.visitExprs(visitor, path, f)
+			changed := false
+			wctxt.visitExprs(
+				func(info*symInfo) bool {
+					return visitor(info, &changed)
+				}, path, f)
+			if changed {
+				changedFiles[name] = f
+			}
 		}
+	}
+	for name, f := range changedFiles {
+		newSrc, err := gofmtFile(f)
+		if err != nil {
+			log.Printf("gosym: cannot gofmt %q: %v", name, err)
+			continue
+		}
+		err = ioutil.WriteFile(name, newSrc, 0666)
+		if err != nil {
+			log.Printf("gosym: cannot write %q: %v", name, err)
+			continue
+		}
+		wctxt.printf("%s\n", name)
 	}
 }
 
@@ -381,6 +403,7 @@ func (ctxt *context) visitExprs(visitf func(*symInfo) bool, importPath string, p
 type symInfo struct {
 	pos token.Pos			// position of symbol.
 	expr ast.Expr			// expression for symbol (*ast.Ident or *ast.SelectorExpr)
+	ident *ast.Ident			// identifier in parse tree (changing ident.Name changes the parse tree)
 	exprType types.Type	// type of expression.
 	referPos token.Pos		// position of referred-to symbol.
 	referObj *ast.Object		// object referred to. 
@@ -394,8 +417,10 @@ func (ctxt *context) visitExpr(visitf func(*symInfo) bool, importPath string, e 
 	switch e := e.(type) {
 	case *ast.Ident:
 		info.pos = e.Pos()
+		info.ident = e
 	case *ast.SelectorExpr:
 		info.pos = e.Sel.Pos()
+		info.ident = e.Sel
 	}
 	obj, t := types.ExprType(e, ctxt.importer)
 	if obj == nil {
@@ -587,4 +612,26 @@ func (p pretty) String() string {
 	var b bytes.Buffer
 	printer.Fprint(&b, types.FileSet, p.n)
 	return b.String()
+}
+
+// The following code is cribbed from gofix
+
+const (
+	tabWidth    = 8
+	parserMode  = parser.ParseComments
+	printerMode = printer.TabIndent | printer.UseSpaces
+)
+
+var printConfig = &printer.Config{
+	Mode:     printerMode,
+	Tabwidth: tabWidth,
+}
+
+func gofmtFile(f *ast.File) ([]byte, error) {
+	var buf bytes.Buffer
+	_, err := printConfig.Fprint(&buf, types.FileSet, f)
+	if err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
 }
