@@ -5,7 +5,6 @@ import (
 	"bufio"
 	"bytes"
 	"code.google.com/p/rog-go/exp/go/ast"
-	"code.google.com/p/rog-go/exp/go/parser"
 	"code.google.com/p/rog-go/exp/go/printer"
 	"code.google.com/p/rog-go/exp/go/sym"
 	"code.google.com/p/rog-go/exp/go/token"
@@ -14,7 +13,6 @@ import (
 	"fmt"
 	"go/build"
 	"io"
-	"io/ioutil"
 	"log"
 	"os"
 	"path/filepath"
@@ -141,13 +139,19 @@ func writeSyms(ctxt *context, pkgs []string) error {
 	}
 	wctxt.addGlobals()
 	wctxt.replace(pkgs)
+	for name := range wctxt.ChangedFiles {
+		wctxt.printf("%s\n", name)
+	}
+	if err := wctxt.WriteFiles(wctxt.ChangedFiles); err != nil {
+		return err
+	}
 	return nil
 }
 
 // replace replaces all symbols in files as directed by
 // the input lines.
 func (wctxt *wcontext) replace(pkgs []string) {
-	visitor := func(info *sym.Info, changed *bool) bool {
+	visitor := func(info *sym.Info) bool {
 		globSym, globRepl := wctxt.globalReplace[info.ReferObj]
 		p := wctxt.position(info.Pos)
 		p.Offset = 0
@@ -172,46 +176,20 @@ func (wctxt *wcontext) replace(pkgs []string) {
 			}
 			newSym = globSym
 		}
-		if newSym == info.ReferObj.Name {
-			wctxt.printf("%v: no change\n", p)
-			// The symbol is not changing, so ignore it.
-			return true
-		}
 		info.Ident.Name = newSym
-		*changed = true
 		return true
 	}
-	changedFiles := make(map[string]*ast.File)
 	for _, path := range pkgs {
-		pkg := wctxt.Importer(path)
+		pkg := wctxt.Import(path)
 		if pkg == nil {
 			log.Printf("gosym: could not find package %q", path)
 			continue
 		}
-		for name, f := range pkg.Files {
+		for _, f := range pkg.Files {
 			// TODO when no global replacements, don't bother if file
 			// isn't mentioned in input lines.
-			changed := false
-			wctxt.VisitSyms(f, func(info *sym.Info) bool {
-				return visitor(info, &changed)
-			})
-			if changed {
-				changedFiles[name] = f
-			}
+			wctxt.IterateSyms(f, visitor)
 		}
-	}
-	for name, f := range changedFiles {
-		newSrc, err := wctxt.gofmtFile(f)
-		if err != nil {
-			log.Printf("gosym: cannot gofmt %q: %v", name, err)
-			continue
-		}
-		err = ioutil.WriteFile(name, newSrc, 0666)
-		if err != nil {
-			log.Printf("gosym: cannot write %q: %v", name, err)
-			continue
-		}
-		wctxt.printf("%s\n", name)
 	}
 }
 
@@ -241,14 +219,14 @@ func (wctxt *wcontext) addGlobals() {
 
 	// Search for all symbols that need replacing globally.
 	for path := range wctxt.plusPkgs {
-		pkg := wctxt.Importer(path)
+		pkg := wctxt.Import(path)
 		if pkg == nil {
 			log.Printf("gosym: could not find package %q", path)
 			continue
 		}
 		for _, f := range pkg.Files {
 			// TODO don't bother if file isn't mentioned in input lines.
-			wctxt.VisitSyms(f, visitor)
+			wctxt.IterateSyms(f, visitor)
 		}
 	}
 }
@@ -290,9 +268,9 @@ func printSyms(ctxt *context, mask uint, pkgs []string) {
 	}
 	types.Panic = false
 	for _, path := range pkgs {
-		if pkg := ctxt.Importer(path); pkg != nil {
+		if pkg := ctxt.Import(path); pkg != nil {
 			for _, f := range pkg.Files {
-				ctxt.VisitSyms(f, visitor)
+				ctxt.IterateSyms(f, visitor)
 			}
 		}
 	}
@@ -300,8 +278,7 @@ func printSyms(ctxt *context, mask uint, pkgs []string) {
 
 type context struct {
 	mu sync.Mutex
-	sym.Context
-	fset     *token.FileSet
+	*sym.Context
 	pkgCache map[string]*ast.Package
 	pkgDirs  map[string]string // map from directory to package name.
 	stdout   *bufio.Writer
@@ -309,49 +286,15 @@ type context struct {
 
 func newContext() *context {
 	ctxt := &context{
-		pkgCache: make(map[string]*ast.Package),
-		pkgDirs:  make(map[string]string),
-		stdout:   bufio.NewWriter(os.Stdout),
-		fset:     token.NewFileSet(),
-	}
-	cwd, _ := os.Getwd()
-	ctxt.Importer = func(path string) *ast.Package {
-		ctxt.mu.Lock()
-		defer ctxt.mu.Unlock()
-		if pkg := ctxt.pkgCache[path]; pkg != nil {
-			return pkg
-		}
-		bpkg, err := build.Import(path, cwd, 0)
-		if err != nil {
-			log.Printf("cannot find %q: %v", path, err)
-			return nil
-		}
-		var files []string
-		files = append(files, bpkg.GoFiles...)
-		files = append(files, bpkg.CgoFiles...)
-		files = append(files, bpkg.TestGoFiles...)
-		for i, f := range files {
-			files[i] = filepath.Join(bpkg.Dir, f)
-		}
-		pkgs, err := parser.ParseFiles(ctxt.fset, files, parser.ParseComments)
-		if len(pkgs) == 0 {
-			log.Printf("gosym: cannot parse package %q: %v", path, err)
-			return nil
-		}
-		delete(pkgs, "documentation")
-		for _, pkg := range pkgs {
-			if ctxt.pkgCache[path] == nil {
-				ctxt.pkgCache[path] = pkg
-			} else {
-				log.Printf("gosym: unexpected extra package %q in %q", pkg.Name, path)
-			}
-		}
-		return ctxt.pkgCache[path]
+		pkgDirs: make(map[string]string),
+		stdout:  bufio.NewWriter(os.Stdout),
+		Context: sym.NewContext(),
 	}
 	ctxt.Logf = func(pos token.Pos, f string, a ...interface{}) {
-		if *verbose {
-			log.Printf("%v: %s", ctxt.position(pos), fmt.Sprintf(f, a...))
+		if !*verbose {
+			return
 		}
+		log.Printf("%v: %s", ctxt.position(pos), fmt.Sprintf(f, a...))
 	}
 	return ctxt
 }
@@ -504,7 +447,9 @@ func visitPrint(ctxt *context, info *sym.Info, kindMask uint) bool {
 	case *ast.Ident:
 		name = e.Name
 	case *ast.SelectorExpr:
-		_, xt := types.ExprType(e.X, ctxt.Importer)
+		_, xt := types.ExprType(e.X, func(path string) *ast.Package {
+			return ctxt.Import(path)
+		})
 		if xt.Node == nil {
 			if *verbose {
 				log.Printf("%v: no type for %s", ctxt.position(e.Pos()), pretty(e.X))
@@ -540,32 +485,11 @@ func depointer(x ast.Node) ast.Node {
 }
 
 func (ctxt *context) position(pos token.Pos) token.Position {
-	return ctxt.fset.Position(pos)
-}
-
-// The following code is cribbed from gofix
-
-const (
-	tabWidth    = 8
-	parserMode  = parser.ParseComments
-	printerMode = printer.TabIndent | printer.UseSpaces
-)
-
-var printConfig = &printer.Config{
-	Mode:     printerMode,
-	Tabwidth: tabWidth,
-}
-
-func (ctxt *context) gofmtFile(f *ast.File) ([]byte, error) {
-	var buf bytes.Buffer
-	_, err := printConfig.Fprint(&buf, ctxt.fset, f)
-	if err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
+	return ctxt.FileSet.Position(pos)
 }
 
 var emptyFileSet = token.NewFileSet()
+
 func pretty(n ast.Node) string {
 	var b bytes.Buffer
 	printer.Fprint(&b, emptyFileSet, n)
