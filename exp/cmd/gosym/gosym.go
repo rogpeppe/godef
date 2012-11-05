@@ -33,6 +33,7 @@ var (
 	kinds   = flag.String("k", allKinds(), "kinds of symbol types to include")
 	printType = flag.Bool("t", false, "print symbol type")
 	all = flag.Bool("a", false, "print internal and universe symbols too")
+	writeMode = flag.Bool("w", false, "read lines; change symbols in source code")
 )
 
 func main() {
