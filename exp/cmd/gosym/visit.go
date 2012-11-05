@@ -26,6 +26,7 @@ type vcontext struct {
 	logf     func(pos token.Pos, f string, a ...interface{})
 }
 
+// visitSyms calls visitf for each identifier in the given file.
 func (ctxt *vcontext) visitSyms(pkg *ast.File, visitf func(*symInfo) bool) {
 	var visit astVisitor
 	ok := true
