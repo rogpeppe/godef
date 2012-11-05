@@ -146,9 +146,9 @@ func writeSyms(ctxt *context, pkgs []string) error {
 // replace replaces all symbols in files as directed by
 // the input lines.
 func (wctxt *wcontext) replace(pkgs []string) {
-	visitor := func(info *symInfo, changed *bool) bool {
-		globSym, globRepl := wctxt.globalReplace[info.referObj]
-		p := wctxt.position(info.pos)
+	visitor := func(info *SymInfo, changed *bool) bool {
+		globSym, globRepl := wctxt.globalReplace[info.ReferObj]
+		p := wctxt.position(info.Pos)
 		p.Offset = 0
 		line, lineRepl := wctxt.lines[p]
 		if !lineRepl && !globRepl {
@@ -156,7 +156,7 @@ func (wctxt *wcontext) replace(pkgs []string) {
 		}
 		var newSym string
 		if lineRepl {
-			if newSym = line.symName(); newSym == info.referObj.Name {
+			if newSym = line.symName(); newSym == info.ReferObj.Name {
 				// There is a line for this symbol, but the name is
 				// not changing, so ignore it.
 				lineRepl = false
@@ -171,18 +171,18 @@ func (wctxt *wcontext) replace(pkgs []string) {
 			}
 			newSym = globSym
 		}
-		if newSym == info.referObj.Name {
+		if newSym == info.ReferObj.Name {
 			wctxt.printf("%v: no change\n", p)
 			// The symbol is not changing, so ignore it.
 			return true
 		}
-		info.ident.Name = newSym
+		info.Ident.Name = newSym
 		*changed = true
 		return true
 	}
 	changedFiles := make(map[string]*ast.File)
 	for _, path := range pkgs {
-		pkg := wctxt.importer(path)
+		pkg := wctxt.Importer(path)
 		if pkg == nil {
 			log.Printf("gosym: could not find package %q", path)
 			continue
@@ -191,7 +191,7 @@ func (wctxt *wcontext) replace(pkgs []string) {
 			// TODO when no global replacements, don't bother if file
 			// isn't mentioned in input lines.
 			changed := false
-			wctxt.visitSyms(f, func(info *symInfo) bool {
+			wctxt.VisitSyms(f, func(info *SymInfo) bool {
 				return visitor(info, &changed)
 			})
 			if changed {
@@ -216,38 +216,38 @@ func (wctxt *wcontext) replace(pkgs []string) {
 
 func (wctxt *wcontext) addGlobals() {
 	// visitor adds a symbol to wctxt.globalReplace if necessary.
-	visitor := func(info *symInfo) bool {
-		p := wctxt.position(info.pos)
+	visitor := func(info *SymInfo) bool {
+		p := wctxt.position(info.Pos)
 		p.Offset = 0
 		line, ok := wctxt.lines[p]
 		if !ok || !line.plus {
 			return true
 		}
 		sym := line.symName()
-		if info.referObj.Name == sym {
+		if info.ReferObj.Name == sym {
 			// If the symbol name is not being changed, do nothing.
 			return true
 		}
-		if old, ok := wctxt.globalReplace[info.referObj]; ok {
+		if old, ok := wctxt.globalReplace[info.ReferObj]; ok {
 			if old != sym {
 				log.Printf("gosym: %v: conflicting replacement for %s", p, line.expr)
 				return true
 			}
 		}
-		wctxt.globalReplace[info.referObj] = line.symName()
+		wctxt.globalReplace[info.ReferObj] = line.symName()
 		return true
 	}
 
 	// Search for all symbols that need replacing globally.
 	for path := range wctxt.plusPkgs {
-		pkg := wctxt.importer(path)
+		pkg := wctxt.Importer(path)
 		if pkg == nil {
 			log.Printf("gosym: could not find package %q", path)
 			continue
 		}
 		for _, f := range pkg.Files {
 			// TODO don't bother if file isn't mentioned in input lines.
-			wctxt.visitSyms(f, visitor)
+			wctxt.VisitSyms(f, visitor)
 		}
 	}
 }
@@ -284,14 +284,14 @@ func (wctxt *wcontext) readSymbols(stdin io.Reader) error {
 }
 
 func printSyms(ctxt *context, mask uint, pkgs []string) {
-	visitor := func(info *symInfo) bool {
+	visitor := func(info *SymInfo) bool {
 		return visitPrint(ctxt, info, mask)
 	}
 	types.Panic = false
 	for _, path := range pkgs {
-		if pkg := ctxt.importer(path); pkg != nil {
+		if pkg := ctxt.Importer(path); pkg != nil {
 			for _, f := range pkg.Files {
-				ctxt.visitSyms(f, visitor)
+				ctxt.VisitSyms(f, visitor)
 			}
 		}
 	}
@@ -299,7 +299,7 @@ func printSyms(ctxt *context, mask uint, pkgs []string) {
 
 type context struct {
 	mu sync.Mutex
-	vcontext
+	VContext
 	fset     *token.FileSet
 	pkgCache map[string]*ast.Package
 	pkgDirs  map[string]string // map from directory to package name.
@@ -314,7 +314,7 @@ func newContext() *context {
 		fset:     token.NewFileSet(),
 	}
 	cwd, _ := os.Getwd()
-	ctxt.vcontext.importer = func(path string) *ast.Package {
+	ctxt.Importer = func(path string) *ast.Package {
 		ctxt.mu.Lock()
 		defer ctxt.mu.Unlock()
 		if pkg := ctxt.pkgCache[path]; pkg != nil {
@@ -347,7 +347,7 @@ func newContext() *context {
 		}
 		return ctxt.pkgCache[path]
 	}
-	ctxt.vcontext.logf = func(pos token.Pos, f string, a ...interface{}) {
+	ctxt.Logf = func(pos token.Pos, f string, a ...interface{}) {
 		if *verbose {
 			log.Printf("%v: %s", ctxt.position(pos), fmt.Sprintf(f, a...))
 		}
@@ -483,27 +483,27 @@ func (l *symLine) symName() string {
 	return l.expr
 }
 
-func visitPrint(ctxt *context, info *symInfo, kindMask uint) bool {
-	if (1<<uint(info.referObj.Kind))&kindMask == 0 {
+func visitPrint(ctxt *context, info *SymInfo, kindMask uint) bool {
+	if (1<<uint(info.ReferObj.Kind))&kindMask == 0 {
 		return true
 	}
-	if info.universe && !*all {
+	if info.Universe && !*all {
 		return true
 	}
-	eposition := ctxt.position(info.pos)
+	eposition := ctxt.position(info.Pos)
 	exprPkg := ctxt.positionToImportPath(eposition)
 	var referPkg string
-	if info.universe {
+	if info.Universe {
 		referPkg = "universe"
 	} else {
-		referPkg = ctxt.positionToImportPath(ctxt.position(info.referPos))
+		referPkg = ctxt.positionToImportPath(ctxt.position(info.ReferPos))
 	}
 	var name string
-	switch e := info.expr.(type) {
+	switch e := info.Expr.(type) {
 	case *ast.Ident:
 		name = e.Name
 	case *ast.SelectorExpr:
-		_, xt := types.ExprType(e.X, ctxt.importer)
+		_, xt := types.ExprType(e.X, ctxt.Importer)
 		if xt.Node == nil {
 			if *verbose {
 				log.Printf("%v: no type for %s", ctxt.position(e.Pos()), pretty(e.X))
@@ -519,13 +519,13 @@ func visitPrint(ctxt *context, info *symInfo, kindMask uint) bool {
 		pos:      eposition,
 		exprPkg:  exprPkg,
 		referPkg: referPkg,
-		local:    info.local,
-		kind:     info.referObj.Kind,
-		plus:     info.referPos == info.pos,
+		local:    info.Local,
+		kind:     info.ReferObj.Kind,
+		plus:     info.ReferPos == info.Pos,
 		expr:     name,
 	}
 	if *printType {
-		line.exprType = pretty(info.exprType.Node)
+		line.exprType = pretty(info.ExprType.Node)
 	}
 	ctxt.printf("%s\n", line)
 	return true

@@ -10,24 +10,24 @@ import (
 	"strconv"
 )
 
-type symInfo struct {
-	pos      token.Pos   // position of symbol.
-	expr     ast.Expr    // expression for symbol (*ast.Ident or *ast.SelectorExpr)
-	ident    *ast.Ident  // identifier in parse tree (changing ident.Name changes the parse tree)
-	exprType types.Type  // type of expression.
-	referPos token.Pos   // position of referred-to symbol.
-	referObj *ast.Object // object referred to. 
-	local    bool        // whether referred-to object is function-local.
-	universe bool        // whether referred-to object is in universe.
+type SymInfo struct {
+	Pos      token.Pos   // position of symbol.
+	Expr     ast.Expr    // expression for symbol (*ast.Ident or *ast.SelectorExpr)
+	Ident    *ast.Ident  // identifier in parse tree (changing ident.Name changes the parse tree)
+	ExprType types.Type  // type of expression.
+	ReferPos token.Pos   // position of referred-to symbol.
+	ReferObj *ast.Object // object referred to. 
+	Local    bool        // whether referred-to object is function-local.
+	Universe bool        // whether referred-to object is in universe.
 }
 
-type vcontext struct {
-	importer types.Importer
-	logf     func(pos token.Pos, f string, a ...interface{})
+type VContext struct {
+	Importer types.Importer
+	Logf     func(pos token.Pos, f string, a ...interface{})
 }
 
 // visitSyms calls visitf for each identifier in the given file.
-func (ctxt *vcontext) visitSyms(pkg *ast.File, visitf func(*symInfo) bool) {
+func (ctxt *VContext) VisitSyms(pkg *ast.File, visitf func(*SymInfo) bool) {
 	var visit astVisitor
 	ok := true
 	local := false // TODO set to true inside function body
@@ -40,7 +40,7 @@ func (ctxt *vcontext) visitSyms(pkg *ast.File, visitf func(*symInfo) bool) {
 			// If the file imports a package to ".", abort
 			// because we don't support that (yet).
 			if n.Name != nil && n.Name.Name == "." {
-				ctxt.logf(n.Pos(), "import to . not supported")
+				ctxt.Logf(n.Pos(), "import to . not supported")
 				ok = false
 				return false
 			}
@@ -82,34 +82,34 @@ func (ctxt *vcontext) visitSyms(pkg *ast.File, visitf func(*symInfo) bool) {
 	ast.Walk(visit, pkg)
 }
 
-func (ctxt *vcontext) visitExpr(e ast.Expr, local bool, visitf func(*symInfo) bool) bool {
-	var info symInfo
-	info.expr = e
+func (ctxt *VContext) visitExpr(e ast.Expr, local bool, visitf func(*SymInfo) bool) bool {
+	var info SymInfo
+	info.Expr = e
 	switch e := e.(type) {
 	case *ast.Ident:
-		info.pos = e.Pos()
-		info.ident = e
+		info.Pos = e.Pos()
+		info.Ident = e
 	case *ast.SelectorExpr:
-		info.pos = e.Sel.Pos()
-		info.ident = e.Sel
+		info.Pos = e.Sel.Pos()
+		info.Ident = e.Sel
 	}
-	obj, t := types.ExprType(e, ctxt.importer)
+	obj, t := types.ExprType(e, ctxt.Importer)
 	if obj == nil {
-		ctxt.logf(e.Pos(), "no object for %s", pretty(e))
+		ctxt.Logf(e.Pos(), "no object for %s", pretty(e))
 		return true
 	}
-	info.exprType = t
-	info.referObj = obj
+	info.ExprType = t
+	info.ReferObj = obj
 	if parser.Universe.Lookup(obj.Name) != obj {
-		info.referPos = types.DeclPos(obj)
-		if info.referPos == token.NoPos {
-			ctxt.logf(e.Pos(), "no declaration for %s", pretty(e))
+		info.ReferPos = types.DeclPos(obj)
+		if info.ReferPos == token.NoPos {
+			ctxt.Logf(e.Pos(), "no declaration for %s", pretty(e))
 			return true
 		}
 	} else {
-		info.universe = true
+		info.Universe = true
 	}
-	info.local = local
+	info.Local = local
 	return visitf(&info)
 }
 
