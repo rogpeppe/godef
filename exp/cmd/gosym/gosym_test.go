@@ -70,7 +70,7 @@ var parseSymLineTests = []struct {
 	err: `invalid kind "xxx"`,
 }, {
 	in:  "x/y/z:1:0: x y z xxx  ",
-	err: "invalid line .*",
+	err: "invalid line",
 }}
 
 func (suite) TestParseSymLine(c *C) {

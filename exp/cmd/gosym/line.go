@@ -52,7 +52,7 @@ func atoi(s string) int {
 func parseSymLine(line string) (*symLine, error) {
 	m := linePat.FindStringSubmatch(line)
 	if m == nil {
-		return nil, fmt.Errorf("invalid line %q", line)
+		return nil, fmt.Errorf("invalid line")
 	}
 	var l symLine
 	l.pos.Filename = m[1]
