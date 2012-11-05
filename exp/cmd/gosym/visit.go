@@ -1,11 +1,12 @@
 package main
+
 import (
 	"bytes"
 	"code.google.com/p/rog-go/exp/go/ast"
 	"code.google.com/p/rog-go/exp/go/parser"
+	"code.google.com/p/rog-go/exp/go/printer"
 	"code.google.com/p/rog-go/exp/go/token"
 	"code.google.com/p/rog-go/exp/go/types"
-	"code.google.com/p/rog-go/exp/go/printer"
 	"strconv"
 )
 
@@ -22,7 +23,7 @@ type symInfo struct {
 
 type vcontext struct {
 	importer types.Importer
-	logf func(pos token.Pos, f string, a ...interface{})
+	logf     func(pos token.Pos, f string, a ...interface{})
 }
 
 func (ctxt *vcontext) visitSyms(pkg *ast.File, visitf func(*symInfo) bool) {

@@ -298,9 +298,9 @@ func printSyms(ctxt *context, mask uint, pkgs []string) {
 }
 
 type context struct {
-	mu       sync.Mutex
+	mu sync.Mutex
 	vcontext
-	fset *token.FileSet
+	fset     *token.FileSet
 	pkgCache map[string]*ast.Package
 	pkgDirs  map[string]string // map from directory to package name.
 	stdout   *bufio.Writer
@@ -311,7 +311,7 @@ func newContext() *context {
 		pkgCache: make(map[string]*ast.Package),
 		pkgDirs:  make(map[string]string),
 		stdout:   bufio.NewWriter(os.Stdout),
-		fset: token.NewFileSet(),
+		fset:     token.NewFileSet(),
 	}
 	cwd, _ := os.Getwd()
 	ctxt.vcontext.importer = func(path string) *ast.Package {
