@@ -1,3 +1,5 @@
+// The sym package provides a way to iterate over and change the symbols in Go
+// source files.
 package sym
 
 import (
