@@ -30,7 +30,7 @@ var parseSymLineTests = []struct {
 		referPkg: "arble/bletch",
 		local: true,
 		kind: ast.Var,
-		definition: true,
+		plus: true,
 		expr: "X.Y",
 		exprType: "func(int) bool",
 	},
@@ -46,7 +46,7 @@ var parseSymLineTests = []struct {
 		referPkg: "y",
 		local: false,
 		kind: ast.Con,
-		definition: false,
+		plus: false,
 		expr: "z",
 		exprType: "",
 	},
@@ -67,7 +67,7 @@ func (suite) TestParseSymLine(c *C) {
 			c.Assert(err, ErrorMatches, test.err)
 		} else {
 			c.Assert(err, IsNil)
-			c.Assert(sl, DeepEquals, test.expect)
+			c.Assert(sl, DeepEquals, &test.expect)
 			s := sl.String()
 			sl2, err := parseSymLine(s)
 			c.Assert(err, IsNil)
