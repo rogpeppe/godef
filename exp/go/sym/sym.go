@@ -49,6 +49,7 @@ func NewContext() *Context {
 	ctxt := &Context{
 		pkgCache: make(map[string]*ast.Package),
 		FileSet:  token.NewFileSet(),
+		ChangedFiles: make(map[string]*ast.File),
 	}
 	ctxt.importer = ctxt.importerFunc()
 	return ctxt

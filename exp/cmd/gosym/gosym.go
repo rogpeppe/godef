@@ -134,6 +134,7 @@ source files are backed up before using gosym -w.
 }
 
 func runCmd(c cmd, args []string) error {
+	types.Panic = false
 	initGoPath()
 	ctxt := newContext()
 	defer ctxt.stdout.Flush()

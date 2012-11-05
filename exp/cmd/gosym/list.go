@@ -7,6 +7,7 @@ import (
 	"log"
 	"fmt"
 	"strings"
+	"unicode"
 )
 
 type listCmd struct {
@@ -28,7 +29,7 @@ func init() {
 }
 
 func (c *listCmd) run(ctxt *context, args []string) error {
-	c.ctxt = ctxtg
+	c.ctxt = ctxt
 	if c.kinds == "" {
 		return fmt.Errorf("no type kinds specified")
 	}
@@ -53,12 +54,21 @@ func (c *listCmd) run(ctxt *context, args []string) error {
 	return nil
 }
 
+func isExported(name string) bool {
+	for _, r := range name {
+		return unicode.IsUpper(r)
+	}
+	return false
+}
+
 func (c *listCmd) visit(info *sym.Info, kindMask uint) bool {
 	if (1<<uint(info.ReferObj.Kind))&kindMask == 0 {
 		return true
 	}
-	if info.Universe && !c.all {
-		return true
+	if !c.all {
+		if info.Universe || !isExported(info.Ident.Name) {
+			return true
+		}
 	}
 	eposition := c.ctxt.position(info.Pos)
 	exprPkg := c.ctxt.positionToImportPath(eposition)
@@ -68,11 +78,8 @@ func (c *listCmd) visit(info *sym.Info, kindMask uint) bool {
 	} else {
 		referPkg = c.ctxt.positionToImportPath(c.ctxt.position(info.ReferPos))
 	}
-	var name string
-	switch e := info.Expr.(type) {
-	case *ast.Ident:
-		name = e.Name
-	case *ast.SelectorExpr:
+	name := info.Ident.Name
+	if e, ok := info.Expr.(*ast.SelectorExpr); ok {
 		_, xt := types.ExprType(e.X, func(path string) *ast.Package {
 			return c.ctxt.Import(path)
 		})

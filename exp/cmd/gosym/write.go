@@ -105,7 +105,7 @@ func (wctxt *writeCmd) addGlobals() {
 		p := wctxt.position(info.Pos)
 		p.Offset = 0
 		line, ok := wctxt.lines[p]
-		if !ok || !line.plus {
+		if !ok {
 			return true
 		}
 		sym := line.symName()
