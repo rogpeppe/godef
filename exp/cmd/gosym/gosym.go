@@ -78,31 +78,66 @@ func main() {
 }
 
 type wcontext struct {
-	ctxt *context
+	*context
+
 	// lines holds all input lines.
-	lines map[token.Position] symLine
+	lines map[token.Position] *symLine
+
 	// plusPkgs holds packages that have a line with a "+"
 	plusPkgs map[string] bool
+
 	// symPkgs holds all packages mentioned in the input lines.
 	symPkgs map[string]bool
+
+	// globalReplace holds all the objects that
+	// will be globally replaced and the new name
+	// of the object's symbol.
+	globalReplace map[*ast.Object] string
 }
 
 func writeSyms(ctxt *context, pkgs []string) error {
 	wctxt := &wcontext{
-		ctxt: ctxt,
-		lines: make(map[token.Position] symLine),
+		context: ctxt,
+		lines: make(map[token.Position] *symLine),
 		plusPkgs: make(map[string]bool),
 		symPkgs: make(map[string]bool),
+		globalReplace: make(map[*ast.Object]string),
 	}
 	if err := wctxt.readSymbols(os.Stdin); err != nil {
 		return fmt.Errorf("failed to read symbols: %v", err)
 	}
 
-	// Search for all symbols that need replacing globally.
-	for pkg := range wctxt.plusPkgs {
-		ctxt.printf("searching in %v\n", pkg)
-	}
+	wctxt.addGlobals()
+
+	ctxt.printf("added %d globals\n", len(wctxt.globalReplace))
 	return nil
+}
+
+func (wctxt *wcontext) addGlobals() {
+	// visitor adds a symbol to wctxt.globalReplace if necessary.
+	visitor := func(info *symInfo) bool {
+		p := position(info.pos)
+		p.Offset = 0
+		line, ok := wctxt.lines[p]
+		if !ok || !line.plus {
+			return true
+		}
+		wctxt.globalReplace[info.referObj] = line.symName()
+		return true
+	}
+
+	// Search for all symbols that need replacing globally.
+	for path := range wctxt.plusPkgs {
+		pkg := wctxt.importer(path)
+		if pkg == nil {
+			log.Printf("gosym: could not find package %q", path)
+			continue
+		}
+		for _, f := range pkg.Files {
+			// TODO don't bother if file isn't mentioned in input lines.
+			wctxt.visitExprs(visitor, path, f)
+		}
+	}
 }
 
 // readSymbols reads all the symbols from stdin.
@@ -127,7 +162,7 @@ func (wctxt *wcontext) readSymbols(stdin io.Reader) error {
 			continue
 		}
 		wctxt.lines[sl.pos] = sl
-		pkg := wctxt.ctxt.positionToImportPath(sl.pos)
+		pkg := wctxt.positionToImportPath(sl.pos)
 		if sl.plus {
 			wctxt.plusPkgs[pkg] = true
 		}
@@ -144,7 +179,7 @@ func printSyms(ctxt *context, mask uint, pkgs []string) {
 	for _, path := range pkgs {
 		if pkg := ctxt.importer(path); pkg != nil {
 			for _, f := range pkg.Files {
-				ctxt.visitExprs(visitor, path, f, mask)
+				ctxt.visitExprs(visitor, path, f)
 			}
 		}
 	}
@@ -225,7 +260,7 @@ func (f astVisitor) Visit(n ast.Node) ast.Visitor {
 	return nil
 }
 
-func (ctxt *context) visitExprs(visitf func(*symInfo) bool, importPath string, pkg *ast.File, kindMask uint) {
+func (ctxt *context) visitExprs(visitf func(*symInfo) bool, importPath string, pkg *ast.File) {
 	var visit astVisitor
 	ok := true
 	local := false		// TODO set to true inside function body
@@ -362,10 +397,10 @@ func atoi(s string) int {
 	return i
 }
 
-func parseSymLine(line string) (symLine, error) {
+func parseSymLine(line string) (*symLine, error) {
 	m := linePat.FindStringSubmatch(line)
 	if m == nil {
-		return symLine{}, fmt.Errorf("invalid line %q", line)
+		return nil, fmt.Errorf("invalid line %q", line)
 	}
 	var l symLine
 	l.pos.Filename = m[1]
@@ -378,16 +413,16 @@ func parseSymLine(line string) (symLine, error) {
 	var ok bool
 	l.kind, ok = objKinds[m[8]]
 	if !ok {
-		return symLine{}, fmt.Errorf("invalid kind %q", m[8])
+		return nil, fmt.Errorf("invalid kind %q", m[8])
 	}
 	l.plus = m[9] == "+"
 	if m[10] != "" {
 		l.exprType = m[11]
 	}
-	return l, nil
+	return &l, nil
 }
 
-func (l symLine) String() string {
+func (l *symLine) String() string {
 	local := ""
 	if l.local {
 		local = "local"
@@ -401,6 +436,13 @@ func (l symLine) String() string {
 		exprType = " " + l.exprType
 	}
 	return fmt.Sprintf("%v: %s %s %s %s%s%s%s", l.pos, l.exprPkg, l.referPkg, l.expr, local, l.kind, def, exprType)
+}
+
+func (l *symLine) symName() string {
+	if i := strings.LastIndex(l.expr, "."); i >= 0 {
+		return l.expr[i+1:]
+	}
+	return l.expr
 }
 
 func visitPrint(ctxt *context, info *symInfo, kindMask uint) bool {
@@ -435,7 +477,7 @@ func visitPrint(ctxt *context, info *symInfo, kindMask uint) bool {
 			name = (pretty{depointer(xt.Node)}).String() + "." + name
 		}
 	}
-	line := symLine{
+	line := &symLine{
 		pos: eposition,
 		exprPkg: exprPkg,
 		referPkg: referPkg,
