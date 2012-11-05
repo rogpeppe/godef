@@ -79,21 +79,29 @@ func main() {
 
 type wcontext struct {
 	ctxt *context
+	// lines holds all input lines.
 	lines map[token.Position] symLine
+	// plusPkgs holds packages that have a line with a "+"
+	plusPkgs map[string] bool
+	// symPkgs holds all packages mentioned in the input lines.
 	symPkgs map[string]bool
-	global bool
 }
 
 func writeSyms(ctxt *context, pkgs []string) error {
 	wctxt := &wcontext{
 		ctxt: ctxt,
 		lines: make(map[token.Position] symLine),
+		plusPkgs: make(map[string]bool),
 		symPkgs: make(map[string]bool),
 	}
 	if err := wctxt.readSymbols(os.Stdin); err != nil {
 		return fmt.Errorf("failed to read symbols: %v", err)
 	}
-	ctxt.printf("read %d symbols; global: %v\n", len(wctxt.lines), wctxt.global)
+
+	// Search for all symbols that need replacing globally.
+	for pkg := range wctxt.plusPkgs {
+		ctxt.printf("searching in %v\n", pkg)
+	}
 	return nil
 }
 
@@ -119,10 +127,11 @@ func (wctxt *wcontext) readSymbols(stdin io.Reader) error {
 			continue
 		}
 		wctxt.lines[sl.pos] = sl
-		if sl.definition {
-			wctxt.global = true
+		pkg := wctxt.ctxt.positionToImportPath(sl.pos)
+		if sl.plus {
+			wctxt.plusPkgs[pkg] = true
 		}
-		wctxt.symPkgs[wctxt.ctxt.positionToImportPath(sl.pos)] = true
+		wctxt.symPkgs[pkg] = true
 	}
 	return nil
 }
@@ -338,7 +347,7 @@ type symLine struct {
 	referPkg string		// package containing referred-to object.
 	local bool			// identifier is function-local
 	kind ast.ObjKind		// kind of identifier
-	definition bool		// line is, or refers to, definition of object.
+	plus bool		// line is, or refers to, definition of object.
 	expr string		// expression.
 	exprType string	// type of expression (unparsed).
 }
@@ -371,7 +380,7 @@ func parseSymLine(line string) (symLine, error) {
 	if !ok {
 		return symLine{}, fmt.Errorf("invalid kind %q", m[8])
 	}
-	l.definition = m[9] == "+"
+	l.plus = m[9] == "+"
 	if m[10] != "" {
 		l.exprType = m[11]
 	}
@@ -384,7 +393,7 @@ func (l symLine) String() string {
 		local = "local"
 	}
 	def := ""
-	if l.definition {
+	if l.plus {
 		def = "+"
 	}
 	exprType := ""
@@ -432,7 +441,7 @@ func visitPrint(ctxt *context, info *symInfo, kindMask uint) bool {
 		referPkg: referPkg,
 		local: info.local,
 		kind: info.referObj.Kind,
-		definition: info.referPos == info.pos,
+		plus: info.referPos == info.pos,
 		expr: name,
 	}
 	if *printType {
