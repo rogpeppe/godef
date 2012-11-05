@@ -93,6 +93,9 @@ type wcontext struct {
 	// will be globally replaced and the new name
 	// of the object's symbol.
 	globalReplace map[*ast.Object] string
+
+	// changed holds all the files that have been modified.
+	changed map[*ast.File] bool
 }
 
 func writeSyms(ctxt *context, pkgs []string) error {
@@ -106,11 +109,60 @@ func writeSyms(ctxt *context, pkgs []string) error {
 	if err := wctxt.readSymbols(os.Stdin); err != nil {
 		return fmt.Errorf("failed to read symbols: %v", err)
 	}
-
 	wctxt.addGlobals()
-
-	ctxt.printf("added %d globals\n", len(wctxt.globalReplace))
+	wctxt.replace(pkgs)
 	return nil
+}
+
+// replace replaces all symbols in files as directed by
+// the input lines.
+func (wctxt *wcontext) replace(pkgs []string) {
+	visitor := func(info *symInfo) bool {
+		globSym, globRepl := wctxt.globalReplace[info.referObj]
+		p := position(info.pos)
+		p.Offset = 0
+		line, lineRepl := wctxt.lines[p]
+		if !lineRepl && !globRepl {
+			return true
+		}
+		var newSym string
+		if lineRepl {
+			if newSym = line.symName(); newSym == info.referObj.Name {
+				// There is a line for this symbol, but the name is
+				// not changing, so ignore it.
+				lineRepl = false
+			}
+		}
+		if globRepl {
+			// N.B. global symbols are not recorded in globalReplace
+			// if they make no change.
+			if lineRepl && globSym != newSym {
+				log.Printf("gosym: %v: conflicting global/local change (%q vs %q)", p, globSym, newSym)
+				return true
+			}
+			newSym = globSym
+		}
+		if newSym == info.referObj.Name {
+			wctxt.printf("%v: no change\n", p)
+			// The symbol is not changing, so ignore it.
+			return true
+		}
+		wctxt.printf("%v: %s -> %s\n", p, info.referObj.Name, newSym)
+		//info.ident.Name = newSym
+		return true
+	}
+	for _, path := range pkgs {
+		pkg := wctxt.importer(path)
+		if pkg == nil {
+			log.Printf("gosym: could not find package %q", path)
+			continue
+		}
+		for _, f := range pkg.Files {
+			// TODO when no global replacements, don't bother if file
+			// isn't mentioned in input lines.
+			wctxt.visitExprs(visitor, path, f)
+		}
+	}
 }
 
 func (wctxt *wcontext) addGlobals() {
@@ -121,6 +173,17 @@ func (wctxt *wcontext) addGlobals() {
 		line, ok := wctxt.lines[p]
 		if !ok || !line.plus {
 			return true
+		}
+		sym := line.symName()
+		if info.referObj.Name == sym {
+			// If the symbol name is not being changed, do nothing.
+			return true
+		}
+		if old, ok := wctxt.globalReplace[info.referObj]; ok {
+			if old != sym {
+				log.Printf("gosym: %v: conflicting replacement for %s", p, line.expr)
+				return true
+			}
 		}
 		wctxt.globalReplace[info.referObj] = line.symName()
 		return true
