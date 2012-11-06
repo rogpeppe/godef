@@ -42,6 +42,7 @@ func runSimpleFilter(ctxt *context, f func(string) string) error {
 		}
 		sl.newExpr = f(sl.newExpr)
 		sl.long = false
+		ctxt.printf("%s\n", sl)
 		return nil
 	})
 }
