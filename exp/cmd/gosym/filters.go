@@ -5,7 +5,9 @@ import (
 	"io"
 	"fmt"
 	"strings"
+	"log"
 	"unicode"
+	"code.google.com/p/rog-go/exp/go/token"
 )
 
 func readLines(f func(sl *symLine) error) error {
@@ -55,6 +57,22 @@ func (c *shortCmd) run(ctxt *context, args []string) error {
 			sl.newExpr = sl.symName()
 		}
 		sl.long = false
+		ctxt.printf("%s\n", sl)
+		return nil
+	})
+}
+
+type longCmd struct {}
+
+func init() {
+	register("long", &longCmd{}, nil)
+}
+
+func (c *longCmd) run(ctxt *context, args []string) error {
+	return readLines(func(sl *symLine) error {
+		if !sl.long {
+			return fmt.Errorf("not in long format")
+		}
 		ctxt.printf("%s\n", sl)
 		return nil
 	})
@@ -126,13 +144,8 @@ func (c *renameCmd) run(ctxt *context, args []string) error {
 	return nil
 }
 
-// qsym represents a fully qualified identifier.
-type qsym struct {
-	pkg string
-	expr string
-}
 
-func readUses(pkgArgs []string) (defs map[qsym] *symLine, uses map[qsym] bool, err error) {
+func readUses(pkgArgs []string) (defs map[token.Position] *symLine, uses map[token.Position] *symLine, err error) {
 	if len(pkgArgs) == 0 {
 		return nil, nil, fmt.Errorf("at least one package argument required")
 	}
@@ -140,18 +153,18 @@ func readUses(pkgArgs []string) (defs map[qsym] *symLine, uses map[qsym] bool, e
 	for _, a := range pkgArgs {
 		pkgs[a] = true
 	}
-	defs = make(map[qsym] *symLine)
-	uses = make(map[qsym] bool)
+	defs = make(map[token.Position] *symLine)
+	uses = make(map[token.Position] *symLine)
 	err = readLines(func(sl *symLine) error {
 		if !sl.long {
 			return fmt.Errorf("input must be in long format")
 		}
 		if pkgs[sl.exprPkg] {
-			if sl.plus && !sl.local {
-				defs[qsym{sl.exprPkg, sl.expr}] = sl
+			if sl.plus {
+				defs[sl.pos] = sl
 			}
 		} else if pkgs[sl.referPkg] {
-			uses[qsym{sl.referPkg, sl.expr}] = true
+			uses[sl.referPos] = sl
 		}
 		return nil
 	})
@@ -171,9 +184,11 @@ func (c *usedCmd) run(ctxt *context, args []string) error {
 	if err != nil {
 		return err
 	}
-	for use := range uses {
+	for use, usl := range uses {
 		if sl := defs[use]; sl != nil {
 			ctxt.printf("%s\n", sl)
+		} else {
+			log.Printf("definition for %v not found; used at %v", use, usl.pos)
 		}
 	}
 	return nil
@@ -184,7 +199,7 @@ type unusedCmd struct {}
 func init() {
 	// unused reads lines in long format; prints any definitions (in long format)
 	// found in pkgs that are used by any other packages.
-	register("unused", &usedCmd{}, nil)
+	register("unused", &unusedCmd{}, nil)
 }
 
 func (c *unusedCmd) run(ctxt *context, args []string) error {
@@ -193,7 +208,7 @@ func (c *unusedCmd) run(ctxt *context, args []string) error {
 		return err
 	}
 	for def, sl := range defs {
-		if !uses[def] {
+		if uses[def] == nil {
 			ctxt.printf("%s\n", sl)
 		}
 	}

@@ -133,7 +133,26 @@ func (ctxt *Context) IterateSyms(f *ast.File, visitf func(info *Info) bool) {
 			if n.Recv == nil && n.Name.Name == "init" {
 				n.Name.Obj = ast.NewObj(ast.Fun, "init")
 			}
-			return true
+			e := ast.Expr(n.Name)
+			if n.Recv != nil {
+				// It's a method, so we need to synthesise a
+				// selector expression so that visitExpr doesn't
+				// just see a blank name.
+				if len(n.Recv.List) != 1 {
+					ctxt.logf(n.Pos(), "expected one receiver only!")
+					return true
+				}
+				e = &ast.SelectorExpr{
+					X: n.Recv.List[0].Type,
+					Sel: n.Name,
+				}
+			}
+			ok = ctxt.visitExpr(f, e, false, visitf)
+			local = true
+			ast.Walk(visit, n.Type)
+			ast.Walk(visit, n.Body)
+			local = false
+			return false
 
 		case *ast.Ident:
 			ok = ctxt.visitExpr(f, n, local, visitf)
@@ -162,23 +181,6 @@ func (ctxt *Context) IterateSyms(f *ast.File, visitf func(info *Info) bool) {
 		return true
 	}
 	ast.Walk(visit, f)
-}
-
-// WriteFiles writes the given files, formatted as with gofmt.
-func (ctxt *Context) WriteFiles(files map[string]*ast.File) error {
-	// TODO should we try to continue changing files even after an error?
-	for _, f := range files {
-		name := ctxt.filename(f)
-		newSrc, err := ctxt.gofmtFile(f)
-		if err != nil {
-			return fmt.Errorf("cannot format %q: %v", name, err)
-		}
-		err = ioutil.WriteFile(name, newSrc, 0666)
-		if err != nil {
-			return fmt.Errorf("cannot write %q: %v", name, err)
-		}
-	}
-	return nil
 }
 
 func (ctxt *Context) filename(f *ast.File) string {
@@ -219,6 +221,23 @@ func (ctxt *Context) visitExpr(f *ast.File, e ast.Expr, local bool, visitf func(
 		ctxt.ChangedFiles[ctxt.filename(f)] = f
 	}
 	return more
+}
+
+// WriteFiles writes the given files, formatted as with gofmt.
+func (ctxt *Context) WriteFiles(files map[string]*ast.File) error {
+	// TODO should we try to continue changing files even after an error?
+	for _, f := range files {
+		name := ctxt.filename(f)
+		newSrc, err := ctxt.gofmtFile(f)
+		if err != nil {
+			return fmt.Errorf("cannot format %q: %v", name, err)
+		}
+		err = ioutil.WriteFile(name, newSrc, 0666)
+		if err != nil {
+			return fmt.Errorf("cannot write %q: %v", name, err)
+		}
+	}
+	return nil
 }
 
 // litToString converts from a string literal to a regular string.

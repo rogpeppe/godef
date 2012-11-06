@@ -11,6 +11,7 @@ import (
 
 type symLine struct {
 	pos      token.Position // file address of identifier; addr.Offset is zero.
+	referPos token.Position	// file address of referred-to identifier.
 	long     bool           // line is in long format.
 	exprPkg  string         // package containing identifier (long format only)
 	referPkg string         // package containing referred-to object (long format only)
@@ -23,21 +24,22 @@ type symLine struct {
 }
 
 // long format:
-// filename.go:35:5: pkg referPkg expr kind [type]
+// filename.go:35:5: referfilename.go:2:4 pkg referPkg expr kind [type]
 // short format:
 // filename.go:35.5: expr newExpr
 
 var linePat = regexp.MustCompile(`^` +
 	`([^:]+):(\d+):(\d+):` + // 1,2,3: filename
 	`(` +
-	`\s+([^\s]+)` + // 5: exprPkg
-	`\s+([^\s]+)` + // 6: referPkg
-	`\s+([^\s]+)` + // 7: expr
-	`\s+(local)?([^\s+]+)(\+)?` + // 8, 9, 10: local, kind, plus
-	`(\s+([^\s].*))?` + // 12: exprType
+	`\s+([^:]+):(\d+):(\d+)` + // 5,6,7: filename
+	`\s+([^\s]+)` + // 8: exprPkg
+	`\s+([^\s]+)` + // 9: referPkg
+	`\s+([^\s]+)` + // 10: expr
+	`\s+(local)?([^\s+]+)(\+)?` + // 11,12,13: local, kind, plus
+	`(\s+([^\s].*))?` + // 15: exprType
 	`|` +
-	`\s+([^\s]+)` + // 13: expr
-	`\s+([^\s]+)` + // 14: newExpr
+	`\s+([^\s]+)` + // 16: expr
+	`\s+([^\s]+)` + // 17: newExpr
 	`)` +
 	`$`)
 
@@ -60,22 +62,25 @@ func parseSymLine(line string) (*symLine, error) {
 	l.pos.Column = atoi(m[3])
 	if m[5] != "" {
 		l.long = true
-		l.exprPkg = m[5]
-		l.referPkg = m[6]
-		l.expr = m[7] // TODO check for invalid chars in expr
-		l.local = m[8] == "local"
+		l.referPos.Filename = m[5]
+		l.referPos.Line = atoi(m[6])
+		l.referPos.Column = atoi(m[7])
+		l.exprPkg = m[8]
+		l.referPkg = m[9]
+		l.expr = m[10] // TODO check for invalid chars in expr
+		l.local = m[11] == "local"
 		var ok bool
-		l.kind, ok = objKinds[m[9]]
+		l.kind, ok = objKinds[m[12]]
 		if !ok {
-			return nil, fmt.Errorf("invalid kind %q", m[9])
+			return nil, fmt.Errorf("invalid kind %q", m[12])
 		}
-		l.plus = m[10] == "+"
-		if m[12] != "" {
-			l.exprType = m[12]
+		l.plus = m[13] == "+"
+		if m[15] != "" {
+			l.exprType = m[15]
 		}
 	} else {
-		l.expr = m[13]
-		l.newExpr = m[14]
+		l.expr = m[16]
+		l.newExpr = m[17]
 	}
 	return &l, nil
 }
@@ -94,7 +99,7 @@ func (l *symLine) String() string {
 		if len(l.exprType) > 0 {
 			exprType = " " + l.exprType
 		}
-		return fmt.Sprintf("%v: %s %s %s %s%s%s%s", l.pos, l.exprPkg, l.referPkg, l.expr, local, l.kind, def, exprType)
+		return fmt.Sprintf("%v: %v %s %s %s %s%s%s%s", l.pos, l.referPos, l.exprPkg, l.referPkg, l.expr, local, l.kind, def, exprType)
 	}
 	if l.newExpr == "" {
 		panic("no new expr in short-form sym line")

@@ -83,7 +83,7 @@ func (c *listCmd) visit(info *sym.Info, kindMask uint) bool {
 		_, xt := types.ExprType(e.X, func(path string) *ast.Package {
 			return c.ctxt.Import(path)
 		})
-		c.ctxt.print("exprtype %s\n", pretty(e.X))
+//		c.ctxt.print("exprtype %s\n", pretty(e.X))
 		name = e.Sel.Name
 		switch xn := depointer(xt.Node).(type) {
 		case nil:
@@ -103,9 +103,10 @@ func (c *listCmd) visit(info *sym.Info, kindMask uint) bool {
 	line := &symLine{
 		long:     true,
 		pos:      eposition,
+		referPos: c.ctxt.position(info.ReferPos),
 		exprPkg:  exprPkg,
 		referPkg: referPkg,
-		local:    info.Local,
+		local:    info.Local && info.ReferPos == info.Pos,
 		kind:     info.ReferObj.Kind,
 		plus:     info.ReferPos == info.Pos,
 		expr:     name,

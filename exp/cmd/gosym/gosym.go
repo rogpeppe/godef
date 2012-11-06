@@ -22,6 +22,7 @@ import (
 // TODO allow changing of package identifiers too.
 
 // caveats:
+// - map keys
 // - no declaration for init
 // - type switches?
 // - embedded types
@@ -59,7 +60,7 @@ import (
 //gosym write [pkg...]
 //	reads lines in short format; makes any requested changes,
 //	restricting changes to the listed packages.
-var verbose = new(bool)	// TODO!
+var verbose = flag.Bool("v", false, "print warning messages")
 
 func main() {
 	printf := func(f string, a ...interface{}) { fmt.Fprintf(os.Stderr, f, a...) }
@@ -94,15 +95,16 @@ source files are backed up before using gosym -w.
 `)
 		os.Exit(2)
 	}
-	if len(os.Args) < 2 {
+	flag.Parse()
+	if flag.NArg() == 0 {
 		flag.Usage()
 	}
-	name := os.Args[1]
+	name := flag.Arg(0)
 	var c cmd
 	var args []string
 	for _, e := range cmds {
 		if e.name == name {
-			e.fset.Parse(os.Args[2:])
+			e.fset.Parse(flag.Args()[1:])
 			c = e.c
 			args = e.fset.Args()
 			break
