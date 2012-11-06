@@ -60,7 +60,7 @@ import (
 //gosym write [pkg...]
 //	reads lines in short format; makes any requested changes,
 //	restricting changes to the listed packages.
-var verbose = flag.Bool("v", false, "print warning messages")
+var verbose = flag.Bool("v", true, "print warning messages")
 
 func main() {
 	printf := func(f string, a ...interface{}) { fmt.Fprintf(os.Stderr, f, a...) }
