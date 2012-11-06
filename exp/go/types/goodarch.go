@@ -1,4 +1,5 @@
 package types
+
 import (
 	"runtime"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 const goosList = "darwin freebsd linux plan9 windows "
 const goarchList = "386 amd64 arm "
+
 // goodOSArch returns false if the filename contains a $GOOS or $GOARCH
 // suffix which does not match the current system.
 // The recognized filename formats are:

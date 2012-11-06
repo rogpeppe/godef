@@ -22,8 +22,8 @@ package scanner
 
 import (
 	"bytes"
-	"fmt"
 	"code.google.com/p/rog-go/exp/go/token"
+	"fmt"
 	"path/filepath"
 	"strconv"
 	"unicode"
@@ -43,7 +43,7 @@ type Scanner struct {
 	mode uint         // scanning mode
 
 	// scanning state
-	ch         rune  // current character
+	ch         rune // current character
 	offset     int  // character offset
 	rdOffset   int  // reading offset (position after current character)
 	lineOffset int  // current line offset

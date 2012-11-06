@@ -47,8 +47,8 @@ type Context struct {
 
 func NewContext() *Context {
 	ctxt := &Context{
-		pkgCache: make(map[string]*ast.Package),
-		FileSet:  token.NewFileSet(),
+		pkgCache:     make(map[string]*ast.Package),
+		FileSet:      token.NewFileSet(),
 		ChangedFiles: make(map[string]*ast.File),
 	}
 	ctxt.importer = ctxt.importerFunc()
@@ -143,7 +143,7 @@ func (ctxt *Context) IterateSyms(f *ast.File, visitf func(info *Info) bool) {
 					return true
 				}
 				e = &ast.SelectorExpr{
-					X: n.Recv.List[0].Type,
+					X:   n.Recv.List[0].Type,
 					Sel: n.Name,
 				}
 			}

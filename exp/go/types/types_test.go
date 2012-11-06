@@ -2,15 +2,15 @@ package types
 
 import (
 	"bytes"
-	"code.google.com/p/rog-go/exp/go/parser"
 	"code.google.com/p/rog-go/exp/go/ast"
+	"code.google.com/p/rog-go/exp/go/parser"
 	"code.google.com/p/rog-go/exp/go/token"
+	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"unicode"
-	"io/ioutil"
 )
 
 // TODO recursive types avoiding infinite loop.
@@ -132,9 +132,9 @@ func TestSourceTree(t *testing.T) {
 		cache[p] = pkg
 		return pkg
 	}
-//	excluded := map[string]bool{
-//		filepath.Join(root, "pkg/exp/wingui"): true,
-//	}
+	//	excluded := map[string]bool{
+	//		filepath.Join(root, "pkg/exp/wingui"): true,
+	//	}
 	visit := func(path string, f os.FileInfo, err error) error {
 		if err != nil {
 			return err
@@ -160,7 +160,7 @@ func TestSourceTree(t *testing.T) {
 // TestCompile writes the test code to /tmp/testcode.go so
 // that it can be verified that it actually compiles.
 func TestCompile(t *testing.T) {
-	return			// avoid usually
+	return // avoid usually
 	code, _ := translateSymbols(testCode)
 	err := ioutil.WriteFile("/tmp/testcode.go", code, 0666)
 	if err != nil {

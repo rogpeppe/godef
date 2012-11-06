@@ -8,10 +8,10 @@ package parser
 
 import (
 	"bytes"
-	"errors"
 	"code.google.com/p/rog-go/exp/go/ast"
 	"code.google.com/p/rog-go/exp/go/scanner"
 	"code.google.com/p/rog-go/exp/go/token"
+	"errors"
 	"io"
 	"io/ioutil"
 	"os"

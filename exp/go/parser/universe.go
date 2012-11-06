@@ -1,6 +1,7 @@
 package parser
 
 import "code.google.com/p/rog-go/exp/go/ast"
+
 var Universe = ast.NewScope(nil)
 
 func declObj(kind ast.ObjKind, name string) {

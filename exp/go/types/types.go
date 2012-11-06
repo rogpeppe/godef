@@ -4,13 +4,13 @@ package types
 
 import (
 	"bytes"
-	"code.google.com/p/rog-go/exp/go/parser"
-	"container/list"
-	"fmt"
 	"code.google.com/p/rog-go/exp/go/ast"
+	"code.google.com/p/rog-go/exp/go/parser"
 	"code.google.com/p/rog-go/exp/go/printer"
 	"code.google.com/p/rog-go/exp/go/scanner"
 	"code.google.com/p/rog-go/exp/go/token"
+	"container/list"
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"

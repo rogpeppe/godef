@@ -6,11 +6,11 @@ package printer
 
 import (
 	"bytes"
-	"flag"
-	"io/ioutil"
 	"code.google.com/p/rog-go/exp/go/ast"
 	"code.google.com/p/rog-go/exp/go/parser"
 	"code.google.com/p/rog-go/exp/go/token"
+	"flag"
+	"io/ioutil"
 	"path/filepath"
 	"testing"
 	"time"

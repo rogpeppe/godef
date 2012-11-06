@@ -8,8 +8,8 @@ package ast
 
 import (
 	"bytes"
-	"fmt"
 	"code.google.com/p/rog-go/exp/go/token"
+	"fmt"
 )
 
 // A Scope maintains the set of named language entities declared

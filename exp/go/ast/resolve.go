@@ -7,9 +7,9 @@
 package ast
 
 import (
-	"fmt"
 	"code.google.com/p/rog-go/exp/go/scanner"
 	"code.google.com/p/rog-go/exp/go/token"
+	"fmt"
 	"strconv"
 )
 

@@ -7,8 +7,8 @@
 package ast
 
 import (
-	"fmt"
 	"code.google.com/p/rog-go/exp/go/token"
+	"fmt"
 	"io"
 	"os"
 	"reflect"
