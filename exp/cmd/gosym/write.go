@@ -114,7 +114,7 @@ func (wctxt *writeCmd) addGlobals() {
 			log.Printf("gosym: %v: changing %q to %q; saw %q; p, ignoring", p, sym, line.newExpr, info.ReferObj.Name)
 		}
 		if old, ok := wctxt.globalReplace[info.ReferObj]; ok {
-			if old != sym {
+			if old != line.newExpr {
 				log.Printf("gosym: %v: conflicting replacement for %s", p, line.expr)
 				return true
 			}
@@ -137,7 +137,7 @@ func (wctxt *writeCmd) addGlobals() {
 	}
 }
 
-// readSymbols reads all the symbols from stdin.
+// readSymbols records all the symbols from stdin.
 func (wctxt *writeCmd) readSymbols() error {
 	readLines(func(sl *symLine) error {
 		if sl.long {

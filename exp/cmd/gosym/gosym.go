@@ -31,18 +31,6 @@ import (
 // - there's no way to give an error if renaming creates a
 //	clash of symbols.
 
-var objKinds = map[string]ast.ObjKind{
-	"const": ast.Con,
-	"type":  ast.Typ,
-	"var":   ast.Var,
-	"func":  ast.Fun,
-}
-
-var (
-	verbose   = flag.Bool("v", false, "print warnings for unresolved symbols")
-	wflag     = flag.Bool("w", false, "read lines; change symbols in source code")
-)
-
 //gosym list [-t] [pkg...]
 //
 //list all symbols in all named packages.
@@ -56,11 +44,6 @@ var (
 //gosym unused pkg
 //	reads lines in long format; prints any definitions (in long format)
 //	found in pkgs that are not used by any other packages.
-//
-//gosym export
-//	reads lines in long or short format; changes any
-//	identifier names to be capitalised.
-//	Prints identifiers in short format.
 //
 //gosym unexport
 //	reads lines in long or short format; changes any
@@ -76,6 +59,7 @@ var (
 //gosym write [pkg...]
 //	reads lines in short format; makes any requested changes,
 //	restricting changes to the listed packages.
+var verbose = new(bool)	// TODO!
 
 func main() {
 	printf := func(f string, a ...interface{}) { fmt.Fprintf(os.Stderr, f, a...) }

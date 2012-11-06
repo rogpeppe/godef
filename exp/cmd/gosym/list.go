@@ -83,15 +83,21 @@ func (c *listCmd) visit(info *sym.Info, kindMask uint) bool {
 		_, xt := types.ExprType(e.X, func(path string) *ast.Package {
 			return c.ctxt.Import(path)
 		})
-		if xt.Node == nil {
+		c.ctxt.print("exprtype %s\n", pretty(e.X))
+		name = e.Sel.Name
+		switch xn := depointer(xt.Node).(type) {
+		case nil:
 			if c.verbose {
 				log.Printf("%v: no type for %s", c.ctxt.position(e.Pos()), pretty(e.X))
-				return true
 			}
-		}
-		name = e.Sel.Name
-		if xt.Kind != ast.Pkg {
-			name = pretty(depointer(xt.Node)) + "." + name
+			return true
+		case *ast.Ident:
+			name = xn.Name + "." + name
+		case *ast.ImportSpec:
+			// don't qualify with package identifier
+		default:
+			// literal struct or interface expression.
+			name = "_." + name
 		}
 	}
 	line := &symLine{
@@ -130,6 +136,13 @@ func parseKindMask(kinds string) (uint, error) {
 		}
 	}
 	return mask, nil
+}
+
+var objKinds = map[string]ast.ObjKind{
+	"const": ast.Con,
+	"type":  ast.Typ,
+	"var":   ast.Var,
+	"func":  ast.Fun,
 }
 
 func allKinds() string {
