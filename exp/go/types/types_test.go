@@ -5,12 +5,12 @@ import (
 	"code.google.com/p/rog-go/exp/go/parser"
 	"code.google.com/p/rog-go/exp/go/ast"
 	"code.google.com/p/rog-go/exp/go/token"
-	"log"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"unicode"
+	"io/ioutil"
 )
 
 // TODO recursive types avoiding infinite loop.
@@ -148,7 +148,6 @@ func TestSourceTree(t *testing.T) {
 		}
 		if pkg != nil {
 			for _, f := range pkg.Files {
-				log.Printf("doing %s\n", FileSet.Position(f.Package).Filename)
 				checkExprs(t, f, importer)
 			}
 		}
@@ -158,27 +157,16 @@ func TestSourceTree(t *testing.T) {
 	filepath.Walk(root, visit)
 }
 
-//// TestCompile checks that the test code actually compiles.
-//func TestCompile(t *testing.T) {
-//	code, _ := translateSymbols(testCode)
-//	
-//	c, err := exec.Command("/bin/sh", []string{"/bin/sh", "-c", "6g /dev/fd/0"}, nil, "", exec.Pipe, exec.PassThrough, exec.PassThrough).Run()
-//	if err != nil {
-//		t.Fatal("cannot run compiler: ", err)
-//	}
-//	go func() {
-//		io.Copy(c.Stdin, bytes.NewBuffer(code))
-//		c.Stdin.Close()
-//	}()
-//	w, err := c.Wait(0)
-//	if err != nil {
-//		t.Fatal("wait error: ", err)
-//	}
-//
-//	if w.ExitStatus() != 0 {
-//		t.Fatal("compile failed")
-//	}
-//}
+// TestCompile writes the test code to /tmp/testcode.go so
+// that it can be verified that it actually compiles.
+func TestCompile(t *testing.T) {
+	return			// avoid usually
+	code, _ := translateSymbols(testCode)
+	err := ioutil.WriteFile("/tmp/testcode.go", code, 0666)
+	if err != nil {
+		t.Errorf("write file failed: %v", err)
+	}
+}
 
 func TestOneFile(t *testing.T) {
 	code, offsetMap := translateSymbols(testCode)
@@ -420,6 +408,10 @@ func main() {
 	fd1.Write(nil)
 
 	_ = (<-xx_chan).xx_1
+	xx_structv@v := <-xx_chan
+	_ = xx_struct
+	tmp, _ := <-xx_chan
+	_ = tmp.xx_1
 
 	_ = xx_map[""].xx_1
 

@@ -48,6 +48,7 @@ func init() {
 	declObj(ast.Fun, "close")
 	declObj(ast.Fun, "complex")
 	declObj(ast.Fun, "copy")
+	declObj(ast.Fun, "delete")
 	declObj(ast.Fun, "imag")
 	declObj(ast.Fun, "len")
 	declObj(ast.Fun, "make")

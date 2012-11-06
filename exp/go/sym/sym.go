@@ -192,6 +192,9 @@ func (ctxt *Context) visitExpr(f *ast.File, e ast.Expr, local bool, visitf func(
 	info.Expr = e
 	switch e := e.(type) {
 	case *ast.Ident:
+		if e.Name == "_" {
+			return true
+		}
 		info.Pos = e.Pos()
 		info.Ident = e
 	case *ast.SelectorExpr:

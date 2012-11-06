@@ -360,6 +360,10 @@ func exprType(n ast.Node, expectTuple bool, pkg string, importer Importer) (xobj
 			switch n.Op {
 			case token.ARROW:
 				if ct, ok := u.Node.(*ast.ChanType); ok {
+					t := certify(ct.Value, ast.Var, u.Pkg, importer)
+					if expectTuple && t.Kind != ast.Bad {
+						return nil, Type{MultiValue{[]ast.Expr{t.Node.(ast.Expr), predecl("bool")}}, ast.Var, t.Pkg}
+					}
 					return nil, certify(ct.Value, ast.Var, u.Pkg, importer)
 				}
 			case token.RANGE:
