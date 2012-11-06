@@ -1,13 +1,14 @@
 package main
+
 import (
 	"bufio"
-	"os"
-	"io"
-	"fmt"
-	"strings"
-	"log"
-	"unicode"
 	"code.google.com/p/rog-go/exp/go/token"
+	"fmt"
+	"io"
+	"log"
+	"os"
+	"strings"
+	"unicode"
 )
 
 func readLines(f func(sl *symLine) error) error {
@@ -45,10 +46,21 @@ func runSimpleFilter(ctxt *context, f func(string) string) error {
 	})
 }
 
-type shortCmd struct {}
+type shortCmd struct{}
 
 func init() {
-	register("short", &shortCmd{}, nil)
+	register("short", &shortCmd{}, nil, `
+gosym short
+
+The short command reads lines from standard input
+in short or long format (see the list command) and
+prints them in short format:
+	file-position name new-name
+The file-position field holds the location of the identifier.
+The name field holds the name of the identifier (in X.Y format if
+it is defined as a member of another type X).
+The new-name field holds the desired new name for the identifier.
+`[1:])
 }
 
 func (c *shortCmd) run(ctxt *context, args []string) error {
@@ -62,27 +74,20 @@ func (c *shortCmd) run(ctxt *context, args []string) error {
 	})
 }
 
-type longCmd struct {}
+type exportCmd struct{}
 
 func init() {
-	register("long", &longCmd{}, nil)
-}
+	register("export", &exportCmd{}, nil, `
+gosym export
 
-func (c *longCmd) run(ctxt *context, args []string) error {
-	return readLines(func(sl *symLine) error {
-		if !sl.long {
-			return fmt.Errorf("not in long format")
-		}
-		ctxt.printf("%s\n", sl)
-		return nil
-	})
-}
+The export command reads lines in short or long
+format from its standard input and capitalises the first letter
+of all symbols (thus making them available to external
+packages)
 
-
-type exportCmd struct {}
-
-func init() {
-	register("export", &exportCmd{}, nil)
+Note that this may cause clashes with other symbols
+that have already been defined with the new capitalisation.
+`[1:])
 }
 
 func (c *exportCmd) run(ctxt *context, args []string) error {
@@ -100,10 +105,20 @@ func toExported(s string) string {
 	}, s)
 }
 
-type unexportCmd struct {}
+type unexportCmd struct{}
 
 func init() {
-	register("unexport", &unexportCmd{}, nil)
+	register("unexport", &unexportCmd{}, nil, `
+gosym unexport
+
+The unexport command reads lines in short or long
+format from its standard input and uncapitalises the first letter
+of all symbols (thus making them unavailable to external
+packages).
+
+Note that this may cause clashes with other symbols
+that have already been defined with the new capitalisation.
+`[1:])
 }
 
 func (c *unexportCmd) run(ctxt *context, args []string) error {
@@ -121,14 +136,24 @@ func toUnexported(s string) string {
 	}, s)
 }
 
-type renameCmd struct {}
+type renameCmd struct{}
 
 func init() {
-	register("rename", &renameCmd{}, nil)
+	register("rename", &renameCmd{}, nil, `
+gosym rename [old new]...
+
+The rename command renames any symbol with the
+given old name to the given new name. The
+qualifier symbol's qualifier is ignored.
+
+Note that this may cause clashes with other symbols
+that have already been defined with the new name.
+`[1:])
+
 }
 
 func (c *renameCmd) run(ctxt *context, args []string) error {
-	if len(args) % 2 != 0 {
+	if len(args)%2 != 0 {
 		return fmt.Errorf("rename requires even number of arguments")
 	}
 	from := make(map[string]string)
@@ -144,8 +169,7 @@ func (c *renameCmd) run(ctxt *context, args []string) error {
 	return nil
 }
 
-
-func readUses(pkgArgs []string) (defs map[token.Position] *symLine, uses map[token.Position] *symLine, err error) {
+func readUses(pkgArgs []string) (defs map[token.Position]*symLine, uses map[token.Position]*symLine, err error) {
 	if len(pkgArgs) == 0 {
 		return nil, nil, fmt.Errorf("at least one package argument required")
 	}
@@ -153,8 +177,8 @@ func readUses(pkgArgs []string) (defs map[token.Position] *symLine, uses map[tok
 	for _, a := range pkgArgs {
 		pkgs[a] = true
 	}
-	defs = make(map[token.Position] *symLine)
-	uses = make(map[token.Position] *symLine)
+	defs = make(map[token.Position]*symLine)
+	uses = make(map[token.Position]*symLine)
 	err = readLines(func(sl *symLine) error {
 		if !sl.long {
 			return fmt.Errorf("input must be in long format")
@@ -171,12 +195,18 @@ func readUses(pkgArgs []string) (defs map[token.Position] *symLine, uses map[tok
 	return
 }
 
-type usedCmd struct {}
+type usedCmd struct{}
 
 func init() {
 	// used reads lines in long format; prints any definitions (in long format)
 	// found in pkgs that are used by any other packages.
-	register("used", &usedCmd{}, nil)
+	register("used", &usedCmd{}, nil, `
+gosym used pkg...
+
+The used command reads lines in long format from the standard input and
+prints (in long format) any definitions found in the named packages that
+have references to them from any other package.
+`[1:])
 }
 
 func (c *usedCmd) run(ctxt *context, args []string) error {
@@ -194,12 +224,18 @@ func (c *usedCmd) run(ctxt *context, args []string) error {
 	return nil
 }
 
-type unusedCmd struct {}
+type unusedCmd struct{}
 
 func init() {
 	// unused reads lines in long format; prints any definitions (in long format)
 	// found in pkgs that are used by any other packages.
-	register("unused", &unusedCmd{}, nil)
+	register("unused", &unusedCmd{}, nil, `
+gosym unused pkg...
+
+The unused command reads lines in long format from the standard input and
+prints (in long format) any definitions found in the named packages that
+have no references to them from any other package.
+`[1:])
 }
 
 func (c *unusedCmd) run(ctxt *context, args []string) error {

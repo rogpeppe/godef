@@ -69,10 +69,10 @@ var parseSymLineTests = []struct {
 		long: false,
 		pos: token.Position{
 			Filename: "x.go",
-			Line:2,
-			Column:4,
+			Line:     2,
+			Column:   4,
 		},
-		expr: "old",
+		expr:    "old",
 		newExpr: "new",
 	},
 }, {

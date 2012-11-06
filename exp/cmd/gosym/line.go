@@ -11,7 +11,7 @@ import (
 
 type symLine struct {
 	pos      token.Position // file address of identifier; addr.Offset is zero.
-	referPos token.Position	// file address of referred-to identifier.
+	referPos token.Position // file address of referred-to identifier.
 	long     bool           // line is in long format.
 	exprPkg  string         // package containing identifier (long format only)
 	referPkg string         // package containing referred-to object (long format only)

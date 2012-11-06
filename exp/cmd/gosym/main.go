@@ -65,33 +65,10 @@ var verbose = flag.Bool("v", true, "print warning messages")
 func main() {
 	printf := func(f string, a ...interface{}) { fmt.Fprintf(os.Stderr, f, a...) }
 	flag.Usage = func() {
-		printf("usage: gosym [flags] [pkgpath...]\n")
-		flag.PrintDefaults()
+		printf("usage: gosym [-v] command [flags] [args...]\n")
 		printf("%s", `
-Gosym prints a line for each identifier used in the given
-packages. Each line printed has at least 5 space-separated fields
-in the following format:
-	file-position package referenced-package name type-kind
-
-The file-position field holds the location of the identifier.
-The package field holds the path of the package containing the identifier.
-The referenced-package field holds the path of the package
-where the identifier is defined.
-The name field holds the name of the identifier (in X.Y format if
-it is defined as a member of another type X).
-The type-kind field holds the type class of identifier (const,
-type, var or func), and ends with a "+" sign if this line
-marks the definition of the identifier.
-
-When the -w flag is specified, gosym reads lines from its standard
-symbols and changes symbols in the named packages accordingly. It
-expects lines in the same format that it prints. Each identifier at the
-line's file-position is changed to the name field.  If the type-kind
-field ends with a "+" sign, all occurrences of the identifier will be
-changed. Nothing will be changed outside the named packages.
-
-As with gofix, writes are destructive - make sure your
-source files are backed up before using gosym -w.
+Gosym manipulates symbols in Go source code.
+Various sub-commands print, process or write symbols.
 `)
 		os.Exit(2)
 	}
@@ -100,6 +77,10 @@ source files are backed up before using gosym -w.
 		flag.Usage()
 	}
 	name := flag.Arg(0)
+	if name == "help" {
+		help()
+		return
+	}
 	var c cmd
 	var args []string
 	for _, e := range cmds {
@@ -132,24 +113,41 @@ type cmd interface {
 }
 
 type cmdEntry struct {
-	name string
-	c cmd
-	fset *flag.FlagSet
+	name  string
+	about string
+	c     cmd
+	fset  *flag.FlagSet
 }
 
 var cmds []cmdEntry
 
-func register(name string, c cmd, fset *flag.FlagSet) {
+func register(name string, c cmd, fset *flag.FlagSet, about string) {
 	if fset == nil {
 		fset = flag.NewFlagSet("gosym "+name, flag.ExitOnError)
 	}
+	fset.Usage = func() {
+		fmt.Fprint(os.Stderr, about)
+		fset.PrintDefaults()
+	}
 	cmds = append(cmds, cmdEntry{
-		name: name,
-		c: c,
-		fset: fset,
+		name:  name,
+		about: about,
+		c:     c,
+		fset:  fset,
 	})
 }
-	
+
+func help() {
+	for i, e := range cmds {
+		if i > 0 {
+			fmt.Printf("\n")
+		}
+		e.fset.SetOutput(os.Stdout)
+		fmt.Print(e.about)
+		e.fset.PrintDefaults()
+	}
+}
+
 type context struct {
 	mu sync.Mutex
 	*sym.Context

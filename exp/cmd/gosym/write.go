@@ -1,9 +1,9 @@
 package main
 
 import (
-	"code.google.com/p/rog-go/exp/go/token"
 	"code.google.com/p/rog-go/exp/go/ast"
 	"code.google.com/p/rog-go/exp/go/sym"
+	"code.google.com/p/rog-go/exp/go/token"
 	"fmt"
 	"log"
 )
@@ -27,8 +27,26 @@ type writeCmd struct {
 	changed map[*ast.File]bool
 }
 
+var writeAbout = `
+gosym write [pkg...]
+
+The gosym command reads lines in short format (see the
+"short" subcommand) from its standard input
+that represent changes to make, and changes any of the
+named packages accordingly - that is, the identifier
+at each line's file-position (and all uses of it) is changed to the new-name
+field.
+
+If no packages are named, "." is used. No files outside the named packages
+will be changed. The names of any changed files will
+be printed.
+
+As with gofix, writes are destructive - make sure your
+source files are backed up before using this command.
+`[1:]
+
 func init() {
-	register("write", &writeCmd{}, nil)
+	register("write", &writeCmd{}, nil, writeAbout)
 }
 
 func (wctxt *writeCmd) run(ctxt *context, args []string) error {
