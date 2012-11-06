@@ -11,9 +11,9 @@ import (
 // Run represents a number of functions running concurrently.
 type Run struct {
 	limiter chan struct{}
-	done chan error
-	err chan error
-	wg sync.WaitGroup
+	done    chan error
+	err     chan error
+	wg      sync.WaitGroup
 }
 
 // Errors holds any errors encountered during
@@ -27,7 +27,7 @@ func (errs Errors) Error() string {
 	case 1:
 		return errs[0].Error()
 	}
-	return fmt.Sprintf("%s (and %d more)", errs[0].Error(), len(errs) - 1)
+	return fmt.Sprintf("%s (and %d more)", errs[0].Error(), len(errs)-1)
 }
 
 // NewRun returns a new parallel instance.  It will run up to maxPar
@@ -35,8 +35,8 @@ func (errs Errors) Error() string {
 func NewRun(maxPar int) *Run {
 	r := &Run{
 		limiter: make(chan struct{}, maxPar),
-		done: make(chan error),
-		err: make(chan error),
+		done:    make(chan error),
+		err:     make(chan error),
 	}
 	go func() {
 		var errs Errors

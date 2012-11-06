@@ -27,7 +27,6 @@ func newPipeConn() *pipeConn {
 	return c
 }
 
-
 // pre Go-1 tests, awaiting SetDeadline
 //func TestReadTimeout(t *testing.T) {
 //	p := newPipeConn()

@@ -1,4 +1,5 @@
 package abc
+
 import (
 	"container/vector"
 	"fmt"
@@ -15,7 +16,7 @@ type tContext struct {
 func (ctxt *context) transform(a *assign, cmds *vector.Vector) {
 	tctxt := &tContext{context: ctxt, cmds: cmds}
 	tctxt.transformAssign(a)
-fmt.Println("done transform")
+	fmt.Println("done transform")
 }
 
 func (ctxt *tContext) gensym() string {
@@ -25,12 +26,12 @@ func (ctxt *tContext) gensym() string {
 }
 
 func (ctxt *tContext) transformAssign(a *assign) {
-fmt.Printf("transformAssign %v=%v\n", a.name, a.input)
+	fmt.Printf("transformAssign %v=%v\n", a.name, a.input)
 	ctxt.transformPipe(a.input, a.name)
 }
 
-func (ctxt *tContext) transformPipe(p *pipe, out string)  {
-fmt.Println("transformPipe", p, out)
+func (ctxt *tContext) transformPipe(p *pipe, out string) {
+	fmt.Println("transformPipe", p, out)
 	// a x | b y ->
 	//	a x -out $>g
 	//	b $g y
@@ -48,7 +49,7 @@ fmt.Println("transformPipe", p, out)
 
 	if p.input == nil {
 		ctxt.transformUnit(p.unit, "", out)
-	}else{
+	} else {
 		id := ctxt.gensym()
 		ctxt.transformPipe(p.input, id)
 		ctxt.transformUnit(p.unit, id, out)
@@ -56,7 +57,7 @@ fmt.Println("transformPipe", p, out)
 }
 
 func (ctxt *tContext) transformUnit(u *unit, in, out string) {
-fmt.Printf("transformUnit %#v %#v %#v\n", u, in, out)
+	fmt.Printf("transformUnit %#v %#v %#v\n", u, in, out)
 	// a x {b y} z ->
 	// b y -out $>g
 	// a x $g z
@@ -67,22 +68,22 @@ fmt.Printf("transformUnit %#v %#v %#v\n", u, in, out)
 
 	c := &command{name: u.name, conns: make(map[string]*endpoint)}
 	args := u.args
-		
+
 	if in != "" {
 		args = &arg{
-			typ: aEndpoint,
-			value: in,
+			typ:    aEndpoint,
+			value:  in,
 			gender: Female,
-			next: args,
+			next:   args,
 		}
 	}
 	if out != "" {
 		args = &arg{
-			typ: aEndpoint,
+			typ:     aEndpoint,
 			argname: "out",
-			value: out,
-			gender: Male,
-			next: args,
+			value:   out,
+			gender:  Male,
+			next:    args,
 		}
 	}
 	ctxt.transformArgs(args, c, 1)
@@ -91,7 +92,7 @@ fmt.Printf("transformUnit %#v %#v %#v\n", u, in, out)
 
 func (ctxt *tContext) transformArgs(a *arg, c *command, n int) {
 tailcall:
-fmt.Printf("transformArg %d %#v\n", n, a)
+	fmt.Printf("transformArg %d %#v\n", n, a)
 	if a == nil {
 		return
 	}
@@ -125,7 +126,7 @@ fmt.Printf("transformArg %d %#v\n", n, a)
 	}
 
 	if c.conns[argname] != nil {
-		panic("arg already set: "+argname)
+		panic("arg already set: " + argname)
 	}
 	c.conns[argname] = e
 	a = a.next

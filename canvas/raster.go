@@ -2,10 +2,10 @@ package canvas
 
 import (
 	"code.google.com/p/freetype-go/freetype/raster"
-	"image/draw"
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 )
 
 // A RasterItem is a low level canvas object that

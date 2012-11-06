@@ -15,11 +15,11 @@
 package canvas
 
 import (
-	"container/list"
 	"code.google.com/p/x-go-binding/ui"
-	"image/draw"
+	"container/list"
 	"image"
 	"image/color"
+	"image/draw"
 	"log"
 )
 

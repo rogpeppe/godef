@@ -29,7 +29,7 @@ func (v *pointVec) Pop() raster.Point {
 		panic("empty vec")
 	}
 	p := s[len(s)-1]
-	*v = s[0:len(s)-1]
+	*v = s[0 : len(s)-1]
 	return p
 }
 

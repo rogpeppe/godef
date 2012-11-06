@@ -13,7 +13,7 @@ import (
 
 type cmd struct {
 	name  string
-	args string
+	args  string
 	f     func(cmd, *ec2.EC2, []string)
 	flags *flag.FlagSet
 }
@@ -176,7 +176,7 @@ func init() {
 		flags,
 	})
 }
-			
+
 func auth(c cmd, conn *ec2.EC2, args []string) {
 	if len(args) < 1 {
 		c.usage()
@@ -205,7 +205,7 @@ func init() {
 		flags,
 	})
 }
-			
+
 func revoke(c cmd, conn *ec2.EC2, args []string) {
 	if len(args) < 1 {
 		c.usage()
@@ -233,7 +233,7 @@ func mkgroup(c cmd, conn *ec2.EC2, args []string) {
 
 var ipperms struct {
 	fromPort int
-	toPort int
+	toPort   int
 	protocol string
 }
 
@@ -263,18 +263,18 @@ func ipPerms(args []string) (perms []ec2.IPPerm) {
 			m := groupNamePat.FindStringSubmatch(a)
 			groups = append(groups, ec2.UserSecurityGroup{
 				OwnerId: m[1],
-				Name: m[2],
+				Name:    m[2],
 			})
 		default:
 			fatalf("%q is neither security group id nor ip address", a)
 		}
 	}
 	return []ec2.IPPerm{{
-		FromPort: ipperms.fromPort,
-		ToPort: ipperms.toPort,
-		Protocol: ipperms.protocol,
+		FromPort:     ipperms.fromPort,
+		ToPort:       ipperms.toPort,
+		Protocol:     ipperms.protocol,
 		SourceGroups: groups,
-		SourceIPs: ips,
+		SourceIPs:    ips,
 	}}
 	return
 }

@@ -2,9 +2,9 @@ package canvas
 
 import (
 	"code.google.com/p/x-go-binding/ui"
-	"image/draw"
 	"image"
 	"image/color"
+	"image/draw"
 )
 
 // A MoveableItem is an item that may be

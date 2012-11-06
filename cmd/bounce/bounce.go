@@ -1,13 +1,13 @@
 package main
 
 import (
-	"code.google.com/p/x-go-binding/ui/x11"
-	"code.google.com/p/x-go-binding/ui"
 	"code.google.com/p/freetype-go/freetype/truetype"
 	"code.google.com/p/rog-go/canvas"
-	"image"
 	"code.google.com/p/rog-go/values"
+	"code.google.com/p/x-go-binding/ui"
+	"code.google.com/p/x-go-binding/ui/x11"
 	"fmt"
+	"image"
 	"image/color"
 	"io/ioutil"
 	"log"
@@ -56,7 +56,6 @@ const ballSize = 8
 
 var red = color.RGBA{0xff, 0, 0, 0xff}
 var blue = color.RGBA{0, 0, 0xff, 0xff}
-
 
 func main() {
 	rand.Seed(0)

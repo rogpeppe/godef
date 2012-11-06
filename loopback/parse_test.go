@@ -1,4 +1,5 @@
 package loopback
+
 import (
 	"reflect"
 	"strings"
@@ -6,6 +7,7 @@ import (
 )
 
 var noopts Options
+
 func TestParseNoOptions(t *testing.T) {
 	in, out, actual, err := parseNetwork("tcp")
 	if err != nil {
@@ -21,10 +23,10 @@ func TestParseNoOptions(t *testing.T) {
 
 var allopts = Options{
 	ByteDelay: 1,
-	Latency: 2,
-	MTU: 3,
-	InLimit: 4,
-	OutLimit: 5,
+	Latency:   2,
+	MTU:       3,
+	InLimit:   4,
+	OutLimit:  5,
 }
 
 var optStrings = []string{
@@ -37,8 +39,8 @@ var optStrings = []string{
 
 func TestParseSomeOptions(t *testing.T) {
 	testWithPrefix(t, optStrings, allopts, allopts, "tcp")
-	testWithPrefix(t, mapStrings(optStrings, func(s string)string{return "in."+s}), allopts, noopts, "tcp")
-	testWithPrefix(t, mapStrings(optStrings, func(s string)string{return "out."+s}), noopts, allopts, "tcp")
+	testWithPrefix(t, mapStrings(optStrings, func(s string) string { return "in." + s }), allopts, noopts, "tcp")
+	testWithPrefix(t, mapStrings(optStrings, func(s string) string { return "out." + s }), noopts, allopts, "tcp")
 }
 
 func mapStrings(a []string, f func(string) string) []string {

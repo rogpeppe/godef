@@ -3,9 +3,9 @@ package loopback
 import (
 	"errors"
 	"io"
+	"log"
 	"sync"
 	"time"
-	"log"
 )
 
 // TODO implement CloseWithError.
@@ -202,7 +202,7 @@ func (s *stream) Write(data []byte) (int, error) {
 		}
 		data = data[s.mtu:]
 	}
-	
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	now := time.Now()

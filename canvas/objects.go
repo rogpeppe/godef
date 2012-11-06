@@ -4,9 +4,9 @@ import (
 	"code.google.com/p/freetype-go/freetype/raster"
 	"code.google.com/p/rog-go/values"
 	"code.google.com/p/x-go-binding/ui"
-	"image/draw"
 	"image"
 	"image/color"
+	"image/draw"
 	"math"
 )
 

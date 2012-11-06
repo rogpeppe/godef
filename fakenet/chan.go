@@ -1,8 +1,8 @@
 package fakenet
 
 import (
-	"io"
 	"errors"
+	"io"
 	"runtime"
 	"sync"
 	"time"
@@ -32,7 +32,6 @@ func (r *ChanReader) Close() error {
 	r.mu.Unlock()
 	return nil
 }
-
 
 var ErrClosed = errors.New("operation on closed channel")
 var errUnimplemented = errors.New("unimplemented")
@@ -67,8 +66,8 @@ func (r *ChanReader) Read(buf []byte) (int, error) {
 
 // A ChanWriter writes to a chan []byte to satisfy Write requests.
 type ChanWriter struct {
-	c       chan<- []byte
-	closed  chan bool
+	c      chan<- []byte
+	closed chan bool
 }
 
 // NewChanWriter creates a new ChanWriter that writes
@@ -83,6 +82,7 @@ func (w *ChanWriter) SetWriteDeadline(t time.Time) error {
 }
 
 const errChanClosed = "runtime error: send on closed channel"
+
 var errWriteOnClosedPipe = errors.New("write on closed pipe")
 
 // Write implements the net.Conn Write method.

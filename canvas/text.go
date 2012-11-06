@@ -5,8 +5,8 @@ import (
 	"code.google.com/p/freetype-go/freetype/raster"
 	"code.google.com/p/freetype-go/freetype/truetype"
 	"code.google.com/p/rog-go/values"
-	"image/draw"
 	"image"
+	"image/draw"
 )
 
 const (

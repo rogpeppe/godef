@@ -75,11 +75,11 @@ func TestLatency(t *testing.T) {
 		leeway  = 10 * time.Millisecond
 	)
 	r, w := Pipe(Options{Latency: 100 * time.Millisecond})
-	go writeNValues(t, w, n, make([]byte, 14), 100 * time.Millisecond)
+	go writeNValues(t, w, n, make([]byte, 14), 100*time.Millisecond)
 	buf := make([]byte, 14)
 	for i := 0; i < 10; i++ {
 		now, sentTime := readPacket(t, r, buf, i)
-		if abs(now.Sub(sentTime) - latency) > leeway {
+		if abs(now.Sub(sentTime)-latency) > leeway {
 			t.Errorf("expected latency of %dns; got %dns\n", latency, now.Sub(sentTime))
 		}
 	}
@@ -89,8 +89,8 @@ func TestBandwidth(t *testing.T) {
 	const (
 		n          = 10
 		packetSize = 8192
-		bandwidth  = (1024 * 1024) / 8 // 1 Mbit in bytes
-		delay      = time.Duration(1e9) / bandwidth          // byte delay in ns.
+		bandwidth  = (1024 * 1024) / 8              // 1 Mbit in bytes
+		delay      = time.Duration(1e9) / bandwidth // byte delay in ns.
 	)
 	r, w := Pipe(Options{ByteDelay: delay, MTU: 8192})
 	go writeNValues(t, w, n, make([]byte, 8192), 0)

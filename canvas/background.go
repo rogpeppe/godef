@@ -1,8 +1,8 @@
 package canvas
 
 import (
-	"image/draw"
 	"image"
+	"image/draw"
 	"sync"
 )
 
@@ -34,11 +34,11 @@ type Background struct {
 func NewBackground(img draw.Image, bg image.Image, flush func(r image.Rectangle)) *Background {
 	r := img.Bounds()
 	return &Background{
-		img:      img,
-		bg:       bg,
-		r:        r,
+		img:       img,
+		bg:        bg,
+		r:         r,
 		flushrect: r,
-		imgflush: flush,
+		imgflush:  flush,
 	}
 }
 
@@ -160,7 +160,7 @@ func NullBacking() Backing {
 
 var globalLock sync.Mutex
 
-func (_ nullBacking) Flush() { }
+func (_ nullBacking) Flush() {}
 
 func (_ nullBacking) Atomically(f func(f FlushFunc)) {
 	globalLock.Lock()

@@ -1,4 +1,5 @@
 package typeapply
+
 import (
 	"testing"
 )
@@ -19,16 +20,16 @@ type Big struct {
 	A *Targ
 	B [2]*Targ
 	C []*Targ
-	D map[int] *Targ
-	E map[*Targ] int
-	F map[*Targ] *Targ
+	D map[int]*Targ
+	E map[*Targ]int
+	F map[*Targ]*Targ
 	G ***Targ
 	H interface{}
 	I *List
 	J List
 	// no instances:
 	K chan *Targ
-	L func(*Targ)*Targ
+	L func(*Targ) *Targ
 }
 
 func newBig() (big *Big, n int) {
@@ -55,7 +56,7 @@ func newBig() (big *Big, n int) {
 		I: &List{&List{nil, T()}, T()},
 		J: List{&List{nil, T()}, T()},
 		K: make(chan *Targ),
-		L: func(*Targ)*Targ{return nil},
+		L: func(*Targ) *Targ { return nil },
 	}
 	return
 }
@@ -63,8 +64,8 @@ func newBig() (big *Big, n int) {
 func TestBig(t *testing.T) {
 	b, n := newBig()
 	i := 0
-	m := make(map[*Targ] bool)
-	Do(func(targ *Targ){
+	m := make(map[*Targ]bool)
+	Do(func(targ *Targ) {
 		i++
 		if m[targ] {
 			t.Error("target reached twice")

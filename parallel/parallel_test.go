@@ -1,16 +1,17 @@
 package parallel_test
+
 import (
-	"testing"
-	"sync"
-	"sort"
-	"time"
 	"code.google.com/p/rog-go/parallel"
+	"sort"
+	"sync"
+	"testing"
+	"time"
 )
 
 func TestParallelMaxPar(t *testing.T) {
 	const (
 		totalDo = 10
-		maxPar = 3
+		maxPar  = 3
 	)
 	var mu sync.Mutex
 	max := 0
@@ -18,7 +19,7 @@ func TestParallelMaxPar(t *testing.T) {
 	tot := 0
 	r := parallel.NewRun(maxPar)
 	for i := 0; i < totalDo; i++ {
-		r.Do(func()error {
+		r.Do(func() error {
 			mu.Lock()
 			tot++
 			n++
@@ -49,6 +50,7 @@ func TestParallelMaxPar(t *testing.T) {
 }
 
 type intError int
+
 func (intError) Error() string {
 	return "error"
 }
@@ -56,7 +58,7 @@ func (intError) Error() string {
 func TestParallelError(t *testing.T) {
 	const (
 		totalDo = 10
-		errDo = 5
+		errDo   = 5
 	)
 	r := parallel.NewRun(6)
 	for i := 0; i < totalDo; i++ {
@@ -76,7 +78,7 @@ func TestParallelError(t *testing.T) {
 		t.Fatalf("expected error, got none")
 	}
 	errs := err.(parallel.Errors)
-	if len(errs) != totalDo - errDo {
+	if len(errs) != totalDo-errDo {
 		t.Fatalf("wrong error count; want %d got %d", len(errs), totalDo-errDo)
 	}
 	ints := make([]int, len(errs))
@@ -85,7 +87,7 @@ func TestParallelError(t *testing.T) {
 	}
 	sort.Ints(ints)
 	for i, n := range ints {
-		if n != i + errDo {
+		if n != i+errDo {
 			t.Errorf("unexpected error value; want %d got %d", i+errDo, n)
 		}
 	}
