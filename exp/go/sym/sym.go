@@ -141,7 +141,10 @@ func (ctxt *Context) IterateSyms(f *ast.File, visitf func(info *Info) bool) {
 			if n.Recv == nil && n.Name.Name == "init" {
 				n.Name.Obj = ast.NewObj(ast.Fun, "init")
 			}
-			e := ast.Expr(n.Name)
+			if n.Recv != nil {
+				ast.Walk(visit, n.Recv)
+			}
+			var e ast.Expr = n.Name
 			if n.Recv != nil {
 				// It's a method, so we need to synthesise a
 				// selector expression so that visitExpr doesn't
