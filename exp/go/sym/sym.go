@@ -69,7 +69,7 @@ func (ctxt *Context) importerFunc() types.Importer {
 		if pkg := ctxt.pkgCache[path]; pkg != nil {
 			return pkg
 		}
-		cwd, _ := os.Getwd()		// TODO put this into Context?
+		cwd, _ := os.Getwd() // TODO put this into Context?
 		bpkg, err := build.Import(path, cwd, 0)
 		if err != nil {
 			ctxt.logf(token.NoPos, "cannot find %q: %v", path, err)
