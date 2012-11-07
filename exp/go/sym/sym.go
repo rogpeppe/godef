@@ -69,11 +69,16 @@ func (ctxt *Context) importerFunc() types.Importer {
 		if pkg := ctxt.pkgCache[path]; pkg != nil {
 			return pkg
 		}
-		cwd, _ := os.Getwd()
+		cwd, _ := os.Getwd()		// TODO put this into Context?
 		bpkg, err := build.Import(path, cwd, 0)
 		if err != nil {
 			ctxt.logf(token.NoPos, "cannot find %q: %v", path, err)
 			return nil
+		}
+		// Relative paths can have several names
+		if pkg := ctxt.pkgCache[bpkg.ImportPath]; pkg != nil {
+			ctxt.pkgCache[path] = pkg
+			return pkg
 		}
 		var files []string
 		files = append(files, bpkg.GoFiles...)
@@ -91,6 +96,9 @@ func (ctxt *Context) importerFunc() types.Importer {
 		for _, pkg := range pkgs {
 			if ctxt.pkgCache[path] == nil {
 				ctxt.pkgCache[path] = pkg
+				if path != bpkg.ImportPath {
+					ctxt.pkgCache[bpkg.ImportPath] = pkg
+				}
 			} else {
 				ctxt.logf(token.NoPos, "unexpected extra package %q in %q", pkg.Name, path)
 			}
