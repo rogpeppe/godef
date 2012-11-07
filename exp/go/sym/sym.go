@@ -150,7 +150,9 @@ func (ctxt *Context) IterateSyms(f *ast.File, visitf func(info *Info) bool) {
 			ok = ctxt.visitExpr(f, e, false, visitf)
 			local = true
 			ast.Walk(visit, n.Type)
-			ast.Walk(visit, n.Body)
+			if n.Body != nil {
+				ast.Walk(visit, n.Body)
+			}
 			local = false
 			return false
 
