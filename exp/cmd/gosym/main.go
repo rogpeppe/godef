@@ -1,4 +1,4 @@
-// The gosym command prints symbols in Go source code.
+// The gosym command manipulates symbols in Go source code.
 // It supports the following commands:
 //
 // gosym short
