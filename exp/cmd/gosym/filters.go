@@ -161,13 +161,12 @@ func (c *renameCmd) run(ctxt *context, args []string) error {
 	for i := 0; i < len(args); i += 2 {
 		from[args[i]] = args[i+1]
 	}
-	runSimpleFilter(ctxt, func(s string) string {
+	return runSimpleFilter(ctxt, func(s string) string {
 		if to, ok := from[s]; ok {
 			return to
 		}
 		return s
 	})
-	return nil
 }
 
 func readUses(pkgArgs []string) (defs map[token.Position]*symLine, uses map[token.Position]*symLine, err error) {

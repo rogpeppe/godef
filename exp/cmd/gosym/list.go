@@ -48,7 +48,7 @@ func init() {
 	fset.StringVar(&c.kinds, "k", allKinds(), "kinds of symbol types to include")
 	fset.BoolVar(&c.verbose, "v", false, "print warnings about undefined symbols")
 	fset.BoolVar(&c.printType, "t", false, "print symbol type")
-	fset.BoolVar(&c.all, "a", false, "print internal and universe symbols too")
+	fset.BoolVar(&c.all, "a", false, "print internal symbols too")
 	register("list", c, fset, listAbout)
 }
 
@@ -89,10 +89,11 @@ func (c *listCmd) visit(info *sym.Info, kindMask uint) bool {
 	if (1<<uint(info.ReferObj.Kind))&kindMask == 0 {
 		return true
 	}
-	if !c.all {
-		if info.Universe || !isExported(info.Ident.Name) {
-			return true
-		}
+	if info.Universe {
+		return true
+	}
+	if !c.all && !isExported(info.Ident.Name) {
+		return true
 	}
 	eposition := c.ctxt.position(info.Pos)
 	exprPkg := c.ctxt.positionToImportPath(eposition)
