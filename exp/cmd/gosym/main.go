@@ -115,45 +115,18 @@ import (
 
 // TODO allow changing of package identifiers too.
 
-// caveats:
-// - map keys
+// CAVEATS:
+// - map keys are not properly resolved.
 // - no declaration for init
-// - type switches?
-// - embedded types
-// - import to .
-// - test files are ignored.
+// - identifer in a type switch probably doesn't work properly.
+// - type names embedded in structs or interfaces don't rename properly.
+// - import to . is not supported.
+// - test files are not dealt with properly.
 // - can't change package identifiers
 // - there's no way to give an error if renaming creates a
 //	clash of symbols.
+// - conditional compilation not supported
 
-//gosym list [-t] [pkg...]
-//
-//list all symbols in all named packages.
-//	foo/filename.go:23:3: package referenced-package name type-kind
-//
-//gosym used pkg...
-//
-//	reads lines in long format; prints any definitions (in long format)
-//	found in pkgs that are used by any other packages.
-//
-//gosym unused pkg
-//	reads lines in long format; prints any definitions (in long format)
-//	found in pkgs that are not used by any other packages.
-//
-//gosym unexport
-//	reads lines in long or short format; changes any
-//	identifier names to be uncapitalised.
-//
-//gosym short
-//	reads lines in long or short format; prints them in short format.
-//
-//gosym rename from1 to1 from2 to2 ...
-//	reads lines in long or short format; renames symbols according
-//	to the given rules.
-//
-//gosym write [pkg...]
-//	reads lines in short format; makes any requested changes,
-//	restricting changes to the listed packages.
 var verbose = flag.Bool("v", true, "print warning messages")
 
 func main() {
