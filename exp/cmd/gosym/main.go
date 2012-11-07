@@ -1,4 +1,98 @@
 // The gosym command prints symbols in Go source code.
+// It supports the following commands:
+//
+// gosym short
+// 
+// The short command reads lines from standard input
+// in short or long format (see the list command) and
+// prints them in short format:
+// 	file-position name new-name
+// The file-position field holds the location of the identifier.
+// The name field holds the name of the identifier (in X.Y format if
+// it is defined as a member of another type X).
+// The new-name field holds the desired new name for the identifier.
+// 
+// gosym export
+// 
+// The export command reads lines in short or long
+// format from its standard input and capitalises the first letter
+// of all symbols (thus making them available to external
+// packages)
+// 
+// Note that this may cause clashes with other symbols
+// that have already been defined with the new capitalisation.
+// 
+// gosym unexport
+// 
+// The unexport command reads lines in short or long
+// format from its standard input and uncapitalises the first letter
+// of all symbols (thus making them unavailable to external
+// packages).
+// 
+// Note that this may cause clashes with other symbols
+// that have already been defined with the new capitalisation.
+// 
+// gosym rename [old new]...
+// 
+// The rename command renames any symbol with the
+// given old name to the given new name. The
+// qualifier symbol's qualifier is ignored.
+// 
+// Note that this may cause clashes with other symbols
+// that have already been defined with the new name.
+// 
+// gosym used pkg...
+// 
+// The used command reads lines in long format from the standard input and
+// prints (in long format) any definitions found in the named packages that
+// have references to them from any other package.
+// 
+// gosym unused pkg...
+// 
+// The unused command reads lines in long format from the standard input and
+// prints (in long format) any definitions found in the named packages that
+// have no references to them from any other package.
+// 
+// gosym list [flags] [pkg...]
+// 
+// The list command prints a line for each identifier
+// used in the named packages. Each line printed has at least 6 space-separated fields
+// in the following format:
+// 	file-position referenced-file-position package referenced-package name type-kind
+// This format is known as "long" format.
+// If no packages are named, "." is used.
+// 
+// The file-position field holds the location of the identifier.
+// The referenced-file-position field holds the location of the
+// definition of the identifier.
+// The package field holds the path of the package containing the identifier.
+// The referenced-package field holds the path of the package
+// where the identifier is defined.
+// The name field holds the name of the identifier (in X.Y format if
+// it is defined as a member of another type X).
+// The type-kind field holds the type class of identifier (const,
+// type, var or func), and ends with a "+" sign if this line
+// marks the definition of the identifier.
+//   -a=false: print internal and universe symbols too
+//   -k="type,const,var,func": kinds of symbol types to include
+//   -t=false: print symbol type
+//   -v=false: print warnings about undefined symbols
+// 
+// gosym write [pkg...]
+// 
+// The gosym command reads lines in short format (see the
+// "short" subcommand) from its standard input
+// that represent changes to make, and changes any of the
+// named packages accordingly - that is, the identifier
+// at each line's file-position (and all uses of it) is changed to the new-name
+// field.
+// 
+// If no packages are named, "." is used. No files outside the named packages
+// will be changed. The names of any changed files will
+// be printed.
+// 
+// As with gofix, writes are destructive - make sure your
+// source files are backed up before using this command.
 package main
 
 import (
