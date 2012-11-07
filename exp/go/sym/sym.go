@@ -213,7 +213,10 @@ func (ctxt *Context) visitExpr(f *ast.File, e ast.Expr, local bool, visitf func(
 	if parser.Universe.Lookup(obj.Name) != obj {
 		info.ReferPos = types.DeclPos(obj)
 		if info.ReferPos == token.NoPos {
-			ctxt.logf(e.Pos(), "no declaration for %s", pretty(e))
+			name := pretty(e)
+			if name != "init" {
+				ctxt.logf(e.Pos(), "no declaration for %s", pretty(e))
+			}
 			return true
 		}
 	} else {
