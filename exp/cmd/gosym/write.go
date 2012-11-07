@@ -73,6 +73,9 @@ func (wctxt *writeCmd) run(ctxt *context, args []string) error {
 // replace replaces all symbols in files as directed by
 // the input lines.
 func (wctxt *writeCmd) replace(pkgs []string) {
+	if len(pkgs) == 0 {
+		pkgs = []string{"."}
+	}
 	visitor := func(info *sym.Info) bool {
 		globSym, globRepl := wctxt.globalReplace[info.ReferObj]
 		p := wctxt.position(info.Pos)
