@@ -70,6 +70,67 @@ func (wctxt *writeCmd) run(ctxt *context, args []string) error {
 	return nil
 }
 
+// readSymbols records all the symbols from stdin.
+func (wctxt *writeCmd) readSymbols() error {
+	readLines(func(sl *symLine) error {
+		if sl.long {
+			return fmt.Errorf("line is not in short format")
+		}
+		if sl.newExpr == sl.symName() {
+			// Ignore line if it doesn't request a change.
+			return nil
+		}
+		if old, ok := wctxt.lines[sl.pos]; ok {
+			log.Printf("%v: duplicate symbol location; original at %v", sl.pos, old.pos)
+			return nil
+		}
+		wctxt.lines[sl.pos] = sl
+		wctxt.symPkgs[wctxt.positionToImportPath(sl.pos)] = true
+		return nil
+	})
+	return nil
+}
+
+// addGlobals adds any symbols to wctxt.globalReplace that
+// have a change requested by any input line.
+func (wctxt *writeCmd) addGlobals() {
+	// visitor adds a symbol to wctxt.globalReplace if necessary.
+	visitor := func(info *sym.Info) bool {
+		p := wctxt.position(info.Pos)
+		p.Offset = 0
+		line, ok := wctxt.lines[p]
+		if !ok {
+			return true
+		}
+		sym := line.symName()
+		if sym != info.ReferObj.Name {
+			// name being changed does not match object.
+			log.Printf("gosym: %v: changing %q to %q; saw %q; p, ignoring", p, sym, line.newExpr, info.ReferObj.Name)
+		}
+		if old, ok := wctxt.globalReplace[info.ReferObj]; ok {
+			if old != line.newExpr {
+				log.Printf("gosym: %v: conflicting replacement for %s", p, line.expr)
+				return true
+			}
+		}
+		wctxt.globalReplace[info.ReferObj] = line.newExpr
+		return true
+	}
+
+	// Search for all symbols that need replacing.
+	for path := range wctxt.symPkgs {
+		pkg := wctxt.Import(path)
+		if pkg == nil {
+			log.Printf("gosym: could not find package %q", path)
+			continue
+		}
+		for _, f := range pkg.Files {
+			// TODO don't bother if file isn't mentioned in input lines.
+			wctxt.IterateSyms(f, visitor)
+		}
+	}
+}
+
 // replace replaces all symbols in files as directed by
 // the input lines.
 func (wctxt *writeCmd) replace(pkgs []string) {
@@ -116,65 +177,4 @@ func (wctxt *writeCmd) replace(pkgs []string) {
 			wctxt.IterateSyms(f, visitor)
 		}
 	}
-}
-
-// addGlobals adds any symbols to wctxt.globalReplace that
-// have a change requested by any input line.
-func (wctxt *writeCmd) addGlobals() {
-	// visitor adds a symbol to wctxt.globalReplace if necessary.
-	visitor := func(info *sym.Info) bool {
-		p := wctxt.position(info.Pos)
-		p.Offset = 0
-		line, ok := wctxt.lines[p]
-		if !ok {
-			return true
-		}
-		sym := line.symName()
-		if sym != info.ReferObj.Name {
-			// name being changed does not match object.
-			log.Printf("gosym: %v: changing %q to %q; saw %q; p, ignoring", p, sym, line.newExpr, info.ReferObj.Name)
-		}
-		if old, ok := wctxt.globalReplace[info.ReferObj]; ok {
-			if old != line.newExpr {
-				log.Printf("gosym: %v: conflicting replacement for %s", p, line.expr)
-				return true
-			}
-		}
-		wctxt.globalReplace[info.ReferObj] = line.newExpr
-		return true
-	}
-
-	// Search for all symbols that need replacing.
-	for path := range wctxt.symPkgs {
-		pkg := wctxt.Import(path)
-		if pkg == nil {
-			log.Printf("gosym: could not find package %q", path)
-			continue
-		}
-		for _, f := range pkg.Files {
-			// TODO don't bother if file isn't mentioned in input lines.
-			wctxt.IterateSyms(f, visitor)
-		}
-	}
-}
-
-// readSymbols records all the symbols from stdin.
-func (wctxt *writeCmd) readSymbols() error {
-	readLines(func(sl *symLine) error {
-		if sl.long {
-			return fmt.Errorf("line is not in short format")
-		}
-		if sl.newExpr == sl.symName() {
-			// Ignore line if it doesn't request a change.
-			return nil
-		}
-		if old, ok := wctxt.lines[sl.pos]; ok {
-			log.Printf("%v: duplicate symbol location; original at %v", sl.pos, old.pos)
-			return nil
-		}
-		wctxt.lines[sl.pos] = sl
-		wctxt.symPkgs[wctxt.positionToImportPath(sl.pos)] = true
-		return nil
-	})
-	return nil
 }
