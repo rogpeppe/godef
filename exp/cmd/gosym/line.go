@@ -19,8 +19,9 @@ type symLine struct {
 	local    bool           // identifier is function-local (long format only)
 	kind     ast.ObjKind    // kind of identifier (long format only)
 	plus     bool           // line is, or refers to, definition of object. (long format only)
-	newExpr  string         // new name of identifier, unqualified.
 	exprType string         // type of expression (unparsed). (long format only)
+	// valid in short form only.
+	newExpr  string         // new name of identifier, unqualified.
 }
 
 // long format:
