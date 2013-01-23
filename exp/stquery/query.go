@@ -13,7 +13,7 @@ type Scanner interface {
 
 // Statement returns an SQL query statement that selects columns based
 // on the names of the fields in dest, which must be a pointer
-// to a struct. If a field has the "query" tag, its value holds
+// to a struct. If a field has the "stquery" tag, its value holds
 // the name that will be used.
 //
 // The given template string must contain an occurrence of "$fields",
