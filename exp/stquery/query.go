@@ -15,7 +15,6 @@ type Scanner interface {
 // on the names of the fields in dest, which must be a pointer
 // to a struct. If a field has the "query" tag, its value holds
 // the name that will be used.
-// TODO support tags.
 //
 // The given template string must contain an occurrence of "$fields",
 // which will be replaced with a comma-separated list of the names.
