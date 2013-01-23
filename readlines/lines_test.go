@@ -1,27 +1,28 @@
 package readlines_test
 
 import (
+	"bufio"
 	"code.google.com/p/rog-go/readlines"
+	"fmt"
+	"io"
+	"reflect"
 	"strings"
 	"testing"
-	"io"
-	"bufio"
-	"reflect"
 )
 
 var linesTests = []struct {
-	input string
+	input     string
 	bufioSize int
-	maxSize int
-	lines []string
-} {{
+	maxSize   int
+	lines     []string
+}{{
 	input: `
 one
 two
 three
 `[1:],
 	maxSize: 10,
-	lines: []string{"one", "two", "three"},
+	lines:   []string{"one", "two", "three"},
 }, {
 	input: `
 01234567890123456789
@@ -29,27 +30,27 @@ three
 0123
 `[1:],
 	bufioSize: 16,
-	maxSize: 18,
-	lines: []string{"012345678901234567", "01234567890123456", "0123"},
+	maxSize:   18,
+	lines:     []string{"012345678901234567", "01234567890123456", "0123"},
 }, {
 	input: `
 0123456789abcdefghijklmnopqrstuvwxyz!@#$%%^&*
 0123456789abcdefghijklmnopqrstuvwxyz!@#$%%^&*
 `[1:],
 	maxSize: 10,
-	lines: []string{"0123456789", "0123456789"},
+	lines:   []string{"0123456789", "0123456789"},
 }, {
-	input: "oneline",
+	input:   "oneline",
 	maxSize: 20,
-	lines: []string{"oneline"},
+	lines:   []string{"oneline"},
 }, {
-	input: "\n\n",
+	input:   "\n\n",
 	maxSize: 20,
-	lines: []string{"", ""},
+	lines:   []string{"", ""},
 }, {
-	input: `Peppé`,
+	input:   `Peppé`,
 	maxSize: 5,
-	lines: []string{"Pepp"},
+	lines:   []string{"Pepp"},
 },
 }
 
@@ -71,4 +72,22 @@ func TestLines(t *testing.T) {
 			t.Errorf("test %d; want %q; got %q", i, test.lines, lines)
 		}
 	}
+}
+
+// "one two"
+// "three"
+// "four"
+// ""
+// "five"
+func ExampleIter() {
+	input := `one two
+three
+four
+
+five`
+	r := strings.NewReader(input)
+	readlines.Iter(r, 1024*1024, func(line []byte) error {
+		fmt.Printf("%q\n", line)
+		return nil
+	})
 }
