@@ -74,11 +74,6 @@ func TestLines(t *testing.T) {
 	}
 }
 
-// "one two"
-// "three"
-// "four"
-// ""
-// "five"
 func ExampleIter() {
 	input := `one two
 three
@@ -90,4 +85,10 @@ five`
 		fmt.Printf("%q\n", line)
 		return nil
 	})
+	// Output:
+	// "one two"
+	// "three"
+	// "four"
+	// ""
+	// "five"
 }
