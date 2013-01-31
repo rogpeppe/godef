@@ -82,29 +82,28 @@ func (s *stream) printStatus(now time.Time) {
 
 // Loopback options for use with Pipe.
 type Options struct {
-	// ByteDelay controls the time a packet takes in the link.  A packet
-	// n bytes long takes time ByteDelay * n to exit
-	// the output queue and is available for reading Latency time later.
+	// ByteDelay controls the time a packet takes in the link.  A
+	// packet n bytes long takes time ByteDelay * n to exit the
+	// output queue and is available for reading Latency time later.
 	ByteDelay time.Duration
 	Latency   time.Duration
 
-	// MTU gives the maximum packet size that can
-	// be tranferred atomically across the link.
-	// Larger packet will be split.
+	// MTU gives the maximum packet size that can be tranferred
+	// atomically across the link.  Larger packets will be split.
 	// If this is zero, a default of 32768 is assumed
 	MTU int
 
-	// InLimit and OutLimit gives the size of the input and output queues.
-	// If either is zero, a default of MTU is assumed.
+	// InLimit and OutLimit gives the size of the input and output
+	// queues.  If either is zero, a default of MTU is assumed.
 	InLimit  int
 	OutLimit int
 }
 
-// Pipe creates an asynchronous in-memory pipe,
-// Writes are divided into packets of at most opts.MTU bytes
-// written to a flow-controlled output queue, transferred across the link,
-// and put into an input queue where it is readable with the r.
-// The options determine when and how the data will be transferred.
+// Pipe creates an asynchronous in-memory pipe, Writes are divided into
+// packets of at most opts.MTU bytes written to a flow-controlled output
+// queue, transferred across the link, and put into an input queue where
+// it is readable with the r.  The options determine when and how the
+// data will be transferred.
 func Pipe(opt Options) (r io.ReadCloser, w io.WriteCloser) {
 	if opt.MTU == 0 {
 		opt.MTU = 32768

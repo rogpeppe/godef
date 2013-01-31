@@ -68,6 +68,28 @@ func TestInputClose(t *testing.T) {
 	}
 }
 
+func TestNetPipe(t *testing.T) {
+	opt0 := Options{
+		Latency: 100 * time.Millisecond,
+	}
+	opt1 := Options{
+		Latency: 200 * time.Millisecond,
+	}
+	c0, c1 := NetPipe(opt0, opt1)
+
+	go writeNValues(t, c0, 1, make([]byte, 14), 0)
+	now, sentTime := readPacket(t, c1, make([]byte, 14), 0)
+	l0 := sentTime.Sub(now)
+
+	go writeNValues(t, c1, 1, make([]byte, 14), 0)
+	now, sentTime = readPacket(t, c0, make([]byte, 14), 0)
+	l1 := sentTime.Sub(now)
+
+	if l1-l0 < 50*time.Millisecond {
+		t.Fatalf("unexpected latency; expected 100ms, 200ms; got %v, %v", l0, l1)
+	}
+}
+
 func TestLatency(t *testing.T) {
 	const (
 		n       = 10
