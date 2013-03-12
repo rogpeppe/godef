@@ -3,11 +3,11 @@ package main
 import (
 	"bufio"
 	"flag"
-	"log"
-	"io"
-	"strings"
 	"fmt"
+	"io"
+	"log"
 	"os"
+	"strings"
 	"time"
 )
 
@@ -43,7 +43,7 @@ func main() {
 	wasPrefix := false
 	fmt.Fprintf(out, "start %s\n", time.Now().Format(time.RFC1123Z))
 	out.Flush()
-	for{
+	for {
 		line, isPrefix, err := b.ReadLine()
 		if err != nil {
 			break
@@ -123,7 +123,7 @@ func merge(c0, c1 <-chan line) <-chan line {
 					r0 = c0
 				} else {
 					out <- line1
-					r1 = 	c1
+					r1 = c1
 				}
 			}
 		}
@@ -132,7 +132,7 @@ func merge(c0, c1 <-chan line) <-chan line {
 }
 
 type line struct {
-	t time.Time
+	t    time.Time
 	line string
 	name string
 }
@@ -146,7 +146,7 @@ func readLines(r *bufio.Reader, name string) <-chan line {
 			log.Printf("mergetime: cannot read start line")
 			return
 		}
-		
+
 		start, err := time.Parse(time.RFC1123Z, startLine[len("start "):len(startLine)-1])
 		if err != nil {
 			log.Printf("mergetime: cannot parse start line %q: %v", startLine, err)
@@ -176,9 +176,9 @@ func readLines(r *bufio.Reader, name string) <-chan line {
 					out <- line{prev, s, name}
 					continue
 				}
-				d = time.Duration(min) * time.Minute +
-					time.Duration(sec) * time.Second +
-					time.Duration(millisec) * time.Millisecond
+				d = time.Duration(min)*time.Minute +
+					time.Duration(sec)*time.Second +
+					time.Duration(millisec)*time.Millisecond
 			} else {
 				var millisec int64
 				if _, err := fmt.Scanf(s[0:i], "%d", &millisec); err != nil {
@@ -198,7 +198,7 @@ func readLines(r *bufio.Reader, name string) <-chan line {
 
 func printStamp(w io.Writer, d time.Duration) {
 	if *printMilliseconds {
-		fmt.Fprintf(w, "%010d ", d / 1e6)
+		fmt.Fprintf(w, "%010d ", d/1e6)
 		return
 	}
 	msec := d / time.Millisecond
