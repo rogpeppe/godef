@@ -111,7 +111,10 @@ func DefaultImporter(path string) *ast.Package {
 // else can we do?
 //
 func isGoFile(d os.FileInfo) bool {
-	return strings.HasSuffix(d.Name(), ".go") && !strings.HasSuffix(d.Name(), "_test.go") && goodOSArch(d.Name())
+	return strings.HasSuffix(d.Name(), ".go") &&
+		!strings.HasSuffix(d.Name(), "_test.go") &&
+		!strings.HasPrefix(d.Name(), ".") &&
+		goodOSArch(d.Name())
 }
 
 // When Debug is true, log messages will be printed.
