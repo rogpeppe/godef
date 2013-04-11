@@ -116,12 +116,22 @@ func groups(c cmd, conn *ec2.EC2, _ []string) {
 	os.Stdout.Write(b.Bytes())
 }
 
+var instancesFlags struct {
+	addr  bool
+	state bool
+	all   bool
+}
+
 func init() {
+	flags := flag.NewFlagSet("instances", flag.ExitOnError)
+	flags.BoolVar(&instancesFlags.all, "a", false, "print terminated instances too")
+	flags.BoolVar(&instancesFlags.addr, "addr", false, "print instance address")
+	flags.BoolVar(&instancesFlags.state, "state", false, "print instance state")
 	cmds = append(cmds, cmd{
 		"instances",
 		"",
 		instances,
-		flag.NewFlagSet("instances", flag.ExitOnError),
+		flags,
 	})
 }
 
@@ -130,10 +140,43 @@ func instances(c cmd, conn *ec2.EC2, args []string) {
 	if err != nil {
 		errorf("cannot get instances: %v", err)
 	}
+	var line []string
 	for _, r := range resp.Reservations {
 		for _, inst := range r.Instances {
-			fmt.Printf("%s %s\n", inst.InstanceId, inst.DNSName)
+			if !instancesFlags.all && inst.State.Name == "terminated" {
+				continue
+			}
+			line = append(line[:0], inst.InstanceId)
+			if instancesFlags.state {
+				line = append(line, inst.State.Name)
+			}
+			if instancesFlags.addr {
+				if inst.DNSName == "" {
+					inst.DNSName = "none"
+				}
+				line = append(line, inst.DNSName)
+			}
+			fmt.Printf("%s\n", strings.Join(line, " "))
 		}
+	}
+}
+
+func init() {
+	cmds = append(cmds, cmd{
+		"terminate",
+		"[instance-id ...]",
+		terminate,
+		flag.NewFlagSet("terminate", flag.ExitOnError),
+	})
+}
+
+func terminate(c cmd, conn *ec2.EC2, args []string) {
+	if len(args) == 0 {
+		return
+	}
+	_, err := conn.TerminateInstances(args)
+	if err != nil {
+		fatalf("cannot terminate instances: %v", err)
 	}
 }
 
@@ -162,7 +205,7 @@ func delgroup(c cmd, conn *ec2.EC2, args []string) {
 		}
 	}
 	if hasError {
-		os.Exit(2)
+		os.Exit(1)
 	}
 }
 
