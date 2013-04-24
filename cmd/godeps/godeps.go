@@ -81,10 +81,10 @@ func list(pkgs []string) {
 	// the same project name under different GOPATH
 	// elements.
 	infoByProject := make(map[string] []*depInfo)
-	for dir, infos := range infoByProject {
+	for dir, infos := range infoByDir {
 		proj, err := dirToProject(dir)
 		if err != nil {
-			errorf("cannot get relative repo root for %q: %v", err)
+			errorf("cannot get relative repo root for %q: %v", dir, err)
 			continue
 		}
 		infoByProject[proj] = append(infoByProject[proj], infos...)
@@ -102,8 +102,8 @@ func list(pkgs []string) {
 		}
 	}
 	sort.Sort(deps)
-	for rel, info := range deps {
-		fmt.Printf("%s\t%s\t%s\t%s\n", rel, info.vcs.Kind(), info.info.revid, info.info.revno)
+	for _, info := range deps {
+		fmt.Printf("%s\t%s\t%s\t%s\n", info.project, info.vcs.Kind(), info.info.revid, info.info.revno)
 	}
 }
 
@@ -112,11 +112,11 @@ func dirToProject(dir string) (string, error) {
 		return "go", nil
 	}
 	for _, p := range filepath.SplitList(build.Default.GOPATH) {
-		if rel, ok := relativeToParent(p, dir); ok {
+		if rel, ok := relativeToParent(filepath.Join(p, "src"), dir); ok {
 			return rel, nil
 		}
 	}
-	return "", fmt.Errorf("cannot find project for %q", dir)
+	return "", fmt.Errorf("project directory not found in GOPATH or GOROOT", dir)
 }
 
 // relativeToParent returns the trailing portion of the
@@ -125,6 +125,10 @@ func dirToProject(dir string) (string, error) {
 func relativeToParent(parent, child string) (rel string, ok bool) {
 	parent = filepath.Clean(parent)
 	child = filepath.Clean(child)
+
+	if parent == child {
+		return "", true
+	}
 
 	if !strings.HasPrefix(child, parent + "/") {
 		return "", false
