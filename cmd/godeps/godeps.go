@@ -1,14 +1,15 @@
 package main
+
 import (
-	"os"
 	"bytes"
 	"errors"
-	"fmt"
 	"flag"
-	"os/exec"
+	"fmt"
 	"go/build"
-	"regexp"
+	"os"
+	"os/exec"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 )
@@ -17,6 +18,8 @@ var revFile = flag.String("u", "", "file containing desired revisions")
 var testDeps = flag.Bool("t", false, "include testing dependencies in output")
 
 var exitCode = 0
+
+var buildContext = build.Default
 
 var usage = `
 Usage:
@@ -55,7 +58,9 @@ func main() {
 		if len(pkgs) == 0 {
 			pkgs = []string{"."}
 		}
-		list(pkgs)
+		for _, info := range list(pkgs, *testDeps) {
+			fmt.Println(info)
+		}
 	}
 	os.Exit(exitCode)
 }
@@ -64,14 +69,31 @@ func update(file string) {
 	errorf("update not yet implemented")
 }
 
-func list(pkgs []string) {
-	infoByDir := make(map[string] []*depInfo)
-	walkDeps(pkgs, *testDeps, func(pkg *build.Package, err error) bool {
+func list(pkgs []string, testDeps bool) []*depInfo {
+	infoByDir := make(map[string][]*depInfo)
+	// We want to ignore the go core source and the projects
+	// for the root packages. Do this by getting leaf dependency info
+	// for all those things and adding them to an ignore list.
+	for _, pkgPath := range pkgs {
+		pkg, err := buildContext.Import(pkgPath, ".", build.FindOnly)
+		if err != nil {
+			errorf("cannot find %q: %v", pkgPath, err)
+			continue
+		}
+		findDepInfo(pkg.Dir, infoByDir)
+	}
+	ignoreDirs := map[string]bool{
+		filepath.Clean(buildContext.GOROOT): true,
+	}
+	for dir := range infoByDir {
+		ignoreDirs[dir] = true
+	}
+	walkDeps(pkgs, testDeps, func(pkg *build.Package, err error) bool {
 		if err != nil {
 			errorf("cannot import %q: %v", pkg.Name, err)
 			return false
 		}
-		findDepInfo(infoByDir, pkg.Dir)
+		findDepInfo(pkg.Dir, infoByDir)
 		return true
 	})
 	// We make a new map because dependency information
@@ -80,10 +102,10 @@ func list(pkgs []string) {
 	// also because there can be different packages with
 	// the same project name under different GOPATH
 	// elements.
-	infoByProject := make(map[string] []*depInfo)
+	infoByProject := make(map[string][]*depInfo)
 	for dir, infos := range infoByDir {
 		proj, err := dirToProject(dir)
-		if err != nil {
+		if err != nil && !ignoreDirs[dir] {
 			errorf("cannot get relative repo root for %q: %v", dir, err)
 			continue
 		}
@@ -97,48 +119,50 @@ func list(pkgs []string) {
 			}
 		}
 		for _, info := range infos {
+			if ignoreDirs[info.dir] {
+				continue
+			}
 			info.project = proj
 			deps = append(deps, info)
 		}
 	}
 	sort.Sort(deps)
-	for _, info := range deps {
-		fmt.Printf("%s\t%s\t%s\t%s\n", info.project, info.vcs.Kind(), info.info.revid, info.info.revno)
-	}
+	return deps
 }
 
 func dirToProject(dir string) (string, error) {
-	if _, ok := relativeToParent(build.Default.GOROOT, dir); ok {
+	if ok, _ := relativeToParent(buildContext.GOROOT, dir); ok {
 		return "go", nil
 	}
-	for _, p := range filepath.SplitList(build.Default.GOPATH) {
-		if rel, ok := relativeToParent(filepath.Join(p, "src"), dir); ok {
+	for _, p := range filepath.SplitList(buildContext.GOPATH) {
+		if ok, rel := relativeToParent(filepath.Join(p, "src"), dir); ok {
 			return rel, nil
 		}
 	}
-	return "", fmt.Errorf("project directory not found in GOPATH or GOROOT", dir)
+	return "", fmt.Errorf("project directory not found in GOPATH or GOROOT")
 }
 
-// relativeToParent returns the trailing portion of the
-// child path that is under the parent path,
-// and whether the child is under the parent.
-func relativeToParent(parent, child string) (rel string, ok bool) {
+// relativeToParent returns whether the child
+// path is under (or the same as) the parent path,
+// and if so returns the trailing portion of the
+// child path that is under the parent path.
+func relativeToParent(parent, child string) (ok bool, rel string) {
 	parent = filepath.Clean(parent)
 	child = filepath.Clean(child)
 
 	if parent == child {
-		return "", true
+		return true, ""
 	}
 
-	if !strings.HasPrefix(child, parent + "/") {
-		return "", false
+	if !strings.HasPrefix(child, parent+"/") {
+		return false, ""
 	}
-	return child[len(parent)+1:], true
+	return true, child[len(parent)+1:]
 }
 
 type depInfoSlice []*depInfo
 
-func (s depInfoSlice) Len() int { return len(s) }
+func (s depInfoSlice) Len() int      { return len(s) }
 func (s depInfoSlice) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
 func (s depInfoSlice) Less(i, j int) bool {
 	p, q := s[i], s[j]
@@ -150,12 +174,16 @@ func (s depInfoSlice) Less(i, j int) bool {
 
 type depInfo struct {
 	project string
-	dir string
-	vcs VCS
-	info VCSInfo
+	dir     string
+	vcs     VCS
+	VCSInfo
 }
 
-func findDepInfo(infoByDir map[string] []*depInfo, dir string) {
+func (info *depInfo) String() string {
+	return fmt.Sprintf("%s\t%s\t%s\t%s", info.project, info.vcs.Kind(), info.revid, info.revno)
+}
+
+func findDepInfo(dir string, infoByDir map[string][]*depInfo) {
 	dir, err := filepath.Abs(dir)
 	if err != nil {
 		errorf("cannot find absolute path of %q", dir)
@@ -164,7 +192,7 @@ func findDepInfo(infoByDir map[string] []*depInfo, dir string) {
 	dirs := parents(dir)
 	// Check from the root down that there is no
 	// existing information for any parent directory.
-	for i := len(dirs)-1; i >= 0; i-- {
+	for i := len(dirs) - 1; i >= 0; i-- {
 		if info := infoByDir[dirs[i]]; info != nil {
 			return
 		}
@@ -180,9 +208,9 @@ func findDepInfo(infoByDir map[string] []*depInfo, dir string) {
 					continue
 				}
 				infoByDir[dir] = append(infoByDir[dir], &depInfo{
-					dir: dir,
-					vcs: vcs,
-					info: info,
+					dir:     dir,
+					vcs:     vcs,
+					VCSInfo:    info,
 				})
 				nfound++
 			}
@@ -212,9 +240,9 @@ func parents(path string) []string {
 }
 
 type walkContext struct {
-	checked map[string]bool
+	checked      map[string]bool
 	includeTests bool
-	visit func(*build.Package, error) bool
+	visit        func(*build.Package, error) bool
 }
 
 // walkDeps traverses the import dependency tree of the
@@ -227,9 +255,9 @@ type walkContext struct {
 // Each package will be visited at most once.
 func walkDeps(paths []string, includeTests bool, visit func(*build.Package, error) bool) {
 	ctxt := &walkContext{
-		checked: make(map[string] bool),
+		checked:      make(map[string]bool),
 		includeTests: includeTests,
-		visit: visit,
+		visit:        visit,
 	}
 	for _, path := range paths {
 		ctxt.walkDeps(path)
@@ -251,7 +279,7 @@ func (ctxt *walkContext) walkDeps(pkgPath string) {
 	// helper commands in package main).
 	// The solution is to avoid using build.Import but it's convenient
 	// at the moment.
-	pkg, err := build.Default.Import(pkgPath, ".", 0)
+	pkg, err := buildContext.Import(pkgPath, ".", 0)
 	ctxt.checked[pkg.ImportPath] = true
 	descend := ctxt.visit(pkg, err)
 	if err != nil || !descend {
@@ -277,12 +305,12 @@ type VCS interface {
 
 type VCSInfo struct {
 	revid string
-	revno string	// optional
+	revno string // optional
 }
 
-var metadataDirs = map[string] VCS{
+var metadataDirs = map[string]VCS{
 	".bzr": bzrVCS{},
-	".hg": hgVCS{},
+	".hg":  hgVCS{},
 }
 
 // TODO git
@@ -290,6 +318,7 @@ var metadataDirs = map[string] VCS{
 // git checkout $revid
 
 type bzrVCS struct{}
+
 func (bzrVCS) Kind() string {
 	return "bzr"
 }
@@ -362,8 +391,7 @@ func runCmd(dir string, name string, args ...string) (string, error) {
 	return "", fmt.Errorf("cannot run %q: %v", name, err)
 }
 
-
-func errorf(f string, a ...interface{}) {
+var errorf = func(f string, a ...interface{}) {
 	fmt.Fprintf(os.Stderr, "godeps: %s\n", fmt.Sprintf(f, a...))
 	exitCode = 1
 }
