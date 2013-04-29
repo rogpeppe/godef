@@ -210,7 +210,7 @@ func findDepInfo(dir string, infoByDir map[string][]*depInfo) {
 				infoByDir[dir] = append(infoByDir[dir], &depInfo{
 					dir:     dir,
 					vcs:     vcs,
-					VCSInfo:    info,
+					VCSInfo: info,
 				})
 				nfound++
 			}
