@@ -26,20 +26,17 @@ Usage:
 	godeps [-t] [pkg ...]
 	godeps -u file
 
-In the first form of usage, godeps prints to standard output
-a list of all the source dependencies of the named packages
-(or the package in the current directory if none is given).
-If there is ambiguity in the source-control systems used,
-godeps will print all the available versions and an error,
-exiting with a false status. It is up to the user to remove
-lines from the output to make the output suitable for
-input to godeps -u.
+In the first form of usage, godeps prints to standard output a list of
+all the source dependencies of the named packages (or the package in
+the current directory if none is given).  If there is ambiguity in the
+source-control systems used, godeps will print all the available versions
+and an error, exiting with a false status. It is up to the user to remove
+lines from the output to make the output suitable for input to godeps -u.
 
-In the second form, godeps updates source to
-versions specified by the -u file argument,
-which should hold version information in the
-same form printed by godeps. It is an error if the file contains
-more than one line for the same package root.
+In the second form, godeps updates source to versions specified by the
+-u file argument, which should hold version information in the same
+form printed by godeps. It is an error if the file contains more than
+one line for the same package root.
 `[1:]
 
 func main() {
