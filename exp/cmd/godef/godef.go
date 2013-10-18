@@ -199,6 +199,11 @@ func typeStr(obj *ast.Object, typ types.Type) string {
 	case ast.Pkg:
 		return fmt.Sprintf("import (%s %s)", obj.Name, typ.Node.(*ast.ImportSpec).Path.Value)
 	case ast.Con:
+		if decl, ok := obj.Decl.(*ast.ValueSpec); ok {
+			if v, ok := decl.Values[0].(*ast.BasicLit); ok {
+				return fmt.Sprintf("const %s %v = %s", obj.Name, pretty{typ.Node}, v.Value)
+			}
+		}
 		return fmt.Sprintf("const %s %v", obj.Name, pretty{typ.Node})
 	case ast.Lbl:
 		return fmt.Sprintf("label %s", obj.Name)
