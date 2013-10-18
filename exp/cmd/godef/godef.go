@@ -193,7 +193,7 @@ func done(obj *ast.Object, typ types.Type) {
 }
 
 func typeStr(obj *ast.Object, typ types.Type) string {
-	switch typ.Kind {
+	switch obj.Kind {
 	case ast.Fun, ast.Var:
 		return fmt.Sprintf("%s %v", obj.Name, pretty{typ.Node})
 	case ast.Pkg:
