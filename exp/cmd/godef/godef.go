@@ -154,7 +154,7 @@ func importPath(n *ast.ImportSpec) string {
 func findIdentifier(f *ast.File, searchpos int) ast.Node {
 	ec := make(chan ast.Node)
 	go func() {
-		var visit FVisitor = func(n ast.Node) bool {
+		visit := func(n ast.Node) bool {
 			var startPos token.Pos
 			switch n := n.(type) {
 			case *ast.Ident:
@@ -167,15 +167,14 @@ func findIdentifier(f *ast.File, searchpos int) ast.Node {
 				return true
 			}
 			start := types.FileSet.Position(startPos).Offset
-			end := types.FileSet.Position(n.End()).Offset
-
-			if int(start) <= searchpos && searchpos <= end {
+			end := start + int(n.End()-startPos)
+			if start <= searchpos && searchpos <= end {
 				ec <- n
 				runtime.Goexit()
 			}
 			return true
 		}
-		ast.Walk(visit, f)
+		ast.Walk(FVisitor(visit), f)
 		ec <- nil
 	}()
 	ev := <-ec
@@ -222,16 +221,19 @@ func done(obj *ast.Object, typ types.Type) {
 func typeStr(obj *ast.Object, typ types.Type) string {
 	switch obj.Kind {
 	case ast.Fun, ast.Var:
-		return fmt.Sprintf("%s %v", obj.Name, pretty{typ.Node})
+		return fmt.Sprintf("%s %v", obj.Name, prettyType{typ})
 	case ast.Pkg:
 		return fmt.Sprintf("import (%s %s)", obj.Name, typ.Node.(*ast.ImportSpec).Path.Value)
 	case ast.Con:
-		return fmt.Sprintf("const %s %v", obj.Name, pretty{typ.Node})
+		if decl, ok := obj.Decl.(*ast.ValueSpec); ok {
+			return fmt.Sprintf("const %s %v = %s", obj.Name, prettyType{typ}, pretty{decl.Values[0]})
+		}
+		return fmt.Sprintf("const %s %v", obj.Name, prettyType{typ})
 	case ast.Lbl:
 		return fmt.Sprintf("label %s", obj.Name)
 	case ast.Typ:
 		typ = typ.Underlying(false, types.DefaultImporter)
-		return fmt.Sprintf("type %s %v", obj.Name, pretty{typ.Node})
+		return fmt.Sprintf("type %s %v", obj.Name, prettyType{typ})
 	}
 	return fmt.Sprintf("unknown %s %v", obj.Name, typ.Kind)
 }
@@ -323,4 +325,18 @@ func (p pretty) String() string {
 	var b bytes.Buffer
 	printer.Fprint(&b, types.FileSet, p.n)
 	return b.String()
+}
+
+type prettyType struct {
+	n types.Type
+}
+
+func (p prettyType) String() string {
+	// TODO print path package when appropriate.
+	// Current issues with using p.n.Pkg:
+	//	- we should actually print the local package identifier
+	//	rather than the package path when possible.
+	//	- p.n.Pkg is non-empty even when
+	//	the type is not relative to the package.
+	return pretty{p.n.Node}.String()
 }
