@@ -5,15 +5,18 @@ import (
 	"code.google.com/p/rog-go/exp/go/ast"
 	"code.google.com/p/rog-go/exp/go/parser"
 	"code.google.com/p/rog-go/exp/go/printer"
+	"code.google.com/p/rog-go/exp/go/token"
 	"code.google.com/p/rog-go/exp/go/types"
 	"errors"
 	"flag"
 	"fmt"
+	"go/build"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 )
 
@@ -88,13 +91,13 @@ func main() {
 		fail("cannot parse %s: %v", filename, err)
 	}
 
-	var e ast.Expr
+	var o ast.Node
 	switch {
 	case flag.NArg() > 0:
-		e = parseExpr(f.Scope, flag.Arg(0))
+		o = parseExpr(f.Scope, flag.Arg(0))
 
 	case searchpos >= 0:
-		e = findIdentifier(f, searchpos)
+		o = findIdentifier(f, searchpos)
 
 	default:
 		fmt.Fprintf(os.Stderr, "no expression or offset specified\n")
@@ -105,21 +108,39 @@ func main() {
 	if *acmeFlag {
 		fmt.Printf("\t%s:#%d\n", afile.name, afile.runeOffset)
 	}
-	if !*tflag {
-		// try local declarations only
+	switch e := o.(type) {
+	case *ast.ImportSpec:
+		path := importPath(e)
+		pkg, err := build.Default.Import(path, "", build.FindOnly)
+		if err != nil {
+			fail("error finding import path for %s: %s", path, err)
+		}
+		fmt.Println(pkg.Dir)
+	case ast.Expr:
+		if !*tflag {
+			// try local declarations only
+			if obj, typ := types.ExprType(e, types.DefaultImporter); obj != nil {
+				done(obj, typ)
+			}
+		}
+		// add declarations from other files in the local package and try again
+		pkg, _ := parseLocalPackage(filename, f, pkgScope)
+		if pkg == nil && !*tflag {
+			fmt.Printf("parseLocalPackage error: %v\n", err)
+		}
 		if obj, typ := types.ExprType(e, types.DefaultImporter); obj != nil {
 			done(obj, typ)
 		}
+		fail("no declaration found for %v", pretty{e})
 	}
-	// add declarations from other files in the local package and try again
-	pkg, _ := parseLocalPackage(filename, f, pkgScope)
-	if pkg == nil && !*tflag {
-		fmt.Printf("parseLocalPackage error: %v\n", err)
+}
+
+func importPath(n *ast.ImportSpec) string {
+	p, err := strconv.Unquote(n.Path.Value)
+	if err != nil {
+		fail("invalid string literal %q in ast.ImportSpec", n.Path.Value)
 	}
-	if obj, typ := types.ExprType(e, types.DefaultImporter); obj != nil {
-		done(obj, typ)
-	}
-	fail("no declaration found for %v", pretty{e})
+	return p
 }
 
 // findIdentifier looks for an identifier at byte-offset searchpos
@@ -127,23 +148,23 @@ func main() {
 // If it is part of a selector expression, it returns
 // that expression rather than the identifier itself.
 //
-func findIdentifier(f *ast.File, searchpos int) ast.Expr {
-	ec := make(chan ast.Expr)
+// As a special case, if it finds an import
+// spec, it returns ImportSpec.
+//
+func findIdentifier(f *ast.File, searchpos int) ast.Node {
+	ec := make(chan ast.Node)
 	go func() {
 		var visit FVisitor = func(n ast.Node) bool {
-			var id *ast.Ident
-			switch n := n.(type) {
-			case *ast.Ident:
-				id = n
-			case *ast.SelectorExpr:
-				id = n.Sel
+			var start, end token.Pos
+			switch n.(type) {
+			case *ast.Ident, *ast.SelectorExpr, *ast.ImportSpec:
+				start, end = n.Pos(), n.End()
 			default:
 				return true
 			}
 
-			pos := types.FileSet.Position(id.NamePos)
-			if pos.Offset <= searchpos && pos.Offset+len(id.Name) >= searchpos {
-				ec <- n.(ast.Expr)
+			if int(start) <= searchpos && int(end) >= searchpos {
+				ec <- n
 				runtime.Goexit()
 			}
 			return true
