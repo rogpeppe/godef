@@ -155,15 +155,21 @@ func findIdentifier(f *ast.File, searchpos int) ast.Node {
 	ec := make(chan ast.Node)
 	go func() {
 		var visit FVisitor = func(n ast.Node) bool {
-			var start, end token.Pos
-			switch n.(type) {
-			case *ast.Ident, *ast.SelectorExpr, *ast.ImportSpec:
-				start, end = n.Pos(), n.End()
+			var startPos token.Pos
+			switch n := n.(type) {
+			case *ast.Ident:
+				startPos = n.NamePos
+			case *ast.SelectorExpr:
+				startPos = n.Sel.NamePos
+			case *ast.ImportSpec:
+				startPos = n.Pos()
 			default:
 				return true
 			}
+			start := types.FileSet.Position(startPos).Offset
+			end := types.FileSet.Position(n.End()).Offset
 
-			if int(start) <= searchpos && int(end) >= searchpos {
+			if int(start) <= searchpos && searchpos <= end {
 				ec <- n
 				runtime.Goexit()
 			}
