@@ -220,12 +220,14 @@ type (
 		Rbrack token.Pos // position of "]"
 	}
 
-	// An SliceExpr node represents an expression followed by slice indices.
+	// A SliceExpr node represents an expression followed by slice indices.
 	SliceExpr struct {
 		X      Expr      // expression
 		Lbrack token.Pos // position of "["
 		Low    Expr      // begin of slice range; or nil
 		High   Expr      // end of slice range; or nil
+		Max    Expr      // maximum capacity of slice; or nil
+		Slice3 bool      // true if 3-index slice (2 colons present)
 		Rbrack token.Pos // position of "]"
 	}
 

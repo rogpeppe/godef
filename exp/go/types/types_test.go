@@ -258,21 +258,17 @@ type sym struct {
 	kind   ast.ObjKind
 }
 
-// transateSymbols performs a non-parsing translation of some
-// Go source code. For each symbol starting with xx,
-// it returns an entry in offsetMap mapping
-// from the reference in the source code to the first
-// occurrence of that symbol.
-// If the symbol is followed by #x, it refers
-// to a particular version of the symbol. The
-// translated code will produce only the bare
-// symbol, but the expected symbol can be
+// transateSymbols performs a non-parsing translation of some Go source
+// code. For each symbol starting with xx, it returns an entry in
+// offsetMap mapping from the reference in the source code to the first
+// occurrence of that symbol. If the symbol is followed by #x, it refers
+// to a particular version of the symbol. The translated code will
+// produce only the bare symbol, but the expected symbol can be
 // determined from the returned map.
 //
-// The first occurrence of a translated symbol must
-// be followed by a @ and letter representing the symbol
-// kind (see kinds, above). All subsequent references
-// to that symbol must resolve to the given kind.
+// The first occurrence of a translated symbol must be followed by a @
+// and letter representing the symbol kind (see kinds, above). All
+// subsequent references to that symbol must resolve to the given kind.
 //
 func translateSymbols(code []byte) (result []byte, offsetMap map[int]*sym) {
 	offsetMap = make(map[int]*sym)
@@ -389,6 +385,7 @@ var xxv_int@v xx_int
 
 var xx_chan@v chan xx_struct
 var xx_map@v map[string]xx_struct
+var xx_slice@v []xx_int
 
 var (
 	xx_func@v func() xx_struct
@@ -414,6 +411,7 @@ func main() {
 	_ = tmp.xx_1
 
 	_ = xx_map[""].xx_1
+	_ = xx_slice[xxv_int:xxv_int:xxv_int]
 
 	xx_a2@v, _ := xx_map[""]
 	_ = xx_a2.xx_2

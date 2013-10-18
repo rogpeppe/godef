@@ -656,7 +656,7 @@ func splitSelector(expr ast.Expr) (body, suffix ast.Expr) {
 	case *ast.SliceExpr:
 		body, suffix = splitSelector(x.X)
 		if body != nil {
-			suffix = &ast.SliceExpr{suffix, x.Lbrack, x.Low, x.High, x.Rbrack}
+			suffix = &ast.SliceExpr{X: suffix, Lbrack: x.Lbrack, Low: x.Low, High: x.High, Rbrack: x.Rbrack, Slice3: false}
 			return
 		}
 	case *ast.TypeAssertExpr:
