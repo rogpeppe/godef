@@ -4,6 +4,11 @@
 // graphviz is installed.
 //
 // All the dot(1) heuristics were unashamedly stolen from go tool pprof.
+//
+// Example
+//
+//	$ stackgraph < file-containing-go-panic > /tmp/x.svg
+//	# open web browser on file:///tmp/x.svg
 package main
 
 import (
