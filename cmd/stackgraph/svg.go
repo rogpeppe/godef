@@ -13,6 +13,8 @@ import (
 	"text/template"
 )
 
+// Most of this code was purloined from go tool pprof.
+
 type Summary struct {
 	Title      string
 	Edges      map[Arc]*Edge
