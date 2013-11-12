@@ -13,6 +13,20 @@ import (
 	"text/template"
 )
 
+func (n *Node) ArgCounts() string {
+	counts := make([]string, len(n.ArgCount))
+	for i, m := range n.ArgCount {
+		if len(m) == 1 {
+			for val, _ := range m {
+				counts[i] = fmt.Sprintf("=%#x", val)
+			}
+		} else {
+			counts[i] = fmt.Sprint(len(m))
+		}
+	}
+	return fmt.Sprintf("%s", counts)
+}
+
 // Most of this code was purloined from go tool pprof.
 
 type Summary struct {
@@ -88,13 +102,13 @@ var dotTemplate = template.Must(template.New("").Funcs(template.FuncMap{
 	node [width=0.375,height=0.25];
 	{{range $n := .Nodes}}
 	N{{$n.Id}} [
-		label={{printf "%s [%d]" $n.Title $n.Count | printf "%q"}},
+		label={{printf "%s [%d]\n%s" $n.Func $n.Count $n.ArgCounts | printf "%q"}},
 		shape=box,
 		fontsize={{fontSize $n.Count $.TotalCalls}},
 	];
 	{{end}}
 	{{range $arc, $e := .Edges}}
-	N{{$arc.Node1.Id}} -> N{{$arc.Node0.Id}} [label={{$e.Count}}, {{lineAttrs $e.Count $.TotalEdges}}];
+	N{{$arc.Node0.Id}} -> N{{$arc.Node1.Id}} [label={{$e.Count}}, {{lineAttrs $e.Count $.TotalEdges}}];
 	{{end}}
 }
 `))
