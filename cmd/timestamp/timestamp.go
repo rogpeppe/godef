@@ -1,3 +1,21 @@
+// The timestamp command annotates lines read from standard input
+// with the time that they were read. This is useful for seeing
+// timing information on running commands from the shell.
+//
+// With no file arguments, timestamp prints lines read
+// from standard input prefixed with a timestamp,
+// the time since the timestamp command started.
+// The first line is of the form:
+// 
+// 	start 2006-01-02 15:04:05.000 -0700
+// 
+// giving the absolute start time.
+// 
+// If files are provided, they are read and the timestamp output in
+// the named files is merged into one time sequence.
+// 
+// With a single file, file names are omitted from
+// the output.
 package main
 
 import (
@@ -17,10 +35,20 @@ var (
 )
 
 var usage = `usage: timestamp [flags] [file...]
-If files are named, they are read and the timestamp output in
+With no file arguments, timestamp prints lines read
+from standard input prefixed with a timestamp,
+the time since the timestamp command started.
+The first line is of the form:
+
+	start 2006-01-02 15:04:05.000 -0700
+
+giving the absolute start time.
+
+If files are provided, they are read and the timestamp output in
 the named files is merged into one time sequence.
 
-When used on a single file
+With a single file, file names are omitted from
+the output.
 `
 
 const headerTimeFormat = "2006-01-02 15:04:05.000 -0700"
