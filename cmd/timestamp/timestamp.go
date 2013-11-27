@@ -23,6 +23,8 @@ the named files is merged into one time sequence.
 When used on a single file
 `
 
+const headerTimeFormat = "2006-01-02 15:04:05.000 -0700"
+
 func main() {
 	flag.Usage = func() {
 		fmt.Fprint(os.Stderr, usage)
@@ -41,7 +43,7 @@ func main() {
 	b := bufio.NewReader(os.Stdin)
 	out := bufio.NewWriter(os.Stdout)
 	wasPrefix := false
-	fmt.Fprintf(out, "start %s\n", time.Now().Format(time.RFC1123Z))
+	fmt.Fprintf(out, "start %s\n", time.Now().Format(headerTimeFormat))
 	out.Flush()
 	for {
 		line, isPrefix, err := b.ReadLine()
@@ -66,7 +68,7 @@ func mergeFiles(files []string) {
 	for i, file := range files {
 		f, err := os.Open(file)
 		if err != nil {
-			log.Fatalf("mergetime: cannot open file: %v", err)
+			log.Fatalf("timestamp: cannot open file: %v", err)
 		}
 		fs[i] = bufio.NewReader(f)
 	}
@@ -80,7 +82,7 @@ func mergeFiles(files []string) {
 	}
 	stdout := bufio.NewWriter(os.Stdout)
 	t0 := startLine.t
-	fmt.Fprintf(stdout, "start %s\n", t0.Format(time.RFC1123Z))
+	fmt.Fprintf(stdout, "start %s\n", t0.Format(headerTimeFormat))
 	stdout.Flush()
 	for line := range out {
 		printStamp(stdout, line.t.Sub(t0))
@@ -143,13 +145,13 @@ func readLines(r *bufio.Reader, name string) <-chan line {
 		defer close(out)
 		startLine, err := r.ReadString('\n')
 		if err != nil || !strings.HasPrefix(startLine, "start ") {
-			log.Printf("mergetime: cannot read start line")
+			log.Printf("timestamp: cannot read start line")
 			return
 		}
 
-		start, err := time.Parse(time.RFC1123Z, startLine[len("start "):len(startLine)-1])
+		start, err := time.Parse(headerTimeFormat, startLine[len("start "):len(startLine)-1])
 		if err != nil {
-			log.Printf("mergetime: cannot parse start line %q: %v", startLine, err)
+			log.Printf("timestamp: cannot parse start line %q: %v", startLine, err)
 		}
 		out <- line{start, "start\n", name}
 		prev := start
@@ -159,12 +161,12 @@ func readLines(r *bufio.Reader, name string) <-chan line {
 				break
 			}
 			if err != nil {
-				log.Printf("mergetime: read error: %v", err)
+				log.Printf("timestamp: read error: %v", err)
 				break
 			}
 			i := strings.Index(s, " ")
 			if i == -1 {
-				log.Printf("mergetime: line has no timestamp: %q", s)
+				log.Printf("timestamp: line has no timestamp: %q", s)
 				out <- line{prev, s, name}
 				continue
 			}
@@ -172,7 +174,7 @@ func readLines(r *bufio.Reader, name string) <-chan line {
 			if strings.Index(s[0:i], ":") >= 0 {
 				var min, sec, millisec int
 				if _, err := fmt.Sscanf(s[0:i], "%d:%d.%d", &min, &sec, &millisec); err != nil {
-					log.Printf("mergetime: cannot parse timestamp on line %q", s)
+					log.Printf("timestamp: cannot parse timestamp on line %q", s)
 					out <- line{prev, s, name}
 					continue
 				}
@@ -182,7 +184,7 @@ func readLines(r *bufio.Reader, name string) <-chan line {
 			} else {
 				var millisec int64
 				if _, err := fmt.Scanf(s[0:i], "%d", &millisec); err != nil {
-					log.Printf("mergetime: cannot parse timestamp on line %q", s)
+					log.Printf("timestamp: cannot parse timestamp on line %q", s)
 					out <- line{prev, s, name}
 					continue
 				}
