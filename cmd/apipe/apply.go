@@ -1,3 +1,13 @@
+// The apipe command pipes the contents of the current acme window
+// through its argument shell command and updates them to the result
+// by applying minimal changes.
+//
+// For example:
+// 
+//	apipe gofmt
+//
+// will alter only the pieces of source code that
+// have changed, leaving the rest untouched.
 package main
 
 import (
