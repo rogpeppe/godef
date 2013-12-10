@@ -65,12 +65,28 @@ x
 		"one",
 		"hello",
 	},
+}, {
+	text:   "one" + strings.Repeat(" ", 50),
+	split:  bufio.ScanWords,
+	tokens: []string{"one"},
+}, {
+	text:   "1234567890     one        ",
+	split:  bufio.ScanWords,
+	tokens: []string{"one", "1234567890"},
+}, {
+	text:   "one",
+	split:  bufio.ScanWords,
+	tokens: []string{"one"},
+}, {
+	text:  "",
+	split: bufio.ScanWords,
 }}
 
 func TestScan(t *testing.T) {
 	for i, test := range scanTests {
 		t.Logf("test %d", i)
 		b := reverse.NewScanner(strings.NewReader(test.text))
+		b.SetBufSize(10)
 		b.Split(test.split)
 		var got []string
 		for b.Scan() {
