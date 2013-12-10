@@ -10,6 +10,8 @@ import (
 	"testing"
 )
 
+// TODO much more comprehensive tests!
+
 var scanTests = []struct {
 	text   string
 	split  bufio.SplitFunc
