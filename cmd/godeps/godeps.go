@@ -33,10 +33,13 @@ source-control systems used, godeps will print all the available versions
 and an error, exiting with a false status. It is up to the user to remove
 lines from the output to make the output suitable for input to godeps -u.
 
+The -t flag specifies that testing dependencies will also be included.
+
 In the second form, godeps updates source to versions specified by the
 -u file argument, which should hold version information in the same
 form printed by godeps. It is an error if the file contains more than
 one line for the same package root.
+
 `[1:]
 
 func main() {

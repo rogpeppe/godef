@@ -138,7 +138,7 @@ func init() {
 func instances(c cmd, conn *ec2.EC2, args []string) {
 	resp, err := conn.Instances(nil, nil)
 	if err != nil {
-		errorf("cannot get instances: %v", err)
+		fatalf("cannot get instances: %v", err)
 	}
 	var line []string
 	for _, r := range resp.Reservations {
