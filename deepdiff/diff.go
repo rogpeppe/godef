@@ -94,7 +94,7 @@ func deepValueEqual(path string, v1, v2 reflect.Value, visited map[visit]bool, d
 	case reflect.Array:
 		if v1.Len() != v2.Len() {
 			// can't happen!
-			return false, errorf("length mismatch, %d vs %d", v1.Len, v2.Len())
+			return false, errorf("length mismatch, %d vs %d", v1.Len(), v2.Len())
 		}
 		for i := 0; i < v1.Len(); i++ {
 			if ok, err := deepValueEqual(
@@ -107,7 +107,7 @@ func deepValueEqual(path string, v1, v2 reflect.Value, visited map[visit]bool, d
 	case reflect.Slice:
 		// We treat a nil slice the same as an empty slice.
 		if v1.Len() != v2.Len() {
-			return false, errorf("length mismatch, %d vs %d", v1.Len, v2.Len())
+			return false, errorf("length mismatch, %d vs %d", v1.Len(), v2.Len())
 		}
 		if v1.Pointer() == v2.Pointer() {
 			return true, nil
@@ -143,7 +143,7 @@ func deepValueEqual(path string, v1, v2 reflect.Value, visited map[visit]bool, d
 			return false, errorf("nil vs non-nil mismatch")
 		}
 		if v1.Len() != v2.Len() {
-			return false, errorf("length mismatch, %d vs %d", v1.Len, v2.Len())
+			return false, errorf("length mismatch, %d vs %d", v1.Len(), v2.Len())
 		}
 		if v1.Pointer() == v2.Pointer() {
 			return true, nil
