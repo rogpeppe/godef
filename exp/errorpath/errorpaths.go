@@ -6,12 +6,12 @@ import (
 	"log"
 	"os"
 
+	"go/token"
 	"code.google.com/p/go.tools/go/loader"
 	"code.google.com/p/go.tools/go/ssa"
 	"code.google.com/p/go.tools/go/types"
 	"code.google.com/p/go.tools/oracle"
 	"github.com/davecgh/go-spew/spew"
-	"go/token"
 )
 
 var spewConf = spew.ConfigState{
@@ -169,72 +169,4 @@ func (ctxt *context) getErrorInfo(v ssa.Value, member int, seen map[ssa.Value]bo
 		panic(fmt.Errorf("unexpected unary operator %s", v))
 	}
 	panic(fmt.Errorf("unexpected value found for error: %T; %v", v, v))
-}
-
-// OLD CODE:
-
-//func findCalleeFuncs(ssaProg *ssa.Program, iprog *loader.Program, callees *serial.Callees) ([]*ssa.Function, error) {
-//	var funcs []*ssa.Function
-//	for _, item := range callees.Callees {
-//		f, err := findFuncFromItem(ssaProg, iprog, item)
-//		if f != nil {
-//			funcs = append(funcs, f)
-//		} else {
-//			fmt.Printf("\t\tcannot find func: %v\n", err)
-//		}
-//	}
-//	return funcs, nil
-//}
-//
-//func findFuncFromItem(ssaProg *ssa.Program, iprog *loader.Program, item *serial.CalleesItem) (*ssa.Function, error) {
-//	if strings.HasPrefix(item.Name, "func@") {
-//		return nil, fmt.Errorf("cannot find anonymous funcs")
-//	}
-//	pp := strings.Split(item.Name, ".")
-//	if len(pp) != 2 {
-//		return nil, fmt.Errorf("invalid format for name %q", item.Name)
-//	}
-//	pkgPath, ident := pp[0], pp[1]
-//	for pkg, _ := range iprog.AllPackages {
-//		if pkg.Path() == pkgPath {
-//			ssaPkg := ssaProg.Package(pkg)
-//			if ssaPkg == nil {
-//				return nil, fmt.Errorf("no package found for %q", item.Name)
-//			}
-//			if f := ssaPkg.Func(ident); f != nil {
-//				return f, nil
-//			}
-//			return nil, fmt.Errorf("no function found for %q", item.Name)
-//		}
-//	}
-//	return nil, fmt.Errorf("package %q not found", pkgPath)
-//}
-
-// open file, map position to file offset
-// find token.File, map file offset to Pos
-// iprog.Program.PathEnclosingInterval(pos)
-// file ssa.Package that has the same package
-// search through decls looking for the right pos.
-//
-// search upwards through ast nodes until we get to a top-level declaration
-//
-
-func (ctxt *context) printInst(inst0 ssa.Instruction) {
-	switch inst := inst0.(type) {
-	case *ssa.Call:
-		isErr := types.IsIdentical(inst.Type(), errorType)
-		fmt.Printf("\t%s[%T:%v] = %T %v\n", inst.Name(), inst.Type(), isErr, inst, inst)
-		fs, err := ctxt.callees(inst)
-		if err != nil {
-			fmt.Printf("\t\tcannot get callees: %v\n", err)
-			return
-		}
-		fmt.Printf("\t\tcallees: %v\n", fs)
-	case ssa.Value:
-		isErr := types.IsIdentical(inst.Type(), errorType)
-		fmt.Printf("\t%s[%T:%v] = %T %v\n", inst.Name(), inst.Type(), isErr, inst, inst)
-		fmt.Printf("\t\toperands: %#v\n", operands(inst0))
-	default:
-		fmt.Printf("\t%T %s\n", inst, inst)
-	}
 }
