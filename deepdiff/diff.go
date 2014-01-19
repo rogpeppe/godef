@@ -25,14 +25,18 @@ type visit struct {
 	typ reflect.Type
 }
 
-type MismatchError struct {
+type mismatchError struct {
 	v1, v2 reflect.Value
-	Path string
-	How string
+	path string
+	how string
 }
 
-func (err *MismatchError) Error() string {
-	return fmt.Sprintf("mismatch at %s: %s; obtained %#v; expected %#v", err.Path, err.How, interfaceOf(err.v1), interfaceOf(err.v2))
+func (err *mismatchError) Error() string {
+	path := err.path
+	if path == "" {
+		path = "top level"
+	}
+	return fmt.Sprintf("mismatch at %s: %s; obtained %#v; expected %#v", err.path, err.how, interfaceOf(err.v1), interfaceOf(err.v2))
 }
 
 // Tests for deep equality using reflected types. The map argument tracks
@@ -40,11 +44,11 @@ func (err *MismatchError) Error() string {
 // recursive types.
 func deepValueEqual(path string, v1, v2 reflect.Value, visited map[visit]bool, depth int) (ok bool, err error) {
 	errorf := func(f string, a ...interface{}) error {
-		return &MismatchError{
+		return &mismatchError{
 			v1: v1,
 			v2: v2,
-			Path: path,
-			How: fmt.Sprintf(f, a...),
+			path: path,
+			how: fmt.Sprintf(f, a...),
 		}
 	}
 	if !v1.IsValid() || !v2.IsValid() {
@@ -222,11 +226,11 @@ func DeepEqual(a1, a2 interface{}) bool {
 // holds the first difference encountered.
 func DeepDiff(a1, a2 interface{}) (bool, error) {
 	errorf := func(f string, a ...interface{}) error {
-		return &MismatchError{
+		return &mismatchError{
 			v1: reflect.ValueOf(a1),
 			v2: reflect.ValueOf(a2),
-			Path: "$",
-			How: fmt.Sprintf(f, a...),
+			path: "",
+			how: fmt.Sprintf(f, a...),
 		}
 	}
 	if a1 == nil || a2 == nil {
@@ -237,7 +241,17 @@ func DeepDiff(a1, a2 interface{}) (bool, error) {
 	if v1.Type() != v2.Type() {
 		return false, errorf("type mismatch %s vs %s", v1.Type(), v2.Type())
 	}
-	return deepValueEqual("$", v1, v2, make(map[visit]bool), 0)
+	return deepValueEqual("", v1, v2, make(map[visit]bool), 0)
+}
+
+// interfaceOf returns v.Interface() even if v.CanInterface() == false.
+// This enables us to call fmt.Printf on a value even if it's derived
+// from inside an unexported field.
+func interfaceOf(v reflect.Value) interface{} {
+	if !v.IsValid() {
+		return nil
+	}
+	return bypassCanInterface(v).Interface()
 }
 
 type flag uintptr
@@ -247,16 +261,6 @@ const (
 	flagRO flag = 1 << iota
 )
 
-// interfaceOf returns v.Interface() even if v.CanInterface() == false.
-// This enables us to call fmt.Printf on a value even if it's
-// derived from inside an unexported field.
-func interfaceOf(v reflect.Value) interface{} {
-	if !v.IsValid() {
-		return nil
-	}
-	return bypass(v).Interface()
-}
-
 var flagValOffset = func() uintptr {
 	field, ok := reflect.TypeOf(reflect.Value{}).FieldByName("flag")
 	if !ok {
@@ -265,7 +269,22 @@ var flagValOffset = func() uintptr {
 	return field.Offset
 }()
 
-// Sanity checks against future reflect package changes.
+func flagField(v *reflect.Value) *flag {
+	return (*flag)(unsafe.Pointer(uintptr(unsafe.Pointer(v)) + flagValOffset))
+}
+
+// bypassCanInterface returns a version of v that
+// bypasses the CanInterface check.
+func bypassCanInterface(v reflect.Value) reflect.Value {
+	if !v.IsValid() || v.CanInterface() {
+		return v
+	}
+	*flagField(&v) &^= flagRO
+	return v
+}
+
+// Sanity checks against future reflect package changes
+// to the type or semantics of the Value.flag field.
 func init() {
 	field, ok := reflect.TypeOf(reflect.Value{}).FieldByName("flag")
 	if !ok {
@@ -285,16 +304,4 @@ func init() {
 	if flagA & flagRO != 0 || flaga & flagRO == 0 {
 		panic("reflect.Value read-only flag has changed value")
 	}
-}
-
-func flagField(v *reflect.Value) *flag {
-	return (*flag)(unsafe.Pointer(uintptr(unsafe.Pointer(v)) + flagValOffset))
-}
-
-func bypass(v reflect.Value) reflect.Value {
-	if !v.IsValid() || v.CanInterface() {
-		return v
-	}
-	*flagField(&v) &^= flagRO
-	return v
 }
