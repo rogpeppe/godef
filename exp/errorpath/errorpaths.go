@@ -6,12 +6,12 @@ import (
 	"log"
 	"os"
 
-	"go/token"
 	"code.google.com/p/go.tools/go/loader"
 	"code.google.com/p/go.tools/go/ssa"
 	"code.google.com/p/go.tools/go/types"
 	"code.google.com/p/go.tools/oracle"
 	"github.com/davecgh/go-spew/spew"
+	"go/token"
 )
 
 var spewConf = spew.ConfigState{
@@ -57,7 +57,6 @@ func main() {
 	var foundPkg *types.Package
 	log.Printf("searching %d packages", len(lprog.AllPackages))
 	for pkg, _ := range lprog.AllPackages {
-		log.Printf("looking at package %s", pkg.Path())
 		if obj := pkg.Scope().Lookup("Test"); obj != nil {
 			if _, ok := obj.Type().(*types.Signature); ok {
 				foundPkg = pkg
@@ -83,6 +82,7 @@ func (ctxt *context) errorPaths(f *ssa.Function) errorInfo {
 	seen := make(map[ssa.Value]bool)
 	for _, b := range f.Blocks {
 		if ret, ok := b.Instrs[len(b.Instrs)-1].(*ssa.Return); ok {
+			log.Printf("return operands: %q", operands(ret))
 			info = info.add(ctxt.getErrorInfo(ret.Results[len(ret.Results)-1], 0, seen))
 		}
 	}
@@ -115,7 +115,11 @@ func (a errorInfo) add(b errorInfo) errorInfo {
 	return a
 }
 
-func (ctxt *context) getErrorInfo(v ssa.Value, member int, seen map[ssa.Value]bool) errorInfo {
+func (ctxt *context) getErrorInfo(v ssa.Value, member int, seen map[ssa.Value]bool) (result errorInfo) {
+	log.Printf("getErrorInfo[%d] %T %v {", member, v, v)
+	defer func() {
+		log.Printf("} -> %+v", result)
+	}()
 	if seen[v] {
 		return errorInfo{}
 	}
@@ -135,15 +139,13 @@ func (ctxt *context) getErrorInfo(v ssa.Value, member int, seen map[ssa.Value]bo
 		return errorInfo{unknown: 1}
 	case *ssa.Lookup:
 		return errorInfo{unknown: 1}
-	case *ssa.MakeInterface:
-		if c, isNil := v.X.(*ssa.Const); isNil {
-			// The only way of initialising an error from a constant is from nil.
-			if c.Value != nil {
-				panic("non-nil constant initializing error!")
-			}
-			return errorInfo{}
+	case *ssa.Const:
+		if v.Value != nil {
+			panic("non-nil constant cannot make error, surely?")
 		}
-		// TODO look at the value of val.X for component errors.
+		return errorInfo{}
+	case *ssa.MakeInterface:
+		// TODO look into components of v.X
 		return errorInfo{nonNil: 1}
 	case *ssa.Next:
 		return errorInfo{unknown: 1}
