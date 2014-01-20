@@ -1,17 +1,20 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
+	"regexp"
 
+	"go/token"
 	"code.google.com/p/go.tools/go/loader"
 	"code.google.com/p/go.tools/go/ssa"
 	"code.google.com/p/go.tools/go/types"
 	"code.google.com/p/go.tools/oracle"
 	"github.com/davecgh/go-spew/spew"
-	"go/token"
 )
 
 var spewConf = spew.ConfigState{
@@ -24,20 +27,24 @@ var errorType = types.Universe.Lookup("error").Type()
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "Usage: errorpaths <args>\n")
+		fmt.Fprintf(os.Stderr, "Usage: errorpaths scope pkg-pattern\n")
 		fmt.Fprint(os.Stderr, loader.FromArgsUsage)
 	}
 	flag.Parse()
 	args := flag.Args()
-	if len(args) == 0 {
+	if len(args) != 2 {
 		flag.Usage()
 	}
 	conf := loader.Config{
 		SourceImports: true,
 	}
-	_, err := conf.FromArgs(args)
+	_, err := conf.FromArgs(args[0:1])
 	if err != nil {
 		log.Fatalf("cannot initialise loader: %v", err)
+	}
+	pkgPat, err := regexp.Compile("^" + args[1] + "$")
+	if err != nil {
+		log.Fatalf("cann compile regexp %q: %s", args[1], err)
 	}
 	lprog, err := conf.Load()
 	if err != nil {
@@ -52,47 +59,174 @@ func main() {
 		lprog:   lprog,
 		ssaProg: ssaProg,
 		oracle:  or,
+		infos:   make(map[*ssa.Function]*errorInfo),
+		locs: make(map[*ssa.Function] errorLocations),
 	}
 
-	var foundPkg *types.Package
+	var foundPkgs []*types.Package
 	log.Printf("searching %d packages", len(lprog.AllPackages))
+
 	for pkg, _ := range lprog.AllPackages {
-		if obj := pkg.Scope().Lookup("Test"); obj != nil {
-			if _, ok := obj.Type().(*types.Signature); ok {
-				foundPkg = pkg
+		if pkgPat.MatchString(pkg.Path()) {
+			foundPkgs = append(foundPkgs, pkg)
+			break
+		}
+	}
+	if len(foundPkgs) == 0 {
+		log.Fatalf("failed to find any matching packages")
+	}
+	for _, pkg := range foundPkgs {
+		log.Printf("package %s", pkg.Name())
+		ssaPkg := ssaProg.Package(pkg)
+		ssaPkg.Build()
+		for _, m := range ssaPkg.Members {
+			if f, ok := m.(*ssa.Function); ok && returnsError(f) {
+				fmt.Printf("%s\n", f)
+				locs := ctxt.errorLocations(f)
+				ctxt.dumpErrorLocs(locs, os.Stdout, "\t")
 			}
 		}
 	}
-	if foundPkg == nil {
-		log.Fatalf("couldn't find a package containing Test")
-	}
-	log.Printf("found package %s", foundPkg.Name())
-	mainPkg := ssaProg.Package(foundPkg)
-	mainPkg.Build()
-	f := mainPkg.Func("Test")
-	fmt.Printf("%+v\n", ctxt.errorPaths(f))
 }
 
-func (ctxt *context) errorPaths(f *ssa.Function) errorInfo {
+type errorLocations struct {
+	nonNil  [][]token.Pos
+	unknown [][]token.Pos
+}
+
+func (ctxt *context) errorLocations(f *ssa.Function) (result errorLocations) {
+	log.Printf("errorLocations %s {", f)
+	defer func() {
+		log.Printf("} -> %v", result)
+	}()
+	if locs, ok := ctxt.locs[f]; ok {
+		log.Printf("errorLocations already calculated for %s", f)
+		return locs
+	}
+	ctxt.locs[f] = errorLocations{}		// Prevent runaway recursion.
+	info := ctxt.infos[f]
+	if info == nil {
+		info = ctxt.errorPaths(f)
+		ctxt.infos[f] = info
+	} else {
+		log.Printf("already have errorPaths for %s", f)
+	}
+	var locs errorLocations
+	for _, t := range info.nonNil {
+		if !t.pos.IsValid() {
+			log.Printf("%s does not have valid position", t.val)
+			continue
+		}
+		locs.nonNil = append(locs.nonNil, []token.Pos{t.pos})
+	}
+	for _, t := range info.unknown {
+		locs.unknown = append(locs.unknown, []token.Pos{t.pos})
+	}
+	for _, call := range info.nested {
+		fs, err := ctxt.callees(call)
+		if err != nil {
+			log.Printf("cannot get callees for %v: %v", call, err)
+			continue
+		}
+		for _, f := range fs {
+			// TODO guard against infinite recursion
+			callLocs := ctxt.errorLocations(f)
+			locs.nonNil = append(locs.nonNil, insertPos(call.Pos(), callLocs.nonNil)...)
+			locs.unknown = append(locs.unknown, insertPos(call.Pos(), callLocs.unknown)...)
+		}
+	}
+	// Remember result for later.
+	ctxt.locs[f] = locs
+	return locs
+}
+
+// valPos tries to find a position for the given value
+// even if the value doesn't have one.
+func valPos(val ssa.Value) token.Pos {
+	if pos := val.Pos(); pos.IsValid() {
+		return pos
+	}
+	instr, ok := val.(ssa.Instruction)
+	if !ok {
+		return token.NoPos
+	}
+	for _, op := range instr.Operands(nil) {
+		if pos := (*op).Pos(); pos.IsValid() {
+			return pos
+		}
+	}
+	return token.NoPos
+}
+
+func insertPos(pos token.Pos, traces [][]token.Pos) [][]token.Pos {
+	r := make([][]token.Pos, len(traces))
+	for i, trace := range traces {
+		r[i] = make([]token.Pos, len(trace)+1)
+		r[i][0] = pos
+		copy(r[i][1:], trace)
+	}
+	return r
+}
+
+func (ctxt *context) dumpErrorLocs(locs errorLocations, w io.Writer, indent string) {
+	print := func(s string, a ...interface{}) {
+		fmt.Fprintf(w, "%s%s\n", indent, fmt.Sprintf(s, a...))
+	}
+	dumpTraces := func(traces [][]token.Pos) {
+		for _, trace := range traces {
+			for _, pos := range trace {
+				print("\t%s", ctxt.lprog.Fset.Position(pos))
+				// TODO dump source.
+			}
+			print("")
+		}
+	}
+	print("non-nil")
+	dumpTraces(locs.nonNil)
+	print("unknown")
+	dumpTraces(locs.unknown)
+}
+
+func returnsError(f *ssa.Function) bool {
 	results := f.Signature.Results()
-	if n := results.Len(); n == 0 || !types.IsIdentical(results.At(n-1).Type(), errorType) {
-		return errorInfo{}
+	n := results.Len()
+	return n > 0 && types.IsIdentical(results.At(n-1).Type(), errorType)
+}
+
+func (ctxt *context) errorPaths(f *ssa.Function) (result *errorInfo) {
+	log.Printf("errorPaths %s (synthetic %q) {", f, f.Synthetic)
+	defer func() {
+		log.Printf("} -> %+v", result)
+	}()
+	if !returnsError(f) {
+		return &errorInfo{}
 	}
 	var info errorInfo
 	seen := make(map[ssa.Value]bool)
 	for _, b := range f.Blocks {
 		if ret, ok := b.Instrs[len(b.Instrs)-1].(*ssa.Return); ok {
-			log.Printf("return operands: %q", operands(ret))
-			info = info.add(ctxt.getErrorInfo(ret.Results[len(ret.Results)-1], 0, seen))
+			if !ret.Pos().IsValid() {
+				panicf("return operation has invalid position")
+			}
+//			log.Printf("return operands: %q", operands(ret))
+			info.add(ctxt.getErrorInfo(ret.Results[len(ret.Results)-1], 0, ret.Pos(), seen))
 		}
 	}
-	return info
+	return &info
+}
+
+func panicf(s string, a ...interface{}) {
+	m := fmt.Sprintf(s, a...)
+	fmt.Printf("panic: %s", m)
+	panic(errors.New(m))
 }
 
 type context struct {
 	ssaProg *ssa.Program
 	lprog   *loader.Program
 	oracle  *oracle.Oracle
+	infos   map[*ssa.Function]*errorInfo
+	locs map[*ssa.Function] errorLocations
 }
 
 func operands(inst ssa.Instruction) []ssa.Value {
@@ -105,70 +239,102 @@ func operands(inst ssa.Instruction) []ssa.Value {
 }
 
 type errorInfo struct {
-	nonNil  int
-	unknown int
+	nonNil  []errorTermination
+	unknown []errorTermination
+	nested  []*ssa.Call
 }
 
-func (a errorInfo) add(b errorInfo) errorInfo {
-	a.nonNil += b.nonNil
-	a.unknown += b.unknown
-	return a
+func (a *errorInfo) add(b *errorInfo) {
+	a.nonNil = append(a.nonNil, b.nonNil...)
+	a.unknown = append(a.unknown, b.unknown...)
+	a.nested = append(a.nested, b.nested...)
 }
 
-func (ctxt *context) getErrorInfo(v ssa.Value, member int, seen map[ssa.Value]bool) (result errorInfo) {
-	log.Printf("getErrorInfo[%d] %T %v {", member, v, v)
-	defer func() {
-		log.Printf("} -> %+v", result)
-	}()
+type errorTermination struct {
+	val ssa.Value
+	pos token.Pos
+}
+
+func (ctxt *context) getErrorInfo(v ssa.Value, member int, enclosingPos token.Pos, seen map[ssa.Value]bool) (result *errorInfo) {
+	if !enclosingPos.IsValid() {
+		panicf("getErrorInfo with invalid pos; %T %s", v, v)
+	}
+//	log.Printf("getErrorInfo[%d] %T %v {", member, v, v)
+//	defer func() {
+//		log.Printf("} -> %+v", result)
+//	}()
+
 	if seen[v] {
-		return errorInfo{}
+		return &errorInfo{}
 	}
 	seen[v] = true
 	defer delete(seen, v)
+	if pos := v.Pos(); pos.IsValid() {
+		enclosingPos = pos
+	}
+	terminate := func() []errorTermination {
+		return []errorTermination{{
+			val: v,
+			pos: enclosingPos,
+		}}
+	}
 	switch v := v.(type) {
 	case *ssa.Call:
-		// TODO analyse call
-		return errorInfo{unknown: 1}
+		if member > 0 && member != v.Type().(*types.Tuple).Len()-1 {
+			log.Printf("error from non-final member of function")
+			return &errorInfo{unknown: terminate()}
+		}
+		return &errorInfo{nested: []*ssa.Call{v}}
 	case *ssa.ChangeInterface:
-		return ctxt.getErrorInfo(v.X, 0, seen)
+		return ctxt.getErrorInfo(v.X, 0, enclosingPos, seen)
 	case *ssa.Extract:
-		return ctxt.getErrorInfo(v.Tuple, v.Index, seen)
+		return ctxt.getErrorInfo(v.Tuple, v.Index, enclosingPos, seen)
 	case *ssa.Field:
-		return errorInfo{unknown: 1}
+		return &errorInfo{unknown: terminate()}
 	case *ssa.Index:
-		return errorInfo{unknown: 1}
+		return &errorInfo{unknown: terminate()}
 	case *ssa.Lookup:
-		return errorInfo{unknown: 1}
+		return &errorInfo{unknown: terminate()}
 	case *ssa.Const:
 		if v.Value != nil {
-			panic("non-nil constant cannot make error, surely?")
+			panicf("non-nil constant cannot make error, surely?")
 		}
-		return errorInfo{}
+		return &errorInfo{}
 	case *ssa.MakeInterface:
 		// TODO look into components of v.X
-		return errorInfo{nonNil: 1}
+		return &errorInfo{nonNil: terminate()}
 	case *ssa.Next:
-		return errorInfo{unknown: 1}
+		return &errorInfo{unknown: terminate()}
 	case *ssa.Parameter:
-		return errorInfo{unknown: 1}
+		return &errorInfo{unknown: terminate()}
 	case *ssa.Phi:
 		var info errorInfo
 		for _, edge := range v.Edges {
-			info = info.add(ctxt.getErrorInfo(edge, member, seen))
+			info.add(ctxt.getErrorInfo(edge, member, enclosingPos, seen))
 		}
-		return info
+		return &info
 	case *ssa.Select:
-		return errorInfo{unknown: 1}
+		return &errorInfo{unknown: terminate()}
 	case *ssa.TypeAssert:
 		if v.CommaOk {
-			return errorInfo{unknown: 1}
+			return &errorInfo{unknown: terminate()}
 		}
-		return ctxt.getErrorInfo(v.X, 0, seen)
+		return ctxt.getErrorInfo(v.X, 0, enclosingPos, seen)
 	case *ssa.UnOp:
-		if v.Op == token.ARROW {
-			return errorInfo{unknown: 1}
+		switch v.Op {
+		case token.ARROW:
+			return &errorInfo{unknown: terminate()}
+		case token.MUL:
+			if _, isGlobal := v.X.(*ssa.Global); isGlobal {
+				// Assume that if we're returning a global variable, it's a
+				// global non-nil error, such as os.ErrInvalid.
+				return &errorInfo{nonNil: terminate()}
+			}
+			return &errorInfo{unknown: terminate()}
+		default:
+			panicf("unexpected unary operator %s at %s", v, ctxt.lprog.Fset.Position(enclosingPos))
 		}
-		panic(fmt.Errorf("unexpected unary operator %s", v))
 	}
-	panic(fmt.Errorf("unexpected value found for error: %T; %v", v, v))
+	panicf("unexpected value found for error: %T; %v", v, v)
+	panic("not reached")
 }
