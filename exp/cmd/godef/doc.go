@@ -40,4 +40,4 @@ Example:
 	$
 
 */
-package documentation
+package main
