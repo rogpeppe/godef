@@ -10,6 +10,14 @@ import (
 	"local/foo.bar"
 )
 
+func errorHandler(err *error) {}
+
+// doScan does the real work for scanning without a format string.
+func doScan(a []interface{}) (numProcessed int, err error) {
+	defer errorHandler(&err)
+	return
+}
+
 func main() {
 	testProg()
 }

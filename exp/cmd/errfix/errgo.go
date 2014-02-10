@@ -127,6 +127,11 @@ func errgo(f *ast.File) bool {
 				}
 				fixed = true
 			}
+		case *ast.IfStmt:
+			if ok := fixIfErrNotEqualNil(n, errgoIdent); ok {
+				fixed = true
+				break
+			}
 		}
 	})
 	fixed = deleteImport(f, "github.com/errgo/errgo") || fixed
@@ -149,4 +154,51 @@ func errgo(f *ast.File) bool {
 		fixed = addImport(f, "launchpad.net/errgo/errors", errgoIdent, false) || fixed
 	}
 	return fixed
+}
+
+func fixIfErrNotEqualNil(n *ast.IfStmt, errgoIdent string) bool {
+	// if err != nil {
+	//	return [..., ]err
+	//  }
+	// ->
+	// if err != nil {
+	// 	return [..., ]errgo.Wrap(err)
+	// }
+	cond, ok := n.Cond.(*ast.BinaryExpr)
+	if !ok {
+		return false
+	}
+	if !isName(cond.X, "err") {
+		return false
+	}
+	if !isName(cond.Y, "nil") {
+		// comparison of errors against anything
+		// other than nil - use errgo.Diagnosis.
+		
+	}
+	if cond.Op != token.NEQ {
+		return false
+	}
+	if len(n.Body.List) != 1 {
+		return false
+	}
+	returnStmt, ok := n.Body.List[0].(*ast.ReturnStmt)
+	if !ok {
+		return false
+	}
+	if len(returnStmt.Results) == 0 {
+		return false
+	}
+	lastResult := &returnStmt.Results[len(returnStmt.Results)-1]
+	if !isName(*lastResult, "err") {
+		return false
+	}
+	*lastResult = &ast.CallExpr{
+		Fun: &ast.SelectorExpr{
+			X:   ast.NewIdent(errgoIdent),
+			Sel: ast.NewIdent("Wrap"),
+		},
+		Args: []ast.Expr{ast.NewIdent("err")},
+	}
+	return true
 }

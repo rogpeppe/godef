@@ -79,7 +79,8 @@ func main() {
 		log.Printf("package %s", pkg.Name())
 		ssaPkg := ssaProg.Package(pkg)
 		ssaPkg.Build()
-		for _, m := range ssaPkg.Members {
+		for name, m := range ssaPkg.Members {
+			log.Printf("name %s", name)
 			if f, ok := m.(*ssa.Function); ok && returnsError(f) {
 				fmt.Printf("%s\n", f)
 				locs := ctxt.errorLocations(f)
