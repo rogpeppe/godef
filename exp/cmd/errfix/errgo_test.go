@@ -1,11 +1,15 @@
 package main
+import (
+	"fmt"
+	"strings"
+)
 
 func init() {
 	addTestCases(errgoMaskTests, errgoMask)
 	addTestCases(errgoCauseTests, errgoCause)
 }
 
-var errgoMaskTests = []testCase{{
+var errgoMaskTests = setPkgName([]testCase{{
 	Name: "errgo-mask.0",
 	In: `package main
 
@@ -43,7 +47,7 @@ func wrapper() (int, error) {
 
 import (
 	"fmt"
-	"launchpad.net/errgo/v2/errors"
+	$ERRGO
 	gc "launchpad.net/gocheck"
 )
 
@@ -77,19 +81,19 @@ func wrapper() (int, error) {
 	Name: "errgo-mask - errgo.New",
 	In: `package main
 
-import errgo "launchpad.net/errgo/v2/errors"
+import errgo $ERRGO
 
 var someErr = errgo.New("foo")
 `,
 	Out: `package main
 
-import errgo "launchpad.net/errgo/v2/errors"
+import errgo $ERRGO
 
 var someErr = errgo.New("foo")
 `,
-}}
+}})
 
-var errgoCauseTests = []testCase{{
+var errgoCauseTests = setPkgName([]testCase{{
 	Name: "errgo-cause.0",
 	In: `package main
 
@@ -121,7 +125,7 @@ func tester() error {
 
 import (
 	"fmt"
-	"launchpad.net/errgo/v2/errors"
+	$ERRGO
 	gc "launchpad.net/gocheck"
 )
 
@@ -157,4 +161,14 @@ import "errors"
 
 var someErr = errors.New("something")
 `,
-}}
+}})
+
+func setPkgName(cases []testCase) []testCase {
+	path := fmt.Sprintf("%q", errgoPkgPath)
+	for i := range cases {
+		c := &cases[i]
+		c.In = strings.Replace(c.In, "$ERRGO", path, -1)
+		c.Out = strings.Replace(c.Out, "$ERRGO", path, -1)
+	}
+	return cases
+}

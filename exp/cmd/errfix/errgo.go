@@ -15,7 +15,7 @@ func init() {
 	register(maskFix)
 }
 
-const errgoPkgPath = "launchpad.net/errgo/v2/errors"
+const errgoPkgPath = "github.com/juju/errgo/errors"
 
 var maskFix = fix{
 	"errgo-mask",
