@@ -37,6 +37,7 @@ type errgoFixContext struct {
 	pathToIdent  map[string]string
 	gocheckIdent string
 	errgoIdent   string
+	importsOldErrgo bool
 }
 
 func newErrgoFixContext(f *ast.File) *errgoFixContext {
@@ -52,6 +53,9 @@ func newErrgoFixContext(f *ast.File) *errgoFixContext {
 		path := importPath(imp)
 		if strings.HasSuffix(path, "/errors") {
 			ctxt.errgoIdent = "errgo"
+		}
+		if path == "github.com/errgo/errgo" {
+			ctxt.importsOldErrgo = true
 		}
 	}
 	return ctxt
@@ -128,19 +132,19 @@ func errgoMask(f *ast.File) bool {
 					Sel: ast.NewIdent("Notef"),
 				}
 				fixed = true
-			case isPkgDot(n.Fun, "errgo", "Annotate"):
+			case ctxt.importsOldErrgo && isPkgDot(n.Fun, "errgo", "Annotate"):
 				n.Fun = &ast.SelectorExpr{
 					X:   ast.NewIdent(ctxt.errgoIdent),
 					Sel: ast.NewIdent("NoteMask"),
 				}
 				fixed = true
-			case isPkgDot(n.Fun, "errgo", "Annotatef"):
+			case ctxt.importsOldErrgo && isPkgDot(n.Fun, "errgo", "Annotatef"):
 				n.Fun = &ast.SelectorExpr{
 					X:   ast.NewIdent(ctxt.errgoIdent),
 					Sel: ast.NewIdent("Notef"),
 				}
 				fixed = true
-			case isPkgDot(n.Fun, "errgo", "New"):
+			case ctxt.importsOldErrgo && isPkgDot(n.Fun, "errgo", "New"):
 				n.Fun = &ast.SelectorExpr{
 					X:   ast.NewIdent(ctxt.errgoIdent),
 					Sel: ast.NewIdent("Newf"),
@@ -165,6 +169,27 @@ func errgoMask(f *ast.File) bool {
 	return fixed
 }
 
+func errgoCause(f *ast.File) bool {
+	ctxt := newErrgoFixContext(f)
+
+	fixed := false
+	walk(f, func(n interface{}) {
+		switch n := n.(type) {
+		case *ast.IfStmt:
+			if ok := fixIfErrEqualSomething(n, ctxt.errgoIdent); ok {
+				fixed = true
+				break
+			}
+		case *ast.CallExpr:
+			fixed = fixGocheck(n, ctxt.errgoIdent, ctxt.gocheckIdent) || fixed
+		}
+	})
+	if fixed {
+		rewriteImports(ctxt, f, fixed)
+	}
+	return fixed
+}
+
 func rewriteImports(ctxt *errgoFixContext, f *ast.File, usingErrgo bool) bool {
 	// If there was already an "errors" import, then we can
 	// rewrite it to use errgo
@@ -185,25 +210,6 @@ func rewriteImports(ctxt *errgoFixContext, f *ast.File, usingErrgo bool) bool {
 	} else if usingErrgo {
 		fixed = addImport(f, errgoPkgPath, ctxt.errgoIdent, false)
 	}
-	return fixed
-}
-
-func errgoCause(f *ast.File) bool {
-	ctxt := newErrgoFixContext(f)
-
-	fixed := false
-	walk(f, func(n interface{}) {
-		switch n := n.(type) {
-		case *ast.IfStmt:
-			if ok := fixIfErrEqualSomething(n, ctxt.errgoIdent); ok {
-				fixed = true
-				break
-			}
-		case *ast.CallExpr:
-			fixed = fixGocheck(n, ctxt.errgoIdent, ctxt.gocheckIdent) || fixed
-		}
-	})
-	fixed = rewriteImports(ctxt, f, fixed) || fixed
 	return fixed
 }
 

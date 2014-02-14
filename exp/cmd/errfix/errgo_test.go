@@ -73,6 +73,20 @@ func wrapper() (int, error) {
 	return 24, nil
 }
 `,
+}, {
+	Name: "errgo-mask - errgo.New",
+	In: `package main
+
+import errgo "launchpad.net/errgo/v2/errors"
+
+var someErr = errgo.New("foo")
+`,
+	Out: `package main
+
+import errgo "launchpad.net/errgo/v2/errors"
+
+var someErr = errgo.New("foo")
+`,
 }}
 
 var errgoCauseTests = []testCase{{
@@ -128,5 +142,19 @@ func tester() error {
 	}
 	return nil
 }
+`,
+}, {
+	Name: "errgo-mask - errors on its own doesn't get rewritten",
+	In: `package main
+
+import "errors"
+
+var someErr = errors.New("something")
+`,
+	Out: `package main
+
+import "errors"
+
+var someErr = errors.New("something")
 `,
 }}
