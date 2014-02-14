@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/errgo/errgo"
+	gc "launchpad.net/gocheck"
 )
 
 var errSomething = errors.New("foo")
@@ -35,12 +36,31 @@ func wrapper() (int, error) {
 	}
 	return 24, nil
 }
+
+func (*suite) TestSomething(c *gc.C) {
+	err := foo()
+	c.Check(err, gc.Equals, errSomething)
+	c.Check(err, gc.Not(gc.Equals), errSomething)
+	c.Check(err, gc.Equals, nil)
+	c.Check(err, gc.Not(gc.Equals), nil)
+}
+
+func tester() error {
+	if err := foo(); err == errSomething {
+		return nil
+	}
+	if err := foo(); err == nil {
+		return nil
+	}
+	return nil
+}
 `,
 	Out: `package main
 
 import (
 	"fmt"
 	"launchpad.net/errgo/errors"
+	gc "launchpad.net/gocheck"
 )
 
 var errSomething = errors.New("foo")
@@ -64,6 +84,24 @@ func wrapper() (int, error) {
 					Wrap(err)
 	}
 	return 24, nil
+}
+
+func (*suite) TestSomething(c *gc.C) {
+	err := foo()
+	c.Check(errors.Diagnosis(err), gc.Equals, errSomething)
+	c.Check(errors.Diagnosis(err), gc.Not(gc.Equals), errSomething)
+	c.Check(err, gc.Equals, nil)
+	c.Check(err, gc.Not(gc.Equals), nil)
+}
+
+func tester() error {
+	if err := foo(); errors.Diagnosis(err) == errSomething {
+		return nil
+	}
+	if err := foo(); err == nil {
+		return nil
+	}
+	return nil
 }
 `,
 }}

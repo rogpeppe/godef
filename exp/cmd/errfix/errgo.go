@@ -41,6 +41,7 @@ func errgo(f *ast.File) bool {
 		return false
 	}
 	pathToIdent := importPathToIdentMap(f)
+	gocheckIdent := pathToIdent["launchpad.net/gocheck"]
 
 	// If we import from any */errors package path,
 	// import as errgo to save name clashes.
@@ -54,26 +55,30 @@ func errgo(f *ast.File) bool {
 
 	fixed := false
 	walk(f, func(n interface{}) {
+		warning := func(format string, arg ...interface{}) {
+			pos := fset.Position(n.(ast.Node).Pos())
+			log.Printf("warning: %s: %s", pos, fmt.Sprintf(format, arg...))
+		}
 		switch n := n.(type) {
 		case *ast.CallExpr:
 			switch {
 			case isPkgDot(n.Fun, "fmt", "Errorf"):
 				if len(n.Args) == 0 {
-					log.Printf("warning: Errorf with no args")
+					warning("Errorf with no args")
 					break
 				}
 				lit, ok := n.Args[0].(*ast.BasicLit)
 				if !ok {
-					log.Printf("warning: Errorf with non-constant first arg")
+					warning("Errorf with non-constant first arg")
 					break
 				}
 				if lit.Kind != token.STRING {
-					log.Printf("warning: Errorf with non-string literal first arg")
+					warning("Errorf with non-string literal first arg")
 					break
 				}
 				format, err := strconv.Unquote(lit.Value)
 				if err != nil {
-					log.Printf("warning: Errorf with invalid quoted string literal: %v", err)
+					warning("Errorf with invalid quoted string literal: %v", err)
 					break
 				}
 				if !strings.HasSuffix(format, ": %v") || len(n.Args) < 2 || !isName(n.Args[len(n.Args)-1], "err") {
@@ -126,9 +131,15 @@ func errgo(f *ast.File) bool {
 					Sel: ast.NewIdent("New"),
 				}
 				fixed = true
+			case fixGocheck(n, errgoIdent, gocheckIdent):
+				fixed = true
 			}
 		case *ast.IfStmt:
 			if ok := fixIfErrNotEqualNil(n, errgoIdent); ok {
+				fixed = true
+				break
+			}
+			if ok := fixIfErrEqualSomething(n, errgoIdent); ok {
 				fixed = true
 				break
 			}
@@ -157,11 +168,11 @@ func errgo(f *ast.File) bool {
 }
 
 func fixIfErrNotEqualNil(n *ast.IfStmt, errgoIdent string) bool {
-	// if err != nil {
+	// if stmt; err != nil {
 	//	return [..., ]err
 	//  }
 	// ->
-	// if err != nil {
+	// if stmt; err != nil {
 	// 	return [..., ]errgo.Wrap(err)
 	// }
 	cond, ok := n.Cond.(*ast.BinaryExpr)
@@ -174,7 +185,7 @@ func fixIfErrNotEqualNil(n *ast.IfStmt, errgoIdent string) bool {
 	if !isName(cond.Y, "nil") {
 		// comparison of errors against anything
 		// other than nil - use errgo.Diagnosis.
-		
+
 	}
 	if cond.Op != token.NEQ {
 		return false
@@ -197,6 +208,88 @@ func fixIfErrNotEqualNil(n *ast.IfStmt, errgoIdent string) bool {
 		Fun: &ast.SelectorExpr{
 			X:   ast.NewIdent(errgoIdent),
 			Sel: ast.NewIdent("Wrap"),
+		},
+		Args: []ast.Expr{ast.NewIdent("err")},
+	}
+	return true
+}
+
+func fixIfErrEqualSomething(n *ast.IfStmt, errgoIdent string) bool {
+	// if stmt; err == something-but-not-nil
+	// ->
+	// if stmt; errgo.Diagnosis(err) == something-but-not-nil
+	cond, ok := n.Cond.(*ast.BinaryExpr)
+	if !ok {
+		return false
+	}
+	if !isName(cond.X, "err") {
+		return false
+	}
+	if cond.Op != token.EQL {
+		return false
+	}
+	if isName(cond.Y, "nil") {
+		return false
+	}
+	cond.X = &ast.CallExpr{
+		Fun: &ast.SelectorExpr{
+			X:   ast.NewIdent(errgoIdent),
+			Sel: ast.NewIdent("Diagnosis"),
+		},
+		Args: []ast.Expr{ast.NewIdent("err")},
+	}
+	return true
+}
+
+
+func fixGocheck(n *ast.CallExpr, errgoIdent, gocheckIdent string) bool {
+	// gc.Check(err, gc.Equals, foo-not-nil)
+	// ->
+	// gc.Check(errgo.Diagnosis(err), gc.Equals, foo-not-nil)
+
+	// gc.Check(err, gc.Not(gc.Equals), foo-not-nil)
+	// ->
+	// gc.Check(errgo.Diagnosis(err), gc.Not(gc.Equals), foo-not-nil)
+	if gocheckIdent == "" {
+		return false
+	}
+	sel, ok := n.Fun.(*ast.SelectorExpr)
+	if !ok {
+		return false
+	}
+	if !isName(sel.X, "c") {
+		return false
+	}
+	if s := sel.Sel.String(); s != "Check" && s != "Assert" {
+		return false
+	}
+
+	if len(n.Args) < 3 {
+		return false
+	}
+	if !isName(n.Args[0], "err") {
+		return false
+	}
+	if condCall, ok := n.Args[1].(*ast.CallExpr); ok {
+		if !isPkgDot(condCall.Fun, gocheckIdent, "Not") {
+			return false
+		}
+		if len(condCall.Args) != 1 {
+			return false
+		}
+		if !isPkgDot(condCall.Args[0], gocheckIdent, "Equals") {
+			return false
+		}
+	} else if !isPkgDot(n.Args[1], gocheckIdent, "Equals") {
+		return false
+	}
+	if isName(n.Args[2], "nil") {
+		return false
+	}
+	n.Args[0] = &ast.CallExpr{
+		Fun: &ast.SelectorExpr{
+			X:   ast.NewIdent(errgoIdent),
+			Sel: ast.NewIdent("Diagnosis"),
 		},
 		Args: []ast.Expr{ast.NewIdent("err")},
 	}

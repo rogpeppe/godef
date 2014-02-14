@@ -124,7 +124,7 @@ func main() {
 			}
 		}
 		// add declarations from other files in the local package and try again
-		pkg, _ := parseLocalPackage(filename, f, pkgScope)
+		pkg, err := parseLocalPackage(filename, f, pkgScope)
 		if pkg == nil && !*tflag {
 			fmt.Printf("parseLocalPackage error: %v\n", err)
 		}
