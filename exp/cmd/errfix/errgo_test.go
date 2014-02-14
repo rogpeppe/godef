@@ -33,8 +33,9 @@ func wrapper() (int, error) {
 		return 0, err
 	}
 	if err := foo(); err != nil {
-		return 0, err // A comment
+		return 0, err
 	}
+	// A comment
 	return 24, nil
 }
 `,
@@ -63,9 +64,12 @@ func wrapper() (int, error) {
 		return 0, errors.Mask(err)
 	}
 	if err := foo(); err != nil {
-		return 0, errors. // A comment
-					Mask(err)
+		return 0, errors.Mask(
+
+			// A comment
+			err)
 	}
+
 	return 24, nil
 }
 `,
