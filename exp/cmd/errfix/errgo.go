@@ -11,15 +11,50 @@ import (
 )
 
 func init() {
-	register(errgoFix)
+	register(causeFix)
+	register(maskFix)
 }
 
-var errgoFix = fix{
-	"errgo",
+const errgoPkgPath = "launchpad.net/errgo/v2/errors"
+
+var maskFix = fix{
+	"errgo-mask",
 	"2014-02-10",
-	errgo,
-	`Use errgo instead of fmt.Errorf, etc
+	errgoMask,
+	`wrap all returned errors; use errgo for all error creation functions
 `,
+}
+
+var causeFix = fix{
+	"errgo-cause",
+	"2014-02-14",
+	errgoCause,
+	`use Cause when comparing errors
+`,
+}
+
+type errgoFixContext struct {
+	pathToIdent  map[string]string
+	gocheckIdent string
+	errgoIdent   string
+}
+
+func newErrgoFixContext(f *ast.File) *errgoFixContext {
+	ctxt := &errgoFixContext{
+		pathToIdent: importPathToIdentMap(f),
+	}
+	ctxt.gocheckIdent = ctxt.pathToIdent["launchpad.net/gocheck"]
+
+	// If we import from any */errors package path,
+	// import as errgo to save name clashes.
+	ctxt.errgoIdent = "errors"
+	for _, imp := range f.Imports {
+		path := importPath(imp)
+		if strings.HasSuffix(path, "/errors") {
+			ctxt.errgoIdent = "errgo"
+		}
+	}
+	return ctxt
 }
 
 func importPathToIdentMap(f *ast.File) map[string]string {
@@ -36,22 +71,8 @@ func importPathToIdentMap(f *ast.File) map[string]string {
 	return m
 }
 
-func errgo(f *ast.File) bool {
-	if imports(f, "launchpad.net/errgo/errors") {
-		return false
-	}
-	pathToIdent := importPathToIdentMap(f)
-	gocheckIdent := pathToIdent["launchpad.net/gocheck"]
-
-	// If we import from any */errors package path,
-	// import as errgo to save name clashes.
-	errgoIdent := "errors"
-	for _, imp := range f.Imports {
-		path := importPath(imp)
-		if strings.HasSuffix(path, "/errors") {
-			errgoIdent = "errgo"
-		}
-	}
+func errgoMask(f *ast.File) bool {
+	ctxt := newErrgoFixContext(f)
 
 	fixed := false
 	walk(f, func(n interface{}) {
@@ -85,14 +106,14 @@ func errgo(f *ast.File) bool {
 					// fmt.Errorf("foo %s", x) ->
 					// errgo.Newf("foo %s", x)
 					n.Fun = &ast.SelectorExpr{
-						X:   ast.NewIdent(errgoIdent),
+						X:   ast.NewIdent(ctxt.errgoIdent),
 						Sel: ast.NewIdent("Newf"),
 					}
 					fixed = true
 					break
 				}
 				// fmt.Errorf("format: %v", args..., err) ->
-				// errgo.Wrapf(err, "format", args...)
+				// errgo.Maskf(err, "format", args...)
 				newArgs := []ast.Expr{
 					n.Args[len(n.Args)-1],
 					&ast.BasicLit{
@@ -103,67 +124,86 @@ func errgo(f *ast.File) bool {
 				newArgs = append(newArgs, n.Args[1:len(n.Args)-1]...)
 				n.Args = newArgs
 				n.Fun = &ast.SelectorExpr{
-					X:   ast.NewIdent(errgoIdent),
-					Sel: ast.NewIdent("Wrapf"),
+					X:   ast.NewIdent(ctxt.errgoIdent),
+					Sel: ast.NewIdent("Notef"),
 				}
 				fixed = true
 			case isPkgDot(n.Fun, "errgo", "Annotate"):
 				n.Fun = &ast.SelectorExpr{
-					X:   ast.NewIdent(errgoIdent),
-					Sel: ast.NewIdent("WrapMsg"),
+					X:   ast.NewIdent(ctxt.errgoIdent),
+					Sel: ast.NewIdent("NoteMask"),
 				}
 				fixed = true
 			case isPkgDot(n.Fun, "errgo", "Annotatef"):
 				n.Fun = &ast.SelectorExpr{
-					X:   ast.NewIdent(errgoIdent),
-					Sel: ast.NewIdent("Wrapf"),
+					X:   ast.NewIdent(ctxt.errgoIdent),
+					Sel: ast.NewIdent("Notef"),
 				}
 				fixed = true
 			case isPkgDot(n.Fun, "errgo", "New"):
 				n.Fun = &ast.SelectorExpr{
-					X:   ast.NewIdent(errgoIdent),
+					X:   ast.NewIdent(ctxt.errgoIdent),
 					Sel: ast.NewIdent("Newf"),
 				}
 				fixed = true
-			case isPkgDot(n.Fun, pathToIdent["errors"], "New"):
+			case isPkgDot(n.Fun, ctxt.pathToIdent["errors"], "New"):
 				n.Fun = &ast.SelectorExpr{
-					X:   ast.NewIdent(errgoIdent),
+					X:   ast.NewIdent(ctxt.errgoIdent),
 					Sel: ast.NewIdent("New"),
 				}
 				fixed = true
-			case fixGocheck(n, errgoIdent, gocheckIdent):
-				fixed = true
 			}
 		case *ast.IfStmt:
-			if ok := fixIfErrNotEqualNil(n, errgoIdent); ok {
-				fixed = true
-				break
-			}
-			if ok := fixIfErrEqualSomething(n, errgoIdent); ok {
+			if ok := fixIfErrNotEqualNil(n, ctxt.errgoIdent); ok {
 				fixed = true
 				break
 			}
 		}
 	})
 	fixed = deleteImport(f, "github.com/errgo/errgo") || fixed
+	fixed = rewriteImports(ctxt, f, fixed) || fixed
+	return fixed
+}
+
+func rewriteImports(ctxt *errgoFixContext, f *ast.File, usingErrgo bool) bool {
 	// If there was already an "errors" import, then we can
 	// rewrite it to use errgo
-	if pathToIdent["errors"] != "" {
+	fixed := false
+	if ctxt.pathToIdent["errors"] != "" {
 		// We've already imported the errors package;
 		// change it to refer to errgo.
 		for _, imp := range f.Imports {
 			if importPath(imp) == "errors" {
 				fixed = true
 				imp.EndPos = imp.End()
-				imp.Path.Value = strconv.Quote("launchpad.net/errgo/errors")
-				if errgoIdent != "errors" {
-					imp.Name = ast.NewIdent(errgoIdent)
+				imp.Path.Value = strconv.Quote(errgoPkgPath)
+				if ctxt.errgoIdent != "errors" {
+					imp.Name = ast.NewIdent(ctxt.errgoIdent)
 				}
 			}
 		}
-	} else {
-		fixed = addImport(f, "launchpad.net/errgo/errors", errgoIdent, false) || fixed
+	} else if usingErrgo {
+		fixed = addImport(f, errgoPkgPath, ctxt.errgoIdent, false)
 	}
+	return fixed
+}
+
+func errgoCause(f *ast.File) bool {
+	ctxt := newErrgoFixContext(f)
+
+	fixed := false
+	walk(f, func(n interface{}) {
+		switch n := n.(type) {
+		case *ast.IfStmt:
+			if ok := fixIfErrEqualSomething(n, ctxt.errgoIdent); ok {
+				fixed = true
+				break
+			}
+		case *ast.CallExpr:
+			fixed = fixGocheck(n, ctxt.errgoIdent, ctxt.gocheckIdent) || fixed
+		}
+	})
+	fixed = rewriteImports(ctxt, f, fixed) || fixed
 	return fixed
 }
 
@@ -173,7 +213,7 @@ func fixIfErrNotEqualNil(n *ast.IfStmt, errgoIdent string) bool {
 	//  }
 	// ->
 	// if stmt; err != nil {
-	// 	return [..., ]errgo.Wrap(err)
+	// 	return [..., ]errgo.Mask(err)
 	// }
 	cond, ok := n.Cond.(*ast.BinaryExpr)
 	if !ok {
@@ -184,7 +224,7 @@ func fixIfErrNotEqualNil(n *ast.IfStmt, errgoIdent string) bool {
 	}
 	if !isName(cond.Y, "nil") {
 		// comparison of errors against anything
-		// other than nil - use errgo.Diagnosis.
+		// other than nil - use errgo.Cause.
 
 	}
 	if cond.Op != token.NEQ {
@@ -207,7 +247,7 @@ func fixIfErrNotEqualNil(n *ast.IfStmt, errgoIdent string) bool {
 	*lastResult = &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
 			X:   ast.NewIdent(errgoIdent),
-			Sel: ast.NewIdent("Wrap"),
+			Sel: ast.NewIdent("Mask"),
 		},
 		Args: []ast.Expr{ast.NewIdent("err")},
 	}
@@ -217,7 +257,7 @@ func fixIfErrNotEqualNil(n *ast.IfStmt, errgoIdent string) bool {
 func fixIfErrEqualSomething(n *ast.IfStmt, errgoIdent string) bool {
 	// if stmt; err == something-but-not-nil
 	// ->
-	// if stmt; errgo.Diagnosis(err) == something-but-not-nil
+	// if stmt; errgo.Cause(err) == something-but-not-nil
 	cond, ok := n.Cond.(*ast.BinaryExpr)
 	if !ok {
 		return false
@@ -234,22 +274,21 @@ func fixIfErrEqualSomething(n *ast.IfStmt, errgoIdent string) bool {
 	cond.X = &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
 			X:   ast.NewIdent(errgoIdent),
-			Sel: ast.NewIdent("Diagnosis"),
+			Sel: ast.NewIdent("Cause"),
 		},
 		Args: []ast.Expr{ast.NewIdent("err")},
 	}
 	return true
 }
 
-
 func fixGocheck(n *ast.CallExpr, errgoIdent, gocheckIdent string) bool {
 	// gc.Check(err, gc.Equals, foo-not-nil)
 	// ->
-	// gc.Check(errgo.Diagnosis(err), gc.Equals, foo-not-nil)
+	// gc.Check(errgo.Cause(err), gc.Equals, foo-not-nil)
 
 	// gc.Check(err, gc.Not(gc.Equals), foo-not-nil)
 	// ->
-	// gc.Check(errgo.Diagnosis(err), gc.Not(gc.Equals), foo-not-nil)
+	// gc.Check(errgo.Cause(err), gc.Not(gc.Equals), foo-not-nil)
 	if gocheckIdent == "" {
 		return false
 	}
@@ -289,7 +328,7 @@ func fixGocheck(n *ast.CallExpr, errgoIdent, gocheckIdent string) bool {
 	n.Args[0] = &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
 			X:   ast.NewIdent(errgoIdent),
-			Sel: ast.NewIdent("Diagnosis"),
+			Sel: ast.NewIdent("Cause"),
 		},
 		Args: []ast.Expr{ast.NewIdent("err")},
 	}
