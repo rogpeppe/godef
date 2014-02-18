@@ -153,22 +153,43 @@ func importPath(n *ast.ImportSpec) string {
 //
 func findIdentifier(f *ast.File, searchpos int) ast.Node {
 	ec := make(chan ast.Node)
+	found := func(startPos, endPos token.Pos) bool {
+		start := types.FileSet.Position(startPos).Offset
+		end := start + int(endPos-startPos)
+		return start <= searchpos && searchpos <= end
+	}
 	go func() {
-		visit := func(n ast.Node) bool {
+		var visit func(ast.Node) bool
+		visit = func(n ast.Node) bool {
 			var startPos token.Pos
 			switch n := n.(type) {
+			default:
+				return true
 			case *ast.Ident:
 				startPos = n.NamePos
 			case *ast.SelectorExpr:
 				startPos = n.Sel.NamePos
 			case *ast.ImportSpec:
 				startPos = n.Pos()
-			default:
-				return true
+			case *ast.StructType:
+				// If we find an anonymous bare field in a
+				// struct type, its definition points to itself,
+				// but we actually want to go elsewhere,
+				// so assume (dubiously) that the expression
+				// works globally and return a new node for it.
+				for _, field := range n.Fields.List {
+					if field.Names != nil {
+						continue
+					}
+					if id, ok := field.Type.(*ast.Ident); ok {
+						if found(id.NamePos, id.End()) {
+							ec <- parseExpr(f.Scope, id.Name)
+							runtime.Goexit()
+						}
+					}
+				}
 			}
-			start := types.FileSet.Position(startPos).Offset
-			end := start + int(n.End()-startPos)
-			if start <= searchpos && searchpos <= end {
+			if found(startPos, n.End()) {
 				ec <- n
 				runtime.Goexit()
 			}
