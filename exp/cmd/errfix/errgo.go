@@ -180,6 +180,11 @@ func errgoCause(f *ast.File) bool {
 				fixed = true
 				break
 			}
+		case *ast.TypeAssertExpr:
+			if isName(n.X, "err") {
+				n.X = causeExpr(ctxt.errgoIdent, "err")
+				fixed = true
+			}
 		case *ast.CallExpr:
 			fixed = fixGocheck(n, ctxt.errgoIdent, ctxt.gocheckIdent) || fixed
 		}
@@ -277,13 +282,7 @@ func fixIfErrEqualSomething(n *ast.IfStmt, errgoIdent string) bool {
 	if isName(cond.Y, "nil") {
 		return false
 	}
-	cond.X = &ast.CallExpr{
-		Fun: &ast.SelectorExpr{
-			X:   ast.NewIdent(errgoIdent),
-			Sel: ast.NewIdent("Cause"),
-		},
-		Args: []ast.Expr{ast.NewIdent("err")},
-	}
+	cond.X = causeExpr(errgoIdent, "err")
 	return true
 }
 
@@ -331,12 +330,16 @@ func fixGocheck(n *ast.CallExpr, errgoIdent, gocheckIdent string) bool {
 	if isName(n.Args[2], "nil") {
 		return false
 	}
-	n.Args[0] = &ast.CallExpr{
+	n.Args[0] = causeExpr(errgoIdent, "err")
+	return true
+}
+
+func causeExpr(errgoIdent string, ident string) *ast.CallExpr {
+	return &ast.CallExpr{
 		Fun: &ast.SelectorExpr{
 			X:   ast.NewIdent(errgoIdent),
 			Sel: ast.NewIdent("Cause"),
 		},
-		Args: []ast.Expr{ast.NewIdent("err")},
+		Args: []ast.Expr{ast.NewIdent(ident)},
 	}
-	return true
 }

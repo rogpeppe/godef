@@ -118,6 +118,9 @@ func tester() error {
 	if err := foo(); err == nil {
 		return nil
 	}
+	if _, ok := err.(*foo); ok {
+		return nil
+	}
 	return nil
 }
 `,
@@ -142,6 +145,9 @@ func tester() error {
 		return nil
 	}
 	if err := foo(); err == nil {
+		return nil
+	}
+	if _, ok := errors.Cause(err).(*foo); ok {
 		return nil
 	}
 	return nil
