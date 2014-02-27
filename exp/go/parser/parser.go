@@ -452,6 +452,18 @@ func (p *parser) expectSemi() {
 	}
 }
 
+func (p *parser) atComma(context string) bool {
+	if p.tok == token.COMMA {
+		return true
+	}
+	if p.tok == token.SEMICOLON && p.lit == "\n" {
+		p.error(p.pos, "missing ',' before newline in "+context)
+		return true // "insert" the comma and continue
+
+	}
+	return false
+}
+
 // ----------------------------------------------------------------------------
 // Identifiers
 
@@ -708,16 +720,17 @@ func (p *parser) parseVarList(isParam bool) (list []ast.Expr, typ ast.Expr) {
 	}
 
 	// a list of identifiers looks like a list of type names
-	for {
-		// parseVarType accepts any type (including parenthesized ones)
-		// even though the syntax does not permit them here: we
-		// accept them all for more robust parsing and complain
-		// afterwards
-		list = append(list, p.parseVarType(isParam))
+	//
+	// parse/tryVarType accepts any type (including parenthesized
+	// ones) even though the syntax does not permit them here: we
+	// accept them all for more robust parsing and complain later
+	for typ := p.parseVarType(isParam); typ != nil; {
+		list = append(list, typ)
 		if p.tok != token.COMMA {
 			break
 		}
 		p.next()
+		typ = p.tryVarType(isParam) // maybe nil as in: func f(int,) {}
 	}
 
 	// if we had a list of identifiers, it must be followed by a type
@@ -743,7 +756,6 @@ func (p *parser) parseParameterList(scope *ast.Scope, ellipsisOk bool) (params [
 		if p.tok == token.COMMA {
 			p.next()
 		}
-
 		for p.tok != token.RPAREN && p.tok != token.EOF {
 			idents := p.parseIdentList()
 			typ := p.parseVarType(ellipsisOk)
@@ -752,7 +764,7 @@ func (p *parser) parseParameterList(scope *ast.Scope, ellipsisOk bool) (params [
 			// Go spec: The scope of an identifier denoting a function
 			// parameter or result variable is the function body.
 			p.declare(field, scope, ast.Var, idents...)
-			if p.tok != token.COMMA {
+			if !p.atComma("parameter list") {
 				break
 			}
 			p.next()
@@ -930,7 +942,7 @@ func (p *parser) tryRawType(ellipsisOk bool) ast.Expr {
 		p.next()
 		typ := p.parseType()
 		rparen := p.expect(token.RPAREN)
-		return &ast.ParenExpr{lparen, typ, rparen}
+		return &ast.ParenExpr{Lparen: lparen, X: typ, Rparen: rparen}
 	}
 
 	// no type found
@@ -1120,7 +1132,7 @@ func (p *parser) parseCallOrConversion(fun ast.Expr) *ast.CallExpr {
 			ellipsis = p.pos
 			p.next()
 		}
-		if p.tok != token.COMMA {
+		if !p.atComma("argument list") {
 			break
 		}
 		p.next()
@@ -1156,7 +1168,7 @@ func (p *parser) parseElementList() (list []ast.Expr) {
 
 	for p.tok != token.RBRACE && p.tok != token.EOF {
 		list = append(list, p.parseElement(true))
-		if p.tok != token.COMMA {
+		if !p.atComma("composite literal") {
 			break
 		}
 		p.next()

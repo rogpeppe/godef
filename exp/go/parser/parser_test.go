@@ -49,11 +49,12 @@ var validPrograms = []interface{}{
 	`package p; func f() { select { case <- c: case c <- d: case c <- <- d: case <-c <- d: } };`,
 	`package p; func f() { if ; true {} };`,
 	`package p; func f() { switch ; {} };`,
+	`package p; func f() (int,) {}`,
 }
 
 func TestParseValidPrograms(t *testing.T) {
 	for _, src := range validPrograms {
-		_, err := ParseFile(fset, "", src, 0, nil)
+		_, err := ParseFile(fset, "", src, Trace, nil)
 		if err != nil {
 			t.Errorf("ParseFile(%q): %v", src, err)
 		}
