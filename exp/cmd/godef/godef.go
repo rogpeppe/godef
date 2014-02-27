@@ -188,6 +188,7 @@ func findIdentifier(f *ast.File, searchpos int) ast.Node {
 						}
 					}
 				}
+
 				return true
 			}
 			if found(startPos, n.End()) {
