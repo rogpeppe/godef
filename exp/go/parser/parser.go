@@ -695,9 +695,6 @@ func (p *parser) tryVarType(isParam bool) ast.Expr {
 			p.error(pos, "'...' parameter is missing type")
 			typ = &ast.BadExpr{pos, p.pos}
 		}
-		if p.tok != token.RPAREN {
-			p.error(pos, "can use '...' with last parameter type only")
-		}
 		return &ast.Ellipsis{pos, typ}
 	}
 	return p.tryType()

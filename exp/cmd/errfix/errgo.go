@@ -13,6 +13,7 @@ import (
 func init() {
 	register(causeFix)
 	register(maskFix)
+	register(newFix)
 }
 
 const errgoPkgPath = "github.com/juju/errgo/errors"
@@ -30,6 +31,14 @@ var causeFix = fix{
 	"2014-02-14",
 	errgoCause,
 	`use Cause when comparing errors
+`,
+}
+
+var newFix = fix{
+	"errgo-new",
+	"2014-03-03",
+	errgoNew,
+	`use Newf instead of Errorf
 `,
 }
 
@@ -75,7 +84,7 @@ func importPathToIdentMap(f *ast.File) map[string]string {
 	return m
 }
 
-func errgoMask(f *ast.File) bool {
+func errgoNew(f *ast.File) bool {
 	ctxt := newErrgoFixContext(f)
 
 	fixed := false
@@ -157,6 +166,19 @@ func errgoMask(f *ast.File) bool {
 				}
 				fixed = true
 			}
+		}
+	})
+	fixed = deleteImport(f, "github.com/errgo/errgo") || fixed
+	fixed = rewriteImports(ctxt, f, fixed) || fixed
+	return fixed
+}
+
+func errgoMask(f *ast.File) bool {
+	ctxt := newErrgoFixContext(f)
+
+	fixed := false
+	walk(f, func(n interface{}) {
+		switch n := n.(type) {
 		case *ast.IfStmt:
 			if ok := fixIfErrNotEqualNil(n, ctxt.errgoIdent); ok {
 				fixed = true
