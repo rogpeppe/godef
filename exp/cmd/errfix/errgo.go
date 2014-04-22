@@ -16,7 +16,7 @@ func init() {
 	register(newFix)
 }
 
-const errgoPkgPath = "github.com/juju/errgo/errors"
+const errgoPkgPath = "github.com/juju/errgo"
 
 var maskFix = fix{
 	"errgo-mask",
@@ -45,9 +45,10 @@ var newFix = fix{
 type errgoFixContext struct {
 	pathToIdent  map[string]string
 	gocheckIdent string
-	errgoIdent   string
 	importsOldErrgo bool
 }
+
+const errgoIdent = "errgo"
 
 func newErrgoFixContext(f *ast.File) *errgoFixContext {
 	ctxt := &errgoFixContext{
@@ -57,13 +58,8 @@ func newErrgoFixContext(f *ast.File) *errgoFixContext {
 
 	// If we import from any */errors package path,
 	// import as errgo to save name clashes.
-	ctxt.errgoIdent = "errors"
 	for _, imp := range f.Imports {
-		path := importPath(imp)
-		if strings.HasSuffix(path, "/errors") {
-			ctxt.errgoIdent = "errgo"
-		}
-		if path == "github.com/errgo/errgo" {
+		if importPath(imp) == "github.com/errgo/errgo" {
 			ctxt.importsOldErrgo = true
 		}
 	}
@@ -119,7 +115,7 @@ func errgoNew(f *ast.File) bool {
 					// fmt.Errorf("foo %s", x) ->
 					// errgo.Newf("foo %s", x)
 					n.Fun = &ast.SelectorExpr{
-						X:   ast.NewIdent(ctxt.errgoIdent),
+						X:   ast.NewIdent(errgoIdent),
 						Sel: ast.NewIdent("Newf"),
 					}
 					fixed = true
@@ -137,31 +133,31 @@ func errgoNew(f *ast.File) bool {
 				newArgs = append(newArgs, n.Args[1:len(n.Args)-1]...)
 				n.Args = newArgs
 				n.Fun = &ast.SelectorExpr{
-					X:   ast.NewIdent(ctxt.errgoIdent),
+					X:   ast.NewIdent(errgoIdent),
 					Sel: ast.NewIdent("Notef"),
 				}
 				fixed = true
 			case ctxt.importsOldErrgo && isPkgDot(n.Fun, "errgo", "Annotate"):
 				n.Fun = &ast.SelectorExpr{
-					X:   ast.NewIdent(ctxt.errgoIdent),
+					X:   ast.NewIdent(errgoIdent),
 					Sel: ast.NewIdent("NoteMask"),
 				}
 				fixed = true
 			case ctxt.importsOldErrgo && isPkgDot(n.Fun, "errgo", "Annotatef"):
 				n.Fun = &ast.SelectorExpr{
-					X:   ast.NewIdent(ctxt.errgoIdent),
+					X:   ast.NewIdent(errgoIdent),
 					Sel: ast.NewIdent("Notef"),
 				}
 				fixed = true
 			case ctxt.importsOldErrgo && isPkgDot(n.Fun, "errgo", "New"):
 				n.Fun = &ast.SelectorExpr{
-					X:   ast.NewIdent(ctxt.errgoIdent),
+					X:   ast.NewIdent(errgoIdent),
 					Sel: ast.NewIdent("Newf"),
 				}
 				fixed = true
 			case isPkgDot(n.Fun, ctxt.pathToIdent["errors"], "New"):
 				n.Fun = &ast.SelectorExpr{
-					X:   ast.NewIdent(ctxt.errgoIdent),
+					X:   ast.NewIdent(errgoIdent),
 					Sel: ast.NewIdent("New"),
 				}
 				fixed = true
@@ -180,7 +176,7 @@ func errgoMask(f *ast.File) bool {
 	walk(f, func(n interface{}) {
 		switch n := n.(type) {
 		case *ast.IfStmt:
-			if ok := fixIfErrNotEqualNil(n, ctxt.errgoIdent); ok {
+			if ok := fixIfErrNotEqualNil(n); ok {
 				fixed = true
 				break
 			}
@@ -198,17 +194,17 @@ func errgoCause(f *ast.File) bool {
 	walk(f, func(n interface{}) {
 		switch n := n.(type) {
 		case *ast.IfStmt:
-			if ok := fixIfErrEqualSomething(n, ctxt.errgoIdent); ok {
+			if ok := fixIfErrEqualSomething(n, errgoIdent); ok {
 				fixed = true
 				break
 			}
 		case *ast.TypeAssertExpr:
 			if isName(n.X, "err") {
-				n.X = causeExpr(ctxt.errgoIdent, "err")
+				n.X = causeExpr(errgoIdent, "err")
 				fixed = true
 			}
 		case *ast.CallExpr:
-			fixed = fixGocheck(n, ctxt.errgoIdent, ctxt.gocheckIdent) || fixed
+			fixed = fixGocheck(n, errgoIdent, ctxt.gocheckIdent) || fixed
 		}
 	})
 	if fixed {
@@ -227,20 +223,18 @@ func rewriteImports(ctxt *errgoFixContext, f *ast.File, usingErrgo bool) bool {
 		for _, imp := range f.Imports {
 			if importPath(imp) == "errors" {
 				fixed = true
+				imp.Name = nil
 				imp.EndPos = imp.End()
 				imp.Path.Value = strconv.Quote(errgoPkgPath)
-				if ctxt.errgoIdent != "errors" {
-					imp.Name = ast.NewIdent(ctxt.errgoIdent)
-				}
 			}
 		}
 	} else if usingErrgo {
-		fixed = addImport(f, errgoPkgPath, ctxt.errgoIdent, false)
+		fixed = addImport(f, errgoPkgPath, errgoIdent, false)
 	}
 	return fixed
 }
 
-func fixIfErrNotEqualNil(n *ast.IfStmt, errgoIdent string) bool {
+func fixIfErrNotEqualNil(n *ast.IfStmt) bool {
 	// if stmt; err != nil {
 	//	return [..., ]err
 	//  }
