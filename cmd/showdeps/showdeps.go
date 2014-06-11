@@ -19,11 +19,25 @@ var (
 	from = flag.Bool("from", false, "show which dependencies are introduced by which packages")
 )
 
+var helpMessage = `
+usage: showdeps [flags] [pkg....]\n")
+
+showdeps prints Go package dependencies of the named packages, specified
+as in the Go command (for instance ... wildcards work), one per line.
+If no packages are given, it uses the package in the current directory.
+
+By default it prints direct dependencies of the packages (and their tests)
+only, but the -a flag can be used to print all reachable dependencies.
+
+If the -from flag is specified, the package path on each line is followed
+by the paths of all the packages that depend on it.
+`[1:]
+
 var cwd string
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "usage: showdeps [flags] pkg....\n")
+		os.Stderr.WriteString(helpMessage)
 		flag.PrintDefaults()
 		os.Exit(2)
 	}
