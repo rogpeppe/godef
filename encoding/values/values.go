@@ -1,3 +1,5 @@
+// +build ignore
+
 package values
 
 // Marshal returns the value encoding of v.
