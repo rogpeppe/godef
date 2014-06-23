@@ -1,6 +1,7 @@
 package audio
+
 import (
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 	"fmt"
 	"strconv"
 	"strings"
@@ -8,15 +9,15 @@ import (
 )
 
 type Time struct {
-	t int64
-	real bool		// real time (in nanoseconds) ?
+	t    int64
+	real bool // real time (in nanoseconds) ?
 }
 
 func init() {
 	abc.Register("time", map[string]abc.Socket{
-			"1": abc.Socket{abc.StringT, abc.Female},
-			"out": abc.Socket{TimeT, abc.Male},
-		}, makeTime)
+		"1":   abc.Socket{abc.StringT, abc.Female},
+		"out": abc.Socket{TimeT, abc.Male},
+	}, makeTime)
 }
 
 func makeTime(status *abc.Status, args map[string]interface{}) abc.Widget {
@@ -52,7 +53,7 @@ func ParseTime(s string) (t Time, err os.Error) {
 		mult = 1e3
 	case "ns":
 		mult = 1
-	case "x":			// samples
+	case "x": // samples
 		mult = 1
 	}
 	// use exact arithmetic if we can
@@ -63,7 +64,7 @@ func ParseTime(s string) (t Time, err os.Error) {
 			return Time{}, err
 		}
 		d = int64(f * float64(mult))
-	}else{
+	} else {
 		d *= mult
 	}
 	return Time{d, suffix != "x"}, nil

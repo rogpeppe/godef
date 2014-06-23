@@ -1,21 +1,22 @@
 package audio
+
 import (
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 	"strconv"
 )
 
 func init() {
-	Register("mix", wProc, map[string]abc.Socket {
-			"out": abc.Socket{SamplesT, abc.Male},
-			"1": abc.Socket{SamplesT, abc.Female},
-			"2": abc.Socket{SamplesT, abc.Female},
-		}, makeMixer)
+	Register("mix", wProc, map[string]abc.Socket{
+		"out": abc.Socket{SamplesT, abc.Male},
+		"1":   abc.Socket{SamplesT, abc.Female},
+		"2":   abc.Socket{SamplesT, abc.Female},
+	}, makeMixer)
 }
 
 type MixWidget struct {
 	Format
-	buf ContiguousFloat32Buffer
-	ws []Widget
+	buf     ContiguousFloat32Buffer
+	ws      []Widget
 	carryOn bool
 }
 
@@ -38,11 +39,10 @@ func (w *MixWidget) Init(inputs map[string]Widget) {
 	defer un(log("MixWidget.Init"))
 	ws := make([]Widget, len(inputs))
 	for i, w := range inputs {
-		ws[atoi(i) - 1] = w
+		ws[atoi(i)-1] = w
 	}
 	w.init(ws)
 }
-	
 
 func Mixer(carryOn bool, ws []Widget) *MixWidget {
 	if len(ws) == 0 {
@@ -53,7 +53,7 @@ func Mixer(carryOn bool, ws []Widget) *MixWidget {
 			panic("input formats not fully specified")
 		}
 	}
-	
+
 	return (&MixWidget{carryOn: carryOn}).init(ws)
 }
 
@@ -64,11 +64,11 @@ func (w *MixWidget) init(ws []Widget) *MixWidget {
 	debugp("mixing %#v\n", ws)
 	// choose best quality input, and convert all others to that.
 	var best Format
-	for _, input:= range ws {
+	for _, input := range ws {
 		f := input.GetFormat("out")
 		best = best.CombineBest(f)
 	}
-debugp("mixer: best format: %#v", best)
+	debugp("mixer: best format: %#v", best)
 	for i, input := range ws {
 		f := input.GetFormat("out")
 		if !f.Eq(best) {
@@ -82,7 +82,7 @@ debugp("mixer: best format: %#v", best)
 }
 
 func (w *MixWidget) ReadSamples(buf Buffer, t int64) bool {
-defer un(log("mix read %v [%v]", t, buf.Len()))
+	defer un(log("mix read %v [%v]", t, buf.Len()))
 	fbuf := buf.(ContiguousFloat32Buffer)
 	samples := fbuf.AsFloat32Buf()
 	if len(w.ws) == 0 {
@@ -98,7 +98,7 @@ defer un(log("mix read %v [%v]", t, buf.Len()))
 			for j, s := range wbuf.AsFloat32Buf() {
 				samples[j] += s
 			}
-		}else{
+		} else {
 			ok = false
 			w.ws[i] = nil
 		}
@@ -123,4 +123,3 @@ defer un(log("mix read %v [%v]", t, buf.Len()))
 	}
 	return len(w.ws) > 0
 }
-

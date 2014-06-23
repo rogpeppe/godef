@@ -1,21 +1,22 @@
 package audio
-import "rog-go.googlecode.com/hg/exp/abc"
+
+import "code.google.com/p/rog-go/exp/abc"
 
 type PermuteWidget struct {
 	Format
 	input Widget
-	p []int
-	buf Buffer
+	p     []int
+	buf   Buffer
 
 	permute func(b0, b1 Buffer, p []int)
 }
 
 func init() {
-	Register("permute", wProc, map[string]abc.Socket {
-			"out": abc.Socket{SamplesT, abc.Male},
-			"1": abc.Socket{SamplesT, abc.Female},
-			"2": abc.Socket{abc.StringT, abc.Female},
-		}, makePermute)
+	Register("permute", wProc, map[string]abc.Socket{
+		"out": abc.Socket{SamplesT, abc.Male},
+		"1":   abc.Socket{SamplesT, abc.Female},
+		"2":   abc.Socket{abc.StringT, abc.Female},
+	}, makePermute)
 }
 
 func makePermute(status *abc.Status, args map[string]interface{}) Widget {
@@ -97,7 +98,7 @@ func permuteNFloat32Buf(b0, b1 Buffer, p []int) {
 			for i := c; i < len(buf0.Buf); i += nc0 {
 				buf0.Buf[i] = 0
 			}
-		}else{
+		} else {
 			j := p[c]
 			for i := c; i < len(buf0.Buf); i += nc0 {
 				buf0.Buf[i] = buf1.Buf[j]

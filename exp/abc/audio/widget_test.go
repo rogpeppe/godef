@@ -1,6 +1,7 @@
 package audio
+
 import (
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 	"fmt"
 	"strconv"
 	"testing"
@@ -46,17 +47,17 @@ func TestParserWithPipes(t *testing.T) {
 type CompareWidget struct {
 	Format
 	bufsize int
-	w0, w1 Widget
-	t *testing.T
+	w0, w1  Widget
+	t       *testing.T
 }
 
 func registertests(t *testing.T) *testing.T {
-	Register("compare", wOutput, map[string]abc.Socket {
-			"1": abc.Socket{SamplesT, abc.Female},
-			"2": abc.Socket{SamplesT, abc.Female},
-		}, func(status *abc.Status, args map[string]interface{}) Widget {
-			return makeCompareWidget(t, status, args)
-		})
+	Register("compare", wOutput, map[string]abc.Socket{
+		"1": abc.Socket{SamplesT, abc.Female},
+		"2": abc.Socket{SamplesT, abc.Female},
+	}, func(status *abc.Status, args map[string]interface{}) Widget {
+		return makeCompareWidget(t, status, args)
+	})
 	return t
 }
 
@@ -97,7 +98,7 @@ func (w *CompareWidget) Init(inputs map[string]Widget) {
 		}
 		for j, s := range buf0 {
 			if s != buf1[j] {
-				w.t.Fatalf("difference at %v (%v vs %v)\n", p + int64(j), s, buf1[j])
+				w.t.Fatalf("difference at %v (%v vs %v)\n", p+int64(j), s, buf1[j])
 			}
 		}
 		p += int64(w.bufsize)
@@ -105,7 +106,7 @@ func (w *CompareWidget) Init(inputs map[string]Widget) {
 	if eof0 != eof1 {
 		if eof0 {
 			w.t.Fatalf("premature eof on 0\n")
-		}else{
+		} else {
 			w.t.Fatalf("premature eof on 1\n")
 		}
 	}
@@ -118,7 +119,7 @@ func (w *CompareWidget) ReadSamples(_ Buffer, _ int64) bool {
 func testequal(t *testing.T, a, b []byte, msg string) {
 	for i, x := range a {
 		if b[i] != x {
-			p := i/2*2
+			p := i / 2 * 2
 			t.Log(a[p:p+2], b[p:p+2])
 			t.Fatalf("bytes differ at %d: %v", i, msg)
 		}
@@ -127,10 +128,10 @@ func testequal(t *testing.T, a, b []byte, msg string) {
 
 // round trip conversion int16->float32->int16
 func TestConversion(t *testing.T) {
-	origdata := make([]byte, 2 * 65536)
+	origdata := make([]byte, 2*65536)
 	samples := make([]float32, 65536)
 	for i := 0; i < len(origdata); i += 2 {
-		origdata[i] =  byte(i & 0xff)
+		origdata[i] = byte(i & 0xff)
 		origdata[i+1] = byte(i >> 8)
 	}
 	data := make([]byte, len(origdata))

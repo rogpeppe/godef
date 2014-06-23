@@ -1,6 +1,7 @@
 package audio
+
 import (
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 	"fmt"
 	"math"
 	"os"
@@ -16,7 +17,7 @@ type PhaserWidget struct {
 
 	// parameters
 	freq, startphase, fb, drywet float32
-	depth, stages int
+	depth, stages                int
 
 	// statically derived values
 	lfoskip float32
@@ -25,8 +26,8 @@ type PhaserWidget struct {
 }
 
 type PhaserState struct {
-	old []float32
-	skipcount int64		// ??
+	old         []float32
+	skipcount   int64 // ??
 	gain, fbout float32
 }
 
@@ -36,16 +37,16 @@ const (
 )
 
 func init() {
-	Register("phaser", wProc, map[string]abc.Socket {
-			"out": abc.Socket{SamplesT, abc.Male},
-			"1": abc.Socket{SamplesT, abc.Female},
-			"freq": abc.Socket{abc.StringT, abc.Female},
-			"phase": abc.Socket{abc.StringT, abc.Female},
-			"feedback": abc.Socket{abc.StringT, abc.Female},
-			"depth": abc.Socket{abc.StringT, abc.Female},
-			"stages": abc.Socket{abc.StringT, abc.Female},
-			"wet": abc.Socket{abc.StringT, abc.Female},
-		}, makePhaser)
+	Register("phaser", wProc, map[string]abc.Socket{
+		"out":      abc.Socket{SamplesT, abc.Male},
+		"1":        abc.Socket{SamplesT, abc.Female},
+		"freq":     abc.Socket{abc.StringT, abc.Female},
+		"phase":    abc.Socket{abc.StringT, abc.Female},
+		"feedback": abc.Socket{abc.StringT, abc.Female},
+		"depth":    abc.Socket{abc.StringT, abc.Female},
+		"stages":   abc.Socket{abc.StringT, abc.Female},
+		"wet":      abc.Socket{abc.StringT, abc.Female},
+	}, makePhaser)
 }
 
 func makePhaser(status *abc.Status, args map[string]interface{}) Widget {
@@ -82,26 +83,26 @@ func (w *PhaserWidget) ReadSamples(b Buffer, t int64) bool {
 	for c, buffer := range buffers {
 		state := &w.state[c]
 		for i, in := range buffer {
-			if state.skipcount % lfoskipsamples == 0 {
+			if state.skipcount%lfoskipsamples == 0 {
 				// compute sine between 0 and 1
 				// TODO: truncate skipcount, modify lfoskip
-				state.gain = (1 + cos32(float32(state.skipcount) * w.lfoskip + phase)) / 2
+				state.gain = (1 + cos32(float32(state.skipcount)*w.lfoskip+phase)) / 2
 				// change lfo shape
-				state.gain = float32((math.Exp(float64(state.gain * phaserlfoshape)) - 1) /
+				state.gain = float32((math.Exp(float64(state.gain*phaserlfoshape)) - 1) /
 					(math.Exp(phaserlfoshape) - 1))
-				state.gain = 1 - state.gain / 255 * float32(w.depth)		// attenuate the lfo
+				state.gain = 1 - state.gain/255*float32(w.depth) // attenuate the lfo
 			}
 			state.skipcount++
 			// phasing routine
-			m := in + state.fbout * w.fb
+			m := in + state.fbout*w.fb
 			g := state.gain
 			for j, tmp := range state.old {
-				v := g * tmp + m
+				v := g*tmp + m
 				state.old[j] = v
-				m = tmp - g * v
+				m = tmp - g*v
 			}
 			state.fbout = m
-			out := m * w.drywet + in * (1 - w.drywet)
+			out := m*w.drywet + in*(1-w.drywet)
 			switch {
 			case out < -1.0:
 				out = -1.0

@@ -1,12 +1,13 @@
 package audio
+
 import (
 	"math"
 	"strconv"
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 )
 
 type waveWidget struct {
-	freq float64
+	freq    float64
 	samples []float32
 	Format
 }
@@ -24,11 +25,11 @@ func SinWave(freq float64, rate int) (w *waveWidget) {
 func init() {
 	Register("wave", wInput, map[string]abc.Socket{
 		"out": abc.Socket{SamplesT, abc.Male},
-		"1": abc.Socket{abc.StringT, abc.Female},
+		"1":   abc.Socket{abc.StringT, abc.Female},
 	}, makeWave)
 	Register("level", wInput, map[string]abc.Socket{
 		"out": abc.Socket{SamplesT, abc.Male},
-		"1": abc.Socket{abc.StringT, abc.Female},
+		"1":   abc.Socket{abc.StringT, abc.Female},
 	}, makeLevel)
 }
 
@@ -64,7 +65,7 @@ func (w *waveWidget) SetFormat(f Format) {
 
 func CustomWave(rate int, samples []float32) (w *waveWidget) {
 	w = &waveWidget{}
-	w.samples= samples
+	w.samples = samples
 	w.Rate = rate
 	w.NumChans = 1
 	w.Type = Float32Type
@@ -73,20 +74,18 @@ func CustomWave(rate int, samples []float32) (w *waveWidget) {
 }
 
 func (w *waveWidget) ReadSamples(b Buffer, t int64) bool {
-defer un(log("wave read %v [%v]", t, b.Len()))
+	defer un(log("wave read %v [%v]", t, b.Len()))
 	buf := b.(NFloat32Buf).Buf
 	start := int(t % int64(len(w.samples)))
 	for i := 0; i < len(buf); i++ {
-		buf[i] = w.samples[(i + start) % len(w.samples)]
+		buf[i] = w.samples[(i+start)%len(w.samples)]
 	}
 	return true
 }
 
-
 type levelWidget struct {
 	waveWidget
 }
-
 
 func makeLevel(status *abc.Status, args map[string]interface{}) Widget {
 	level, err := strconv.Atof64(args["1"].(string))
@@ -103,7 +102,7 @@ func Level(level float32, rate int) *levelWidget {
 func (w *levelWidget) Init(_ map[string]Widget) {
 }
 
-func (w *levelWidget)ReadSamples(b Buffer, _ int64) bool {
+func (w *levelWidget) ReadSamples(b Buffer, _ int64) bool {
 	buf := b.(NFloat32Buf).Buf
 	v := w.samples[0]
 	for i := range buf {
@@ -111,4 +110,3 @@ func (w *levelWidget)ReadSamples(b Buffer, _ int64) bool {
 	}
 	return true
 }
-

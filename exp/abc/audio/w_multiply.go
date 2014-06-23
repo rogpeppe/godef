@@ -1,21 +1,21 @@
 package audio
-import "rog-go.googlecode.com/hg/exp/abc"
+
+import "code.google.com/p/rog-go/exp/abc"
 
 type MultiplierWidget struct {
 	Format
-	eof bool
-	buf ContiguousFloat32Buffer
+	eof    bool
+	buf    ContiguousFloat32Buffer
 	w0, w1 Widget
 }
 
 func init() {
-	Register("multiply", wProc, map[string]abc.Socket {
-			"out": abc.Socket{SamplesT, abc.Male},
-			"1": abc.Socket{SamplesT, abc.Female},
-			"2": abc.Socket{SamplesT, abc.Female},
-		}, makeMultiplier)
+	Register("multiply", wProc, map[string]abc.Socket{
+		"out": abc.Socket{SamplesT, abc.Male},
+		"1":   abc.Socket{SamplesT, abc.Female},
+		"2":   abc.Socket{SamplesT, abc.Female},
+	}, makeMultiplier)
 }
-
 
 func makeMultiplier(status *abc.Status, args map[string]interface{}) Widget {
 	w := new(MultiplierWidget)
@@ -40,7 +40,7 @@ func (w *MultiplierWidget) init(w0, w1 Widget) *MultiplierWidget {
 			w1 = Converter(w1, best)
 		}
 		w.Format = best
-	}else{
+	} else {
 		w.Format = f0
 	}
 	w.w0 = w0
@@ -54,7 +54,7 @@ func (w *MultiplierWidget) Init(inputs map[string]Widget) {
 }
 
 func (w *MultiplierWidget) ReadSamples(b Buffer, t int64) bool {
-defer un(log("mult read %v [%v]", t, b.Len()))
+	defer un(log("mult read %v [%v]", t, b.Len()))
 
 	buf0 := b.(ContiguousFloat32Buffer)
 
@@ -78,4 +78,3 @@ defer un(log("mult read %v [%v]", t, b.Len()))
 	w.eof = true
 	return false
 }
-

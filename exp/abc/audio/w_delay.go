@@ -1,6 +1,7 @@
 package audio
+
 import (
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 	"fmt"
 )
 
@@ -9,21 +10,21 @@ import (
 
 type DelayWidget struct {
 	Format
-	buf Buffer
-	size int
-	delay Time
-	r0 int64			// time of sample in buffer
-	input Widget
+	buf    Buffer
+	size   int
+	delay  Time
+	r0     int64 // time of sample in buffer
+	input  Widget
 	eofpos int64
-	eof bool
+	eof    bool
 }
 
 func init() {
-	Register("delay", wProc, map[string]abc.Socket {
-			"out": abc.Socket{SamplesT, abc.Male},
-			"1": abc.Socket{SamplesT, abc.Female},
-			"2": abc.Socket{TimeT, abc.Female},
-		}, makeDelay)
+	Register("delay", wProc, map[string]abc.Socket{
+		"out": abc.Socket{SamplesT, abc.Male},
+		"1":   abc.Socket{SamplesT, abc.Female},
+		"2":   abc.Socket{TimeT, abc.Female},
+	}, makeDelay)
 }
 
 func makeDelay(status *abc.Status, args map[string]interface{}) Widget {
@@ -52,12 +53,12 @@ func (w *DelayWidget) init(input Widget) *DelayWidget {
 }
 
 func (w *DelayWidget) ReadSamples(samples Buffer, p0 int64) bool {
-defer un(log("delay read %v [%v], read fmt %v, buf fmt %v", p0, samples.Len(), samples.GetFormat(), w.buf.GetFormat()))
+	defer un(log("delay read %v [%v], read fmt %v, buf fmt %v", p0, samples.Len(), samples.GetFormat(), w.buf.GetFormat()))
 	if p0 >= w.eofpos {
 		return false
 	}
 	n := samples.Len()
-	if w.size + n > w.buf.Len() {
+	if w.size+n > w.buf.Len() {
 		nbuf := w.AllocBuffer(w.size + n)
 		nbuf.Copy(0, w.buf, 0, w.size)
 		w.buf = nbuf
@@ -72,27 +73,27 @@ defer un(log("delay read %v [%v], read fmt %v, buf fmt %v", p0, samples.Len(), s
 		ringCopy(samples, w.buf, off0, w.size, w.size)
 		ok := !w.eof && w.input.ReadSamples(w.buf.Slice(0, n), p0)
 		if ok {
-			samples.Copy(w.size, w.buf, 0, n - w.size)
+			samples.Copy(w.size, w.buf, 0, n-w.size)
 
 			// copy one delay's worth of samples to start of buffer
-			w.buf.Copy(0, w.buf, n - w.size, n)
-		}else{
+			w.buf.Copy(0, w.buf, n-w.size, n)
+		} else {
 			samples.Zero(w.size, n)
 			w.eofpos = p0
 			w.eof = true
 		}
-	}else{
+	} else {
 		// read is smaller than buffer size
 		ringCopy(samples, w.buf, off0, n, w.size)
 		if !w.eof {
 			off1 := (off0 + w.size) % w.size
-			ok := w.input.ReadSamples(w.buf.Slice(off1, off1 + n), p0)
+			ok := w.input.ReadSamples(w.buf.Slice(off1, off1+n), p0)
 			if ok {
 				// if it wraps, copy the overhanging tail to the start of the buffer
-				if off1 + n > w.size {
-					w.buf.Copy(0, w.buf, w.size, off1 + n)
+				if off1+n > w.size {
+					w.buf.Copy(0, w.buf, w.size, off1+n)
 				}
-			}else{
+			} else {
 				w.eofpos = p0 + int64(w.size)
 				w.eof = true
 			}
@@ -103,11 +104,11 @@ defer un(log("delay read %v [%v], read fmt %v, buf fmt %v", p0, samples.Len(), s
 }
 
 func ringCopy(dst, samples Buffer, off, n, size int) {
-	if off + n <= size {
-		dst.Copy(0, samples, off, off + n)
-	}else{
+	if off+n <= size {
+		dst.Copy(0, samples, off, off+n)
+	} else {
 		gap := size - off
-		dst.Copy(0, samples, off, off + gap)
-		dst.Copy(gap, samples, 0, n - gap)
+		dst.Copy(0, samples, off, off+gap)
+		dst.Copy(gap, samples, 0, n-gap)
 	}
 }

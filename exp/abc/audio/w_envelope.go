@@ -1,25 +1,26 @@
 package audio
+
 import (
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 	"strconv"
 )
 
 type EnvelopeWidget struct {
 	Format
-	read func(b Float32Buf, t int64) int64
+	read           func(b Float32Buf, t int64) int64
 	t0, a, d, s, r Time
-	sustainlev float32
+	sustainlev     float32
 }
 
 func init() {
-	Register("envelope", wOutput, map[string]abc.Socket {
+	Register("envelope", wOutput, map[string]abc.Socket{
 		"start": abc.Socket{TimeT, abc.Female},
-		"a": abc.Socket{TimeT, abc.Female},
-		"d": abc.Socket{TimeT, abc.Female},
-		"s": abc.Socket{TimeT, abc.Female},
-		"r": abc.Socket{TimeT, abc.Female},
+		"a":     abc.Socket{TimeT, abc.Female},
+		"d":     abc.Socket{TimeT, abc.Female},
+		"s":     abc.Socket{TimeT, abc.Female},
+		"r":     abc.Socket{TimeT, abc.Female},
 		"level": abc.Socket{abc.StringT, abc.Female},
-		"out": abc.Socket{SamplesT, abc.Male},
+		"out":   abc.Socket{SamplesT, abc.Male},
 	}, makeEnvelope)
 }
 
@@ -29,6 +30,7 @@ func getDefault(m map[string]interface{}, key string, deflt interface{}) interfa
 	}
 	return deflt
 }
+
 var zerot = Time{0, false}
 
 func makeEnvelope(status *abc.Status, args map[string]interface{}) Widget {
@@ -39,7 +41,7 @@ func makeEnvelope(status *abc.Status, args map[string]interface{}) Widget {
 	w.Layout = Interleaved
 	w.a = getDefault(args, "a", zerot).(Time)
 	w.d = getDefault(args, "d", zerot).(Time)
-	w.s= getDefault(args, "s", zerot).(Time)
+	w.s = getDefault(args, "s", zerot).(Time)
 	w.r = getDefault(args, "r", zerot).(Time)
 	w.t0 = getDefault(args, "start", zerot).(Time)
 	lev := getDefault(args, "level", "1").(string)
@@ -128,15 +130,15 @@ func (w *EnvelopeWidget) init() *EnvelopeWidget {
 }
 
 func (w *EnvelopeWidget) SetFormat(f Format) {
-defer un(log("env SetFormat %v\n", f))
+	defer un(log("env SetFormat %v\n", f))
 	w.Format = f
 }
 
 func (w *EnvelopeWidget) ReadSamples(b Buffer, t int64) (r bool) {
-defer un(log("env read %v [%v]\n", t, b.Len()), &r)
+	defer un(log("env read %v [%v]\n", t, b.Len()), &r)
 	buf := b.(NFloat32Buf).Buf
 	n := int(w.read(buf, t) - t)
-	switch{
+	switch {
 	case n <= 0:
 		return false
 	case n < len(buf):
@@ -146,7 +148,7 @@ defer un(log("env read %v [%v]\n", t, b.Len()), &r)
 }
 
 func slope(buf Float32Buf, p0 int64, t0 int64, start, delta float32) {
-	lev := start + float32(p0 - t0) * delta
+	lev := start + float32(p0-t0)*delta
 	for i := range buf {
 		buf[i] = lev
 		lev += delta
@@ -169,14 +171,14 @@ func finished(buf Float32Buf, t int64) int64 {
 //
 func (w *EnvelopeWidget) until(t1 int64, fill func(Float32Buf, int64), next func(Float32Buf, int64) int64) func(buf Float32Buf, p0 int64) int64 {
 	return func(buf Float32Buf, p0 int64) int64 {
-defer un(log("until %v [end %v]", p0, t1))
+		defer un(log("until %v [end %v]", p0, t1))
 		p1 := p0 + int64(len(buf))
 		if p0 < t1 {
-debugp("filling some")
+			debugp("filling some")
 			fillbuf := buf
 			if p1 > t1 {
-				fillbuf = buf[0 : int(t1 - p0)]
-				buf = buf[len(fillbuf) :]
+				fillbuf = buf[0:int(t1-p0)]
+				buf = buf[len(fillbuf):]
 			}
 			fill(fillbuf, p0)
 			p0 += int64(len(fillbuf))

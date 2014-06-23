@@ -1,7 +1,7 @@
 package audio
 
 import (
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 	"fmt"
 	"strings"
 	"sync"
@@ -178,20 +178,20 @@ func getInput(ctxt *context, name string) *node {
 }
 
 var defaultFormat = Format{
-	Layout: Interleaved,
-	Type: Float32Type,
-	Rate: 44100,
+	Layout:   Interleaved,
+	Type:     Float32Type,
+	Rate:     44100,
 	NumChans: 2,
 }
 
 func fireEmUp(n *node) {
 	if !initNodes(n, make(map[*node]bool), Format{}) {
 		deflt := defaultFormat
-		
+
 		if n.ctxt != nil {
 			deflt = n.ctxt.defaultFormat
 		}
-		if !initNodes(n, make(map[*node]bool), deflt)  {
+		if !initNodes(n, make(map[*node]bool), deflt) {
 			panic("failed to initialise nodes")
 		}
 	}

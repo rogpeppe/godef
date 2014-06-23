@@ -1,6 +1,7 @@
 package audio
+
 import (
-	"rog-go.googlecode.com/hg/exp/abc"
+	"code.google.com/p/rog-go/exp/abc"
 	"bufio"
 	"fmt"
 	"os"
@@ -12,7 +13,7 @@ type GraphWidget struct {
 }
 
 func init() {
-	Register("graph", wOutput, map[string]abc.Socket {
+	Register("graph", wOutput, map[string]abc.Socket{
 		"1": abc.Socket{SamplesT, abc.Female},
 	}, makeGraph)
 }
@@ -26,7 +27,7 @@ func makeGraph(status *abc.Status, args map[string]interface{}) Widget {
 
 func (w *GraphWidget) Init(inputs map[string]Widget) {
 	stdout := bufio.NewWriter(os.Stdout)
-	printf := func(f string, args ... interface{}) {
+	printf := func(f string, args ...interface{}) {
 		fmt.Fprintf(stdout, f, args...)
 	}
 	w.input = inputs["1"]
@@ -38,10 +39,10 @@ func (w *GraphWidget) Init(inputs map[string]Widget) {
 	printf("\n")
 	const bufsize = 64
 	buf := w.AllocBuffer(bufsize).(NFloat32Buf)
-//	ibuf := make([]int16, bufsize*w.NumChans)
+	//	ibuf := make([]int16, bufsize*w.NumChans)
 	t := int64(0)
 	for w.input.ReadSamples(buf, t) {
-//		float32toint16(ibuf, buf)
+		//		float32toint16(ibuf, buf)
 		j := 0
 		for i := 0; i < bufsize; i++ {
 			printf("%d", t)
@@ -56,7 +57,7 @@ func (w *GraphWidget) Init(inputs map[string]Widget) {
 	stdout.Flush()
 }
 
-func float32toint16(data[]int16, samples []float32) {
+func float32toint16(data []int16, samples []float32) {
 	j := 0
 	for _, s := range samples {
 		s *= 0x7fff
