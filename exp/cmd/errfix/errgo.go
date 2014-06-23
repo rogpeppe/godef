@@ -38,7 +38,7 @@ var newFix = fix{
 	"errgo-new",
 	"2014-03-03",
 	errgoNew,
-	`use Newf instead of Errorf
+	`use errgo.Newf instead of fmt.Errorf, and errgo.New instead of errors.New
 `,
 }
 

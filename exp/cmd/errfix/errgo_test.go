@@ -51,24 +51,24 @@ import (
 	gc "launchpad.net/gocheck"
 )
 
-var errSomething = errors.New("foo")
+var errSomething = errgo.New("foo")
 
 func f() error {
 	if err := foo(); err != nil {
-		return errors.Notef(err, "failure")
+		return errgo.Notef(err, "failure")
 	}
-	errors.Newf("foo: %s, %s", arg1, arg2)
-	errors.NoteMask(err, "blah")
-	errors.Notef(err, "blah: %s, %s", arg1, arg2)
-	return errors.Newf("cannot something: %s, %s", x, y)
+	errgo.Newf("foo: %s, %s", arg1, arg2)
+	errgo.NoteMask(err, "blah")
+	errgo.Notef(err, "blah: %s, %s", arg1, arg2)
+	return errgo.Newf("cannot something: %s, %s", x, y)
 }
 
 func wrapper() (int, error) {
 	if x, err := foo(); err != nil {
-		return 0, errors.Mask(err)
+		return 0, errgo.Mask(err)
 	}
 	if err := foo(); err != nil {
-		return 0, errors.Mask(
+		return 0, errgo.Mask(
 
 			// A comment
 			err)
@@ -134,20 +134,20 @@ import (
 
 func (*suite) TestSomething(c *gc.C) {
 	err := foo()
-	c.Check(errors.Cause(err), gc.Equals, errSomething)
-	c.Check(errors.Cause(err), gc.Not(gc.Equals), errSomething)
+	c.Check(errgo.Cause(err), gc.Equals, errSomething)
+	c.Check(errgo.Cause(err), gc.Not(gc.Equals), errSomething)
 	c.Check(err, gc.Equals, nil)
 	c.Check(err, gc.Not(gc.Equals), nil)
 }
 
 func tester() error {
-	if err := foo(); errors.Cause(err) == errSomething {
+	if err := foo(); errgo.Cause(err) == errSomething {
 		return nil
 	}
 	if err := foo(); err == nil {
 		return nil
 	}
-	if _, ok := errors.Cause(err).(*foo); ok {
+	if _, ok := errgo.Cause(err).(*foo); ok {
 		return nil
 	}
 	return nil
