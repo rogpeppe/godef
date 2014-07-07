@@ -181,7 +181,11 @@ func findIdentifier(f *ast.File, searchpos int) ast.Node {
 					if field.Names != nil {
 						continue
 					}
-					if id, ok := field.Type.(*ast.Ident); ok {
+					t := field.Type
+					if pt, ok := field.Type.(*ast.StarExpr); ok {
+						t = pt.X
+					}
+					if id, ok := t.(*ast.Ident); ok {
 						if found(id.NamePos, id.End()) {
 							ec <- parseExpr(f.Scope, id.Name)
 							runtime.Goexit()
