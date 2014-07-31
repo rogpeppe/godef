@@ -14,8 +14,8 @@ import (
 	"code.google.com/p/rog-go/exp/go/scanner"
 	"code.google.com/p/rog-go/exp/go/token"
 	"fmt"
+	"regexp"
 	"strconv"
-	"unicode"
 )
 
 // The mode parameter to the Parse* functions is a set of flags (or 0).
@@ -2067,23 +2067,16 @@ func litToString(lit *ast.BasicLit) (v string) {
 	return
 }
 
+var importPathPat = regexp.MustCompile(`((?:\p{L}|_)(?:\p{L}|_|\p{Nd})*)(?:\.v\d+)?$`)
+
 // ImportPathToName returns the default identifier name
 // for a package path. It is not guaranteed to be correct.
 func ImportPathToName(p string) string {
-	valid := -1
-	for i, c := range p {
-		letter := c == '_' || unicode.IsLetter(c)
-		switch {
-		case !letter && !unicode.IsDigit(c):
-			valid = -1
-		case letter && valid == -1:
-			valid = i
-		}
-	}
-	if valid == -1 {
+	id := importPathPat.FindStringSubmatch(p)
+	if id == nil {
 		return ""
 	}
-	return p[valid:]
+	return id[1]
 }
 
 func (p *parser) parseReceiver(scope *ast.Scope) *ast.FieldList {
