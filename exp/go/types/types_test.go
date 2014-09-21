@@ -2,15 +2,16 @@ package types
 
 import (
 	"bytes"
-	"code.google.com/p/rog-go/exp/go/ast"
-	"code.google.com/p/rog-go/exp/go/parser"
-	"code.google.com/p/rog-go/exp/go/token"
 	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"unicode"
+
+	"code.google.com/p/rog-go/exp/go/ast"
+	"code.google.com/p/rog-go/exp/go/parser"
+	"code.google.com/p/rog-go/exp/go/token"
 )
 
 // TODO recursive types avoiding infinite loop.

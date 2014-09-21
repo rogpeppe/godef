@@ -4,19 +4,21 @@ package types
 
 import (
 	"bytes"
-	"code.google.com/p/rog-go/exp/go/ast"
-	"code.google.com/p/rog-go/exp/go/parser"
-	"code.google.com/p/rog-go/exp/go/printer"
-	"code.google.com/p/rog-go/exp/go/scanner"
-	"code.google.com/p/rog-go/exp/go/token"
 	"container/list"
 	"fmt"
+	"go/build"
 	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
+
+	"code.google.com/p/rog-go/exp/go/ast"
+	"code.google.com/p/rog-go/exp/go/parser"
+	"code.google.com/p/rog-go/exp/go/printer"
+	"code.google.com/p/rog-go/exp/go/scanner"
+	"code.google.com/p/rog-go/exp/go/token"
 )
 
 // Type represents the type of a Go expression.
@@ -75,32 +77,29 @@ var GoPath = []string{filepath.Join(os.Getenv("GOROOT"), "src", "pkg")}
 // DefaultGetPackage looks for the package; if it finds it,
 // it parses and returns it. If no package was found, it returns nil.
 func DefaultImporter(path string) *ast.Package {
-	debugp("getting package %s", path)
-	for _, pd := range GoPath {
-		dir := pd + "/" + path
-		pkgs, err := parser.ParseDir(FileSet, dir, isGoFile, 0)
-		if err != nil {
-			if Debug {
-				switch err := err.(type) {
-				case scanner.ErrorList:
-					for _, e := range err {
-						debugp("\t%v: %s", e.Pos, e.Msg)
-					}
-				default:
-					debugp("\terror parsing %s: %v", dir, err)
+	bpkg, err := build.Default.Import(path, "", 0)
+	if err != nil {
+		return nil
+	}
+	pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, isGoFile, 0)
+	if err != nil {
+		if Debug {
+			switch err := err.(type) {
+			case scanner.ErrorList:
+				for _, e := range err {
+					debugp("\t%v: %s", e.Pos, e.Msg)
 				}
-			}
-			continue
-		}
-		if pkg := pkgs[parser.ImportPathToName(path)]; pkg != nil {
-			return pkg
-		}
-		delete(pkgs, "documentation")
-		for name, pkg := range pkgs {
-			if len(pkgs) == 1 || name != "main" {
-				return pkg
+			default:
+				debugp("\terror parsing %s: %v", bpkg.Dir, err)
 			}
 		}
+		return nil
+	}
+	if pkg := pkgs[bpkg.Name]; pkg != nil {
+		return pkg
+	}
+	if Debug {
+		debugp("package not found by ParseDir!")
 	}
 	return nil
 }
