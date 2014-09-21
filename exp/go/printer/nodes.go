@@ -1146,7 +1146,18 @@ func (p *printer) stmt(stmt ast.Stmt, nextIsRBrace bool, multiLine *bool) {
 			p.print(token.COMMA, blank)
 			p.expr(s.Value, multiLine)
 		}
-		p.print(blank, s.TokPos, s.Tok, blank, token.RANGE, blank)
+
+		if s.Key != nil {
+			p.expr(s.Key, multiLine)
+			if s.Value != nil {
+				// use position of value following the comma as
+				// comma position for correct comment placement
+				p.print(s.Value.Pos(), token.COMMA, blank)
+				p.expr(s.Value, multiLine)
+			}
+			p.print(blank, s.TokPos, s.Tok, blank)
+		}
+		p.print(token.RANGE, blank)
 		p.expr(stripParens(s.X), multiLine)
 		p.print(blank)
 		p.block(s.Body, 1)

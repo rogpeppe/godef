@@ -31,7 +31,7 @@ const (
 // The parser structure holds the parser's internal state.
 type parser struct {
 	file *token.File
-	scanner.ErrorVector
+	scanner.ErrorList
 	scanner scanner.Scanner
 
 	// Tracing/debugging

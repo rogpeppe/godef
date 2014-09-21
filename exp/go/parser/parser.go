@@ -1800,10 +1800,20 @@ func (p *parser) parseForStmt() ast.Stmt {
 	if p.tok != token.LBRACE {
 		prevLev := p.exprLev
 		p.exprLev = -1
+		isRange := false
 		if p.tok != token.SEMICOLON {
-			s2 = p.parseSimpleStmt(false)
+			if p.tok == token.RANGE {
+				// "for range x" (nil lhs in assignment)
+				pos := p.pos
+				p.next()
+				y := []ast.Expr{&ast.UnaryExpr{OpPos: pos, Op: token.RANGE, X: p.parseExpr()}}
+				s2 = &ast.AssignStmt{Rhs: y}
+				isRange = true
+			} else {
+				s2 = p.parseSimpleStmt(false)
+			}
 		}
-		if p.tok == token.SEMICOLON {
+		if !isRange && p.tok == token.SEMICOLON {
 			p.next()
 			s1 = s2
 			s2 = nil
@@ -1823,19 +1833,21 @@ func (p *parser) parseForStmt() ast.Stmt {
 
 	if as, isAssign := s2.(*ast.AssignStmt); isAssign {
 		// possibly a for statement with a range clause; check assignment operator
-		if as.Tok != token.ASSIGN && as.Tok != token.DEFINE {
+		if len(as.Lhs) != 0 && as.Tok != token.ASSIGN && as.Tok != token.DEFINE {
 			p.errorExpected(as.TokPos, "'=' or ':='")
 			return &ast.BadStmt{pos, body.End()}
 		}
 		// check lhs
 		var key, value ast.Expr
 		switch len(as.Lhs) {
-		case 2:
-			key, value = as.Lhs[0], as.Lhs[1]
+		case 0:
+			// nothing to do.
 		case 1:
 			key = as.Lhs[0]
+		case 2:
+			key, value = as.Lhs[0], as.Lhs[1]
 		default:
-			p.errorExpected(as.Lhs[0].Pos(), "1 or 2 expressions")
+			p.errorExpected(as.Lhs[len(as.Lhs)-1].Pos(), "at most 2 expressions")
 			return &ast.BadStmt{pos, body.End()}
 		}
 		// check rhs
