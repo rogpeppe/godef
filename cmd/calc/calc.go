@@ -368,11 +368,11 @@ func (v value) toInt() *big.Int {
 func (v value) toFloat() float64 {
 	switch v := v.v.(type) {
 	case *big.Int:
-		// TODO convert numbers out of the range of int64 (use math.Frexp?)
-		return float64(v.Int64())
+		f, _ := new(big.Rat).SetFrac(v, bigOne).Float64()
+		return f
 	case *big.Rat:
-		// TODO better
-		return float64(v.Num().Int64()) / float64(v.Denom().Int64())
+		f, _ := v.Float64()
+		return f
 	case float64:
 		return v
 	}
@@ -386,9 +386,8 @@ func (v value) toRat() *big.Rat {
 	case *big.Rat:
 		return v
 	case float64:
-		// TODO efficiency
-		r, ok := new(big.Rat).SetString(fmt.Sprint(v))
-		if !ok {
+		r := new(big.Rat).SetFloat64(v)
+		if r == nil {
 			fatalf("cannot convert %v to rational", v)
 		}
 		return r
