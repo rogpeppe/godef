@@ -10,10 +10,18 @@ import (
 )
 
 // TODO:
+// simplify - remove all [ ], [[ ]].
+// reinstate fc's -x, -b format specifiers
+// remove % operator.
+// instead, make (float, rat, int) operators taint
+// the stack so that input numbers are converted by
+// default when non-specific. but... how then
+// do we do
+
+// TODO (old):
 // 	testing
 //	parse type[value]
 //	formatting with /x, /%.5d etc
-
 const debug = false
 
 type genericOp struct {
@@ -177,14 +185,16 @@ func (s *stack) interp1(a string) {
 
 func (s *stack) exec(name string, vs []interface{}) {
 	defer func() {
-		e := recover()
-		if e == nil {
+		switch e := recover(); e {
+		case nil:
 			return
-		}
-		if e == errStackUnderflow {
+		case errStackUnderflow:
 			fatalf("stack underflow on %q", name)
+		case "division by zero":
+			fatalf("division by zero on %q", name)
+		default:
+			panic(e)
 		}
-		panic(e)
 	}()
 	// Check whether operator is a constant or is generic, in which case we just call it.
 	switch v := vs[0].(type) {
@@ -210,26 +220,29 @@ func (s *stack) exec(name string, vs []interface{}) {
 			}
 		}
 	}
+	push := func(v interface{}) {
+		s.push(arg[0], v)
+	}
 	switch f := f.(type) {
 	case func(*big.Int, *big.Int) *big.Int:
 		r := arg[0].toInt()
-		s.push(arg[0], f(r, r))
+		push(f(r, r))
 	case func(*big.Int, *big.Int, *big.Int) *big.Int:
 		r := arg[0].toInt()
-		s.push(arg[0], f(r, r, arg[1].toInt()))
+		push(f(r, r, arg[1].toInt()))
 	case func(*big.Int, *big.Int, *big.Int, *big.Int) *big.Int:
 		r := arg[0].toInt()
-		s.push(arg[0], f(r, r, arg[1].toInt(), arg[2].toInt()))
+		push(f(r, r, arg[1].toInt(), arg[2].toInt()))
 	case func(*big.Rat, *big.Rat) *big.Rat:
 		r := arg[0].toRat()
-		s.push(arg[0], f(r, r))
+		push(f(r, r))
 	case func(*big.Rat, *big.Rat, *big.Rat) *big.Rat:
 		r := arg[0].toRat()
-		s.push(arg[0], f(r, r, arg[1].toRat()))
+		push(f(r, r, arg[1].toRat()))
 	case func(float64) float64:
-		s.push(arg[0], f(arg[0].toFloat()))
+		push(f(arg[0].toFloat()))
 	case func(float64, float64) float64:
-		s.push(arg[0], f(arg[0].toFloat(), arg[1].toFloat()))
+		push(f(arg[0].toFloat(), arg[1].toFloat()))
 	default:
 		panic(fmt.Errorf("unrecognised function type %T", f))
 	}
@@ -359,8 +372,12 @@ func (v value) toInt() *big.Int {
 		// TODO rounding?
 		return new(big.Int).Quo(v.Num(), v.Denom())
 	case float64:
-		// TODO convert numbers out of the range of int64 (use math.Frexp?)
-		return big.NewInt(int64(v))
+		r := new(big.Rat).SetFloat64(v)
+		if r == nil {
+			fatalf("cannot convert %v to float64", v)
+		}
+		// TODO rounding?
+		return new(big.Int).Quo(r.Num(), r.Denom())
 	}
 	panic(fmt.Errorf("unexpected type %T", v.v))
 }

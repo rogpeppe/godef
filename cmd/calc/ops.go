@@ -67,7 +67,7 @@ var ops = map[string][]interface{}{
 	"not":        {(*big.Int).Not},
 	"or":         {(*big.Int).Or},
 	"pow":        {math.Pow, intPow},
-	"quo":        {mathQuo, (*big.Int).Quo, (*big.Rat).Quo},
+	"quo":        {mathQuo, (*big.Rat).Quo, (*big.Int).Quo},
 	"quorem":     {(*big.Int).QuoRem},
 	"rat":        {cvtRat},
 	"remainder":  {math.Remainder},
@@ -104,7 +104,7 @@ type pattern struct {
 	f   genericOp
 }
 
-const floatPat = `(([0-9]+(\.[0-9]+)?)|([0-9]*(\.[0-9]+)))([eE]-?[0-9]+)?`
+const floatPat = `-?(([0-9]+(\.[0-9]+)?)|([0-9]*(\.[0-9]+)))([eE][-+]?[0-9]+)?`
 
 var patterns = []pattern{
 	// format specifier
@@ -124,7 +124,7 @@ var patterns = []pattern{
 	},
 	// integer literal
 	{
-		regex("0[bB][01]+|0[xX][0-9a-fA-F]+|0[0-9]+|[0-9]+"),
+		regex("-?(0[bB][01]+|0[xX][0-9a-fA-F]+|0[0-9]+|[0-9]+)"),
 		genericOp{0, 1, func(s *stack, p string) {
 			i, ok := new(big.Int).SetString(p, 0)
 			if !ok {
