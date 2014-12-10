@@ -88,4 +88,4 @@ Here is a brief overview by demonstration:
 	14
 	%
 */
-package documentation
+package main
