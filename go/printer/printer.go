@@ -7,8 +7,8 @@ package printer
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/exp/go/ast"
-	"github.com/rogpeppe/godef/exp/go/token"
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/token"
 	"fmt"
 	"io"
 	"os"

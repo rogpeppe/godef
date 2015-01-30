@@ -22,7 +22,7 @@ package scanner
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/exp/go/token"
+	"github.com/rogpeppe/godef/go/token"
 	"fmt"
 	"path/filepath"
 	"strconv"

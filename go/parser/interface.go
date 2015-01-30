@@ -8,9 +8,9 @@ package parser
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/exp/go/ast"
-	"github.com/rogpeppe/godef/exp/go/scanner"
-	"github.com/rogpeppe/godef/exp/go/token"
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/scanner"
+	"github.com/rogpeppe/godef/go/token"
 	"errors"
 	"io"
 	"io/ioutil"

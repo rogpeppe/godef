@@ -4,11 +4,11 @@ package sym
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/exp/go/ast"
-	"github.com/rogpeppe/godef/exp/go/parser"
-	"github.com/rogpeppe/godef/exp/go/printer"
-	"github.com/rogpeppe/godef/exp/go/token"
-	"github.com/rogpeppe/godef/exp/go/types"
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/parser"
+	"github.com/rogpeppe/godef/go/printer"
+	"github.com/rogpeppe/godef/go/token"
+	"github.com/rogpeppe/godef/go/types"
 	"fmt"
 	"go/build"
 	"io/ioutil"

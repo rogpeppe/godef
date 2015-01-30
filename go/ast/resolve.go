@@ -7,8 +7,8 @@
 package ast
 
 import (
-	"github.com/rogpeppe/godef/exp/go/scanner"
-	"github.com/rogpeppe/godef/exp/go/token"
+	"github.com/rogpeppe/godef/go/scanner"
+	"github.com/rogpeppe/godef/go/token"
 	"fmt"
 	"strconv"
 )

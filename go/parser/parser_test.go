@@ -5,7 +5,7 @@
 package parser
 
 import (
-	"github.com/rogpeppe/godef/exp/go/token"
+	"github.com/rogpeppe/godef/go/token"
 	"os"
 	"testing"
 )

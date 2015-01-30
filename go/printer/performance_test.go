@@ -9,8 +9,8 @@ package printer
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/exp/go/ast"
-	"github.com/rogpeppe/godef/exp/go/parser"
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/parser"
 	"io"
 	"io/ioutil"
 	"log"
