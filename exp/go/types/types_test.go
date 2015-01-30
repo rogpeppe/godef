@@ -9,9 +9,9 @@ import (
 	"testing"
 	"unicode"
 
-	"code.google.com/p/rog-go/exp/go/ast"
-	"code.google.com/p/rog-go/exp/go/parser"
-	"code.google.com/p/rog-go/exp/go/token"
+	"github.com/rogpeppe/godef/exp/go/ast"
+	"github.com/rogpeppe/godef/exp/go/parser"
+	"github.com/rogpeppe/godef/exp/go/token"
 )
 
 // TODO recursive types avoiding infinite loop.

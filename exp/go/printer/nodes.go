@@ -10,8 +10,8 @@ package printer
 
 import (
 	"bytes"
-	"code.google.com/p/rog-go/exp/go/ast"
-	"code.google.com/p/rog-go/exp/go/token"
+	"github.com/rogpeppe/godef/exp/go/ast"
+	"github.com/rogpeppe/godef/exp/go/token"
 )
 
 // Other formatting issues:

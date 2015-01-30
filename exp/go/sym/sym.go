@@ -4,11 +4,11 @@ package sym
 
 import (
 	"bytes"
-	"code.google.com/p/rog-go/exp/go/ast"
-	"code.google.com/p/rog-go/exp/go/parser"
-	"code.google.com/p/rog-go/exp/go/printer"
-	"code.google.com/p/rog-go/exp/go/token"
-	"code.google.com/p/rog-go/exp/go/types"
+	"github.com/rogpeppe/godef/exp/go/ast"
+	"github.com/rogpeppe/godef/exp/go/parser"
+	"github.com/rogpeppe/godef/exp/go/printer"
+	"github.com/rogpeppe/godef/exp/go/token"
+	"github.com/rogpeppe/godef/exp/go/types"
 	"fmt"
 	"go/build"
 	"io/ioutil"
@@ -25,7 +25,7 @@ type Info struct {
 	Ident    *ast.Ident  // identifier in parse tree (changing ident.Name changes the parse tree)
 	ExprType types.Type  // type of expression.
 	ReferPos token.Pos   // position of referred-to symbol.
-	ReferObj *ast.Object // object referred to. 
+	ReferObj *ast.Object // object referred to.
 	Local    bool        // whether referred-to object is function-local.
 	Universe bool        // whether referred-to object is in universe.
 }

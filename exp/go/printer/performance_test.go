@@ -3,14 +3,14 @@
 // license that can be found in the LICENSE file.
 
 // This file implements a simple printer performance benchmark:
-// gotest -bench=BenchmarkPrint 
+// gotest -bench=BenchmarkPrint
 
 package printer
 
 import (
 	"bytes"
-	"code.google.com/p/rog-go/exp/go/ast"
-	"code.google.com/p/rog-go/exp/go/parser"
+	"github.com/rogpeppe/godef/exp/go/ast"
+	"github.com/rogpeppe/godef/exp/go/parser"
 	"io"
 	"io/ioutil"
 	"log"

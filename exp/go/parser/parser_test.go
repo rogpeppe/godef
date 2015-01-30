@@ -5,7 +5,7 @@
 package parser
 
 import (
-	"code.google.com/p/rog-go/exp/go/token"
+	"github.com/rogpeppe/godef/exp/go/token"
 	"os"
 	"testing"
 )
@@ -50,7 +50,7 @@ var validPrograms = []interface{}{
 	`package p; func f() { if ; true {} };`,
 	`package p; func f() { switch ; {} };`,
 	`package p; func f() (int,) {}`,
-        `package p; func _(x []int) { for range x {} }`,
+	`package p; func _(x []int) { for range x {} }`,
 }
 
 func TestParseValidPrograms(t *testing.T) {
