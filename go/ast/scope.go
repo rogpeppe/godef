@@ -83,6 +83,7 @@ type Object struct {
 	Decl interface{} // corresponding Field, XxxSpec, FuncDecl, or LabeledStmt; or nil
 	Data interface{} // object-specific data; or nil
 	Type interface{} // place holder for type information; may be nil
+	Next *Object     // corresponding platform dependent implement; or nil
 }
 
 // NewObj creates a new object of a given kind and name.
