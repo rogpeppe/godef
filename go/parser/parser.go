@@ -16,6 +16,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 )
 
 // The mode parameter to the Parse* functions is a set of flags (or 0).
@@ -216,6 +217,11 @@ func (p *parser) declare1(decl ast.Node, scope *ast.Scope, kind ast.ObjKind, ide
 }
 
 func (p *parser) redeclared(ident *ast.Ident, prev *ast.Object, reason string) {
+	if f := p.fset.File(ident.Pos()); f.IsPlatformDependent() {
+		ident.Obj.Next = prev.Next
+		prev.Next = ident.Obj
+		return
+	}
 	if p.mode&DeclarationErrors == 0 {
 		return
 	}
@@ -2215,6 +2221,9 @@ func (p *parser) parseFile() *ast.File {
 	}
 	initialScope := p.topScope
 
+	// get platform dependent info from file name or build tag
+	platformDependent(p.file, p.comments)
+
 	// package clause
 	doc := p.leadComment
 	pos := p.expect(token.PACKAGE)
@@ -2247,4 +2256,66 @@ func (p *parser) parseFile() *ast.File {
 	}
 
 	return &ast.File{doc, pos, ident, decls, p.fileScope, nil, nil, p.comments}
+}
+
+var (
+	goosSuffixes = []string{
+		"_dragonfly.go",
+		"_netbsd.go",
+		"_openbsd.go",
+		"_solaris.go",
+		"_freebsd.go",
+		"_nacl.go",
+		"_android.go",
+		"_plan9.go",
+		"_darwin.go",
+		"_linux.go",
+		"_windows.go",
+	}
+	goarchSuffixes = []string{
+		"_amd64.go",
+		"_amd64p32.go",
+		"_arm.go",
+		"_ppc64.go",
+		"_ppc64le.go",
+		"_386.go",
+	}
+	buildPrefix = "// +build"
+)
+
+// platformDependent sets file is platform dependent or not
+func platformDependent(f *token.File, cgs []*ast.CommentGroup) {
+	if f == nil {
+		return
+	}
+
+	//TODO: if file already has platform dependent info, return
+
+	// get from file name
+	fn := f.Name()
+	for _, os := range goosSuffixes {
+		if strings.HasSuffix(fn, os) {
+			f.PlatformDependent()
+			return
+		}
+	}
+	for _, arch := range goarchSuffixes {
+		if strings.HasSuffix(fn, arch) {
+			f.PlatformDependent()
+			return
+		}
+	}
+
+	// get from build constraint
+	if cgs == nil {
+		return
+	}
+	for _, cg := range cgs {
+		for _, c := range cg.List {
+			if strings.HasPrefix(c.Text, buildPrefix) {
+				f.PlatformDependent()
+				return
+			}
+		}
+	}
 }

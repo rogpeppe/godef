@@ -166,6 +166,8 @@ type File struct {
 	// lines and infos are protected by set.mutex
 	lines []int
 	infos []lineInfo
+
+	platformDep bool // platformDep indicate whether this file is platform dependent
 }
 
 // Name returns the file name of file f as registered with AddFile.
@@ -314,6 +316,16 @@ func (f *File) info(offset int) (filename string, line, column int) {
 	return
 }
 
+// IsPlatformDependent returns whether this file platform dependent
+func (f *File) IsPlatformDependent() bool {
+	return f.platformDep
+}
+
+// PlatformDependent sets this file is platform dependent (default is false)
+func (f *File) PlatformDependent() {
+	f.platformDep = true
+}
+
 // A FileSet represents a set of source files.
 // Methods of file sets are synchronized; multiple goroutines
 // may invoke them concurrently.
@@ -366,7 +378,7 @@ func (s *FileSet) AddFile(filename string, base, size int) *File {
 		panic("illegal base or size")
 	}
 	// base >= s.base && size >= 0
-	f := &File{s, filename, base, size, []int{0}, nil}
+	f := &File{s, filename, base, size, []int{0}, nil, false}
 	base += size + 1 // +1 because EOF also has a position
 	if base < 0 {
 		panic("token.Pos offset overflow (> 2G of source code in file set)")

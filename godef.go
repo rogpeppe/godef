@@ -28,6 +28,7 @@ var aflag = flag.Bool("a", false, "print public type and member information")
 var Aflag = flag.Bool("A", false, "print all type and members information")
 var fflag = flag.String("f", "", "Go source filename")
 var acmeFlag = flag.Bool("acme", false, "use current acme window")
+var pflag = flag.Bool("p", false, "print all platform-dependent definitions")
 
 func fail(s string, a ...interface{}) {
 	fmt.Fprint(os.Stderr, "godef: "+fmt.Sprintf(s, a...)+"\n")
@@ -86,7 +87,7 @@ func main() {
 		src = b
 	}
 	pkgScope := ast.NewScope(parser.Universe)
-	f, err := parser.ParseFile(types.FileSet, filename, src, 0, pkgScope)
+	f, err := parser.ParseFile(types.FileSet, filename, src, parser.ParseComments, pkgScope)
 	if f == nil {
 		fail("cannot parse %s: %v", filename, err)
 	}
@@ -218,8 +219,15 @@ func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
 func done(obj *ast.Object, typ types.Type) {
 	defer os.Exit(0)
-	pos := types.FileSet.Position(types.DeclPos(obj))
-	fmt.Printf("%v\n", pos)
+	if *pflag {
+		for o := obj; o != nil; o = o.Next {
+			pos := types.FileSet.Position(types.DeclPos(o))
+			fmt.Printf("%v\n", pos)
+		}
+	} else {
+		pos := types.FileSet.Position(types.DeclPos(obj))
+		fmt.Printf("%v\n", pos)
+	}
 	if typ.Kind == ast.Bad || !*tflag {
 		return
 	}
@@ -317,7 +325,7 @@ func parseLocalPackage(filename string, src *ast.File, pkgScope *ast.Scope) (*as
 			pkgName(file) != pkg.Name {
 			continue
 		}
-		src, err := parser.ParseFile(types.FileSet, file, nil, 0, pkg.Scope)
+		src, err := parser.ParseFile(types.FileSet, file, nil, parser.ParseComments, pkg.Scope)
 		if err == nil {
 			pkg.Files[file] = src
 		}

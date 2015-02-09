@@ -72,16 +72,20 @@ type Importer func(path string) *ast.Package
 var FileSet = token.NewFileSet()
 
 // GoPath is used by DefaultImporter to find packages.
-var GoPath = []string{filepath.Join(os.Getenv("GOROOT"), "src", "pkg")}
+var GoPath = []string{filepath.Join(os.Getenv("GOROOT"), "src")}
 
 // DefaultGetPackage looks for the package; if it finds it,
 // it parses and returns it. If no package was found, it returns nil.
 func DefaultImporter(path string) *ast.Package {
+	build.Default.UseAllFiles = true
 	bpkg, err := build.Default.Import(path, "", 0)
 	if err != nil {
-		return nil
+		// Tolerant mutiple package err here due to ignore build constraint
+		if _, ok := err.(*build.MultiplePackageError); !ok {
+			return nil
+		}
 	}
-	pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, isGoFile, 0)
+	pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, isGoFile, parser.ParseComments)
 	if err != nil {
 		if Debug {
 			switch err := err.(type) {
