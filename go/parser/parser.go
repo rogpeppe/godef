@@ -14,6 +14,7 @@ import (
 	"github.com/rogpeppe/godef/go/scanner"
 	"github.com/rogpeppe/godef/go/token"
 	"fmt"
+	"go/build"
 	"regexp"
 	"strconv"
 )
@@ -2081,9 +2082,12 @@ func litToString(lit *ast.BasicLit) (v string) {
 
 var importPathPat = regexp.MustCompile(`((?:\p{L}|_)(?:\p{L}|_|\p{Nd})*)(?:\.v\d+)?$`)
 
-// ImportPathToName returns the default identifier name
-// for a package path. It is not guaranteed to be correct.
+// build the package, and find the declared package name.
+// if not found, fallback to the pattern match
 func ImportPathToName(p string) string {
+	if pkg, err := build.Import(p, "", 0); err == nil {
+		return pkg.Name
+	}
 	id := importPathPat.FindStringSubmatch(p)
 	if id == nil {
 		return ""
