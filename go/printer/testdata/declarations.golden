@@ -469,7 +469,7 @@ type _ struct {
 	bool
 	a, b, c			int
 	int			"tag"
-	ES				// comment
+	ES			// comment
 	float			"tag"	// comment
 	f			int	// comment
 	f, ff, fff, ffff	int	// comment
@@ -487,7 +487,7 @@ type _ struct {
 
 // difficult cases
 type _ struct {
-	bool		// comment
+	bool	// comment
 	text	[]byte	// comment
 }
 

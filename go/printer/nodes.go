@@ -1142,12 +1142,6 @@ func (p *printer) stmt(stmt ast.Stmt, nextIsRBrace bool, multiLine *bool) {
 
 	case *ast.RangeStmt:
 		p.print(token.FOR, blank)
-		p.expr(s.Key, multiLine)
-		if s.Value != nil {
-			p.print(token.COMMA, blank)
-			p.expr(s.Value, multiLine)
-		}
-
 		if s.Key != nil {
 			p.expr(s.Key, multiLine)
 			if s.Value != nil {
