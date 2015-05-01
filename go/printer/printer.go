@@ -9,7 +9,6 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	rdebug "local/runtime/debug"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -237,7 +236,7 @@ func (p *printer) writeItem(pos token.Position, data string) {
 	if debug {
 		// do not update p.pos - use write0
 		_, filename := filepath.Split(pos.Filename)
-		p.write0([]byte(fmt.Sprintf("[%s:%d:%d; %s]", filename, pos.Line, pos.Column, rdebug.Callers(0, 10))))
+		p.write0([]byte(fmt.Sprintf("[%s:%d:%d]", filename, pos.Line, pos.Column)))
 	}
 	p.write([]byte(data))
 	p.last = p.pos
