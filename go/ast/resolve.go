@@ -7,10 +7,11 @@
 package ast
 
 import (
-	"github.com/rogpeppe/godef/go/scanner"
-	"github.com/rogpeppe/godef/go/token"
 	"fmt"
 	"strconv"
+
+	"github.com/rogpeppe/godef/go/scanner"
+	"github.com/rogpeppe/godef/go/token"
 )
 
 type pkgBuilder struct {

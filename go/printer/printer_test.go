@@ -6,14 +6,15 @@ package printer
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/parser"
-	"github.com/rogpeppe/godef/go/token"
 	"flag"
 	"io/ioutil"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/parser"
+	"github.com/rogpeppe/godef/go/token"
 )
 
 const (

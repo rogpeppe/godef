@@ -7,14 +7,15 @@ package printer
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/token"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"text/tabwriter"
+
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/token"
 )
 
 const debug = false // enable for debugging

@@ -4,11 +4,6 @@ package sym
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/parser"
-	"github.com/rogpeppe/godef/go/printer"
-	"github.com/rogpeppe/godef/go/token"
-	"github.com/rogpeppe/godef/go/types"
 	"fmt"
 	"go/build"
 	"io/ioutil"
@@ -16,6 +11,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"sync"
+
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/parser"
+	"github.com/rogpeppe/godef/go/printer"
+	"github.com/rogpeppe/godef/go/token"
+	"github.com/rogpeppe/godef/go/types"
 )
 
 // Info holds information about an identifier.

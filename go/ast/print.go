@@ -7,11 +7,12 @@
 package ast
 
 import (
-	"github.com/rogpeppe/godef/go/token"
 	"fmt"
 	"io"
 	"os"
 	"reflect"
+
+	"github.com/rogpeppe/godef/go/token"
 )
 
 // A FieldFilter may be provided to Fprint to control the output.
