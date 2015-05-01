@@ -10,6 +10,7 @@ package printer
 
 import (
 	"bytes"
+
 	"github.com/rogpeppe/godef/go/ast"
 	"github.com/rogpeppe/godef/go/token"
 )

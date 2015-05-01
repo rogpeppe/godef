@@ -9,12 +9,13 @@ package printer
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/parser"
 	"io"
 	"io/ioutil"
 	"log"
 	"testing"
+
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/parser"
 )
 
 var testfile *ast.File

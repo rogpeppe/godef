@@ -10,13 +10,26 @@
 package parser
 
 import (
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/scanner"
-	"github.com/rogpeppe/godef/go/token"
 	"fmt"
 	"regexp"
 	"strconv"
+
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/scanner"
+	"github.com/rogpeppe/godef/go/token"
 )
+
+var importPathPat = regexp.MustCompile(`((?:\p{L}|_)(?:\p{L}|_|\p{Nd})*)(?:\.v\d+(-unstable)?)?$`)
+
+// ImportPathToName returns the default identifier name
+// for a package path. It is not guaranteed to be correct.
+func ImportPathToName(p string) string {
+	id := importPathPat.FindStringSubmatch(p)
+	if id == nil {
+		return ""
+	}
+	return id[1]
+}
 
 // The mode parameter to the Parse* functions is a set of flags (or 0).
 // They control the amount of source code parsed and other optional
@@ -2077,18 +2090,6 @@ func litToString(lit *ast.BasicLit) (v string) {
 	}
 	v, _ = strconv.Unquote(string(lit.Value))
 	return
-}
-
-var importPathPat = regexp.MustCompile(`((?:\p{L}|_)(?:\p{L}|_|\p{Nd})*)(?:\.v\d+)?$`)
-
-// ImportPathToName returns the default identifier name
-// for a package path. It is not guaranteed to be correct.
-func ImportPathToName(p string) string {
-	id := importPathPat.FindStringSubmatch(p)
-	if id == nil {
-		return ""
-	}
-	return id[1]
 }
 
 func (p *parser) parseReceiver(scope *ast.Scope) *ast.FieldList {

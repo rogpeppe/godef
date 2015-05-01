@@ -73,7 +73,7 @@ type Pos int
 // associated with it, and NoPos().IsValid() is false. NoPos is always
 // smaller than any other Pos value. The corresponding Position value
 // for NoPos is the zero value for Position.
-// 
+//
 const NoPos Pos = 0
 
 // IsValid returns true if the position is valid.

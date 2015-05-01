@@ -5,10 +5,11 @@
 package scanner
 
 import (
-	"github.com/rogpeppe/godef/go/token"
 	"fmt"
 	"io"
 	"sort"
+
+	"github.com/rogpeppe/godef/go/token"
 )
 
 // An implementation of an ErrorHandler may be provided to the Scanner.

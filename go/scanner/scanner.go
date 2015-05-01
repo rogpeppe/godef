@@ -22,12 +22,13 @@ package scanner
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/go/token"
 	"fmt"
 	"path/filepath"
 	"strconv"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/rogpeppe/godef/go/token"
 )
 
 // A Scanner holds the scanner's internal state while processing

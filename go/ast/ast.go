@@ -8,9 +8,10 @@
 package ast
 
 import (
-	"github.com/rogpeppe/godef/go/token"
 	"unicode"
 	"unicode/utf8"
+
+	"github.com/rogpeppe/godef/go/token"
 )
 
 // ----------------------------------------------------------------------------

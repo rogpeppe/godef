@@ -5,9 +5,10 @@
 package parser
 
 import (
-	"github.com/rogpeppe/godef/go/token"
 	"os"
 	"testing"
+
+	"github.com/rogpeppe/godef/go/token"
 )
 
 var fset = token.NewFileSet()
