@@ -47,7 +47,7 @@ func init() {
 	}
 	r := runtime.GOROOT()
 	if r != "" {
-		gopath = append(gopath, r+"/src/pkg")
+		gopath = append(gopath, r+"/src/pkg", r+"/src")
 	}
 	types.GoPath = gopath
 }
