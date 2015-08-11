@@ -1,13 +1,14 @@
 package main
 
 import (
-	"9fans.net/go/acme"
 	"fmt"
 	"io"
 	"os"
 	"os/user"
 	"strconv"
 	"strings"
+
+	"9fans.net/go/acme"
 )
 
 type acmeFile struct {

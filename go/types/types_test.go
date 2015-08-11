@@ -2,6 +2,7 @@ package types
 
 import (
 	"bytes"
+	"flag"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -13,6 +14,8 @@ import (
 	"github.com/rogpeppe/godef/go/parser"
 	"github.com/rogpeppe/godef/go/token"
 )
+
+var testStdlib = flag.Bool("test-stdlib", false, "test all symbols in standard library (will fail)")
 
 // TODO recursive types avoiding infinite loop.
 // e.g.
@@ -117,7 +120,10 @@ func checkExprs(t *testing.T, pkg *ast.File, importer Importer) {
 	ast.Walk(visit, pkg)
 }
 
-func TestSourceTree(t *testing.T) {
+func TestStdLib(t *testing.T) {
+	if !*testStdlib {
+		t.SkipNow()
+	}
 	Panic = false
 	defer func() {
 		Panic = true

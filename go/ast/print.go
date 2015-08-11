@@ -7,11 +7,12 @@
 package ast
 
 import (
-	"github.com/rogpeppe/godef/go/token"
 	"fmt"
 	"io"
 	"os"
 	"reflect"
+
+	"github.com/rogpeppe/godef/go/token"
 )
 
 // A FieldFilter may be provided to Fprint to control the output.
@@ -50,7 +51,11 @@ func Fprint(w io.Writer, fset *token.FileSet, x interface{}, f FieldFilter) (n i
 	defer func() {
 		n = p.written
 		if e := recover(); e != nil {
-			err = e.(localError).err // re-panics if it's not a localError
+			e1, ok := e.(localError) // re-panics if it's not a localError
+			if !ok {
+				panic(fmt.Errorf("unexpected panic: %v", e))
+			}
+			err = e1.err
 		}
 	}()
 
@@ -205,6 +210,9 @@ func (p *printer) print(x reflect.Value) {
 		p.printf("}")
 
 	default:
+		if !x.CanInterface() {
+			panic(fmt.Errorf("cannot extract interface from type %s (val %v)", x.Type(), x))
+		}
 		v := x.Interface()
 		switch v := v.(type) {
 		case string:

@@ -8,14 +8,15 @@ package parser
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/scanner"
-	"github.com/rogpeppe/godef/go/token"
 	"errors"
 	"io"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/scanner"
+	"github.com/rogpeppe/godef/go/token"
 )
 
 // If src != nil, readSource converts src to a []byte if possible;

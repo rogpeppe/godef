@@ -5,11 +5,12 @@
 package scanner
 
 import (
-	"github.com/rogpeppe/godef/go/token"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	"github.com/rogpeppe/godef/go/token"
 )
 
 var fset = token.NewFileSet()

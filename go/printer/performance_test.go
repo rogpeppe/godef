@@ -9,12 +9,13 @@ package printer
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/parser"
 	"io"
 	"io/ioutil"
 	"log"
 	"testing"
+
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/parser"
 )
 
 var testfile *ast.File
@@ -34,7 +35,7 @@ func initialize() {
 		log.Fatalf("%s", err)
 	}
 
-	file, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
+	file, err := parser.ParseFile(fset, filename, src, parser.ParseComments, nil)
 	if err != nil {
 		log.Fatalf("%s", err)
 	}

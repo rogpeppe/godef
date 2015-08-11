@@ -2,11 +2,6 @@ package main
 
 import (
 	"bytes"
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/parser"
-	"github.com/rogpeppe/godef/go/printer"
-	"github.com/rogpeppe/godef/go/token"
-	"github.com/rogpeppe/godef/go/types"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,6 +13,12 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/rogpeppe/godef/go/ast"
+	"github.com/rogpeppe/godef/go/parser"
+	"github.com/rogpeppe/godef/go/printer"
+	"github.com/rogpeppe/godef/go/token"
+	"github.com/rogpeppe/godef/go/types"
 )
 
 var readStdin = flag.Bool("i", false, "read file from stdin")
@@ -46,7 +47,7 @@ func init() {
 	}
 	r := runtime.GOROOT()
 	if r != "" {
-		gopath = append(gopath, r+"/src/pkg")
+		gopath = append(gopath, r+"/src/pkg", r+"/src")
 	}
 	types.GoPath = gopath
 }

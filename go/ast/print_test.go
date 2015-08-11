@@ -23,11 +23,10 @@ var tests = []struct {
 	{"foobar", "0  \"foobar\""},
 
 	// maps
-	{map[string]int{"a": 1, "b": 2},
-		`0  map[string] int (len = 2) {
+	{map[string]int{"a": 1},
+		`0  map[string]int (len = 1) {
 		1  .  "a": 1
-		2  .  "b": 2
-		3  }`},
+		2  }`},
 
 	// pointers
 	{new(int), "0  *0"},
@@ -41,10 +40,10 @@ var tests = []struct {
 		4  }`},
 
 	// structs
-	{struct{ x, y int }{42, 991},
-		`0  struct { x int; y int } {
-		1  .  x: 42
-		2  .  y: 991
+	{struct{ X, Y int }{42, 991},
+		`0  struct { X int; Y int } {
+		1  .  X: 42
+		2  .  Y: 991
 		3  }`},
 }
 
