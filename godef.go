@@ -8,6 +8,7 @@ import (
 	"go/build"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"sort"
@@ -36,20 +37,45 @@ func fail(s string, a ...interface{}) {
 }
 
 func init() {
-	// take GOPATH, set types.GoPath to it if it's not empty.
-	p := os.Getenv("GOPATH")
-	if p == "" {
-		return
+	if os.Getenv("GO15VENDOREXPERIMENT") != "" {
+		setupVendorExperiment()
 	}
-	gopath := strings.Split(p, ":")
-	for i, d := range gopath {
-		gopath[i] = filepath.Join(d, "src")
+}
+
+func setupVendorExperiment() {
+	gopath := []string{}
+
+	flag.Parse()
+
+	dirname := path.Dir(*fflag)
+	for {
+		subvendor := path.Join(dirname, "vendor")
+		stat, err := os.Stat(subvendor)
+		if err == nil && stat.IsDir() {
+			gopath = append(gopath, subvendor)
+		}
+		dirname = path.Dir(dirname)
+
+		if dirname == path.Dir(dirname) {
+			break
+		}
 	}
-	r := runtime.GOROOT()
-	if r != "" {
-		gopath = append(gopath, r+"/src/pkg", r+"/src")
+
+	for _, d := range strings.Split(os.Getenv("GOPATH"), string(os.PathListSeparator)) {
+		if d != "" {
+			gopath = append(gopath, d)
+		}
 	}
-	types.GoPath = gopath
+
+	build.Default.GOPATH = strings.Join(gopath, string(os.PathListSeparator))
+	build.Default.JoinPath = func(elem ...string) string {
+		// build.Import always appends `src/` to GOPATHs
+		// we don't want that for the GO15VENDOREXPERIMENT.
+		res := filepath.Join(elem...)
+		res = strings.Replace(res, "vendor/src", "vendor", 1)
+		res = strings.Replace(res, "vendor\\src", "vendor", 1)
+		return res
+	}
 }
 
 func main() {
