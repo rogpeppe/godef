@@ -171,6 +171,9 @@ func (p *parser) declare1(decl ast.Node, scope *ast.Scope, kind ast.ObjKind, ide
 					rt = t.Obj
 				case *ast.StarExpr:
 					rt = t.X.(*ast.Ident).Obj
+				case *ast.BadExpr:
+					// Partially typed code can get here.
+					return
 				default:
 					panic(fmt.Errorf("unknown type %T (%#v)", t, t))
 				}
