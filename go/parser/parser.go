@@ -172,7 +172,7 @@ func (p *parser) declare1(decl ast.Node, scope *ast.Scope, kind ast.ObjKind, ide
 				case *ast.StarExpr:
 					rt = t.X.(*ast.Ident).Obj
 				default:
-					panic(fmt.Errorf("unknown type %T (%#v)", t, t))
+					return
 				}
 				if rt.Type == nil {
 					rt.Type = p.newScope(nil)
