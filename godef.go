@@ -129,6 +129,11 @@ func main() {
 		if pkg == nil && !*tflag {
 			fmt.Printf("parseLocalPackage error: %v\n", err)
 		}
+		if flag.NArg() > 0 {
+			// Reading declarations in other files might have
+			// resolved the original expression.
+			e = parseExpr(f.Scope, flag.Arg(0)).(ast.Expr)
+		}
 		if obj, typ := types.ExprType(e, types.DefaultImporter); obj != nil {
 			done(obj, typ)
 		}
