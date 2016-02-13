@@ -65,7 +65,11 @@ func main() {
 	types.Debug = *debug
 	*tflag = *tflag || *aflag || *Aflag
 	searchpos := *offset
-	filename := *fflag
+	filename, err := realAbsolutePath(*fflag)
+
+	if err != nil {
+		fail("cannot resolve symlinks in %s: %v", filename, err)
+	}
 
 	var afile *acmeFile
 	var src []byte
@@ -118,10 +122,11 @@ func main() {
 		}
 		fmt.Println(pkg.Dir)
 	case ast.Expr:
+		importer := types.NewImporter(filename)
 		if !*tflag {
 			// try local declarations only
-			if obj, typ := types.ExprType(e, types.DefaultImporter); obj != nil {
-				done(obj, typ)
+			if obj, typ := types.ExprType(e, importer); obj != nil {
+				done(obj, typ, importer)
 			}
 		}
 		// add declarations from other files in the local package and try again
@@ -134,10 +139,18 @@ func main() {
 			// resolved the original expression.
 			e = parseExpr(f.Scope, flag.Arg(0)).(ast.Expr)
 		}
-		if obj, typ := types.ExprType(e, types.DefaultImporter); obj != nil {
-			done(obj, typ)
+		if obj, typ := types.ExprType(e, importer); obj != nil {
+			done(obj, typ, importer)
 		}
 		fail("no declaration found for %v", pretty{e})
+	}
+}
+
+func realAbsolutePath(path string) (string, error) {
+	if abs, err := filepath.Abs(path); err != nil {
+		return "", err
+	} else {
+		return filepath.EvalSymlinks(abs)
 	}
 }
 
@@ -222,7 +235,7 @@ func (o orderedObjects) Less(i, j int) bool { return o[i].Name < o[j].Name }
 func (o orderedObjects) Len() int           { return len(o) }
 func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
-func done(obj *ast.Object, typ types.Type) {
+func done(obj *ast.Object, typ types.Type, importer types.Importer) {
 	defer os.Exit(0)
 	pos := types.FileSet.Position(types.DeclPos(obj))
 	fmt.Printf("%v\n", pos)
@@ -232,7 +245,7 @@ func done(obj *ast.Object, typ types.Type) {
 	fmt.Printf("%s\n", strings.Replace(typeStr(obj, typ), "\n", "\n\t", -1))
 	if *aflag || *Aflag {
 		var m orderedObjects
-		for obj := range typ.Iter(types.DefaultImporter) {
+		for obj := range typ.Iter(importer) {
 			m = append(m, obj)
 		}
 		sort.Sort(m)
@@ -243,7 +256,7 @@ func done(obj *ast.Object, typ types.Type) {
 			}
 			id := ast.NewIdent(obj.Name)
 			id.Obj = obj
-			_, mt := types.ExprType(id, types.DefaultImporter)
+			_, mt := types.ExprType(id, importer)
 			fmt.Printf("\t%s\n", strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
 			fmt.Printf("\t\t%v\n", types.FileSet.Position(types.DeclPos(obj)))
 		}
