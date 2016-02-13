@@ -66,7 +66,7 @@ func predecl(name string) *ast.Ident {
 	return &ast.Ident{Name: name, Obj: parser.Universe.Lookup(name)}
 }
 
-type Importer func(path string) (string, *ast.Package)
+type Importer func(path string) *ast.Package
 
 // When _any_ Importer is called, it adds any files to FileSet.
 var FileSet = token.NewFileSet()
@@ -76,11 +76,11 @@ var GoPath = []string{filepath.Join(os.Getenv("GOROOT"), "src", "pkg")}
 
 // The Importer looks for the package; if it finds it,
 // it parses and returns it. If no package was found, it returns nil.
-func NewImporter(srcDir string) func(string) (string, *ast.Package) {
-	return func(path string) (string, *ast.Package) {
+func NewImporter(srcDir string) Importer {
+	return func(path string) *ast.Package {
 		bpkg, err := build.Default.Import(path, srcDir, 0)
 		if err != nil {
-			return "", nil
+			return nil
 		}
 		pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, isGoFile, 0)
 		if err != nil {
@@ -94,15 +94,15 @@ func NewImporter(srcDir string) func(string) (string, *ast.Package) {
 					debugp("\terror parsing %s: %v", bpkg.Dir, err)
 				}
 			}
-			return "", nil
+			return nil
 		}
 		if pkg := pkgs[bpkg.Name]; pkg != nil {
-			return bpkg.Dir, pkg
+			return pkg
 		}
 		if Debug {
 			debugp("package not found by ParseDir!")
 		}
-		return "", nil
+		return nil
 	}
 }
 
@@ -503,8 +503,8 @@ func doMembers(typ Type, name string, importer Importer, fn func(*ast.Object)) {
 
 	case *ast.ImportSpec:
 		path := litToString(t.Path)
-		if dir, pkg := importer(path); pkg != nil {
-			doPkg(pkg, name, fn, dir, path)
+		if pkg := importer(path); pkg != nil {
+			doPkg(pkg, name, fn, path)
 		}
 		return
 	}
@@ -611,8 +611,13 @@ func unnamedFieldName(t ast.Node) *ast.Ident {
 
 // doPkg delegates to doScope, but initializes a new importer rooted at the
 // given packages location in the filesystem.
-func doPkg(p *ast.Package, name string, fn func(*ast.Object), dir string, pkg string) {
-	importer := NewImporter(dir)
+func doPkg(p *ast.Package, name string, fn func(*ast.Object), pkg string) {
+	var pkgDir string
+	for fn := range p.Files {
+		pkgDir = filepath.Dir(fn)
+		break
+	}
+	importer := NewImporter(pkgDir)
 	doScope(p.Scope, name, fn, pkg, importer)
 }
 
