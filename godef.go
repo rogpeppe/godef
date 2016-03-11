@@ -41,7 +41,11 @@ func init() {
 	if p == "" {
 		return
 	}
-	gopath := strings.Split(p, ":")
+	sep := ":"
+	if runtime.GOOS == "windows" {
+		sep = ";"
+	}
+	gopath := strings.Split(p, sep)
 	for i, d := range gopath {
 		gopath[i] = filepath.Join(d, "src")
 	}
