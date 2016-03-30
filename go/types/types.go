@@ -68,41 +68,45 @@ func predecl(name string) *ast.Ident {
 
 type Importer func(path string) *ast.Package
 
-// When DefaultImporter is called, it adds any files to FileSet.
+// When _any_ Importer is called, it adds any files to FileSet.
 var FileSet = token.NewFileSet()
 
 // GoPath is used by DefaultImporter to find packages.
 var GoPath = []string{filepath.Join(os.Getenv("GOROOT"), "src", "pkg")}
 
-// DefaultGetPackage looks for the package; if it finds it,
+// The Importer looks for the package; if it finds it,
 // it parses and returns it. If no package was found, it returns nil.
-func DefaultImporter(path string) *ast.Package {
-	bpkg, err := build.Default.Import(path, "", 0)
-	if err != nil {
-		return nil
-	}
-	pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, isGoFile, 0)
-	if err != nil {
-		if Debug {
-			switch err := err.(type) {
-			case scanner.ErrorList:
-				for _, e := range err {
-					debugp("\t%v: %s", e.Pos, e.Msg)
+func NewImporter(srcDir string) Importer {
+	return func(path string) *ast.Package {
+		bpkg, err := build.Default.Import(path, srcDir, 0)
+		if err != nil {
+			return nil
+		}
+		pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, isGoFile, 0)
+		if err != nil {
+			if Debug {
+				switch err := err.(type) {
+				case scanner.ErrorList:
+					for _, e := range err {
+						debugp("\t%v: %s", e.Pos, e.Msg)
+					}
+				default:
+					debugp("\terror parsing %s: %v", bpkg.Dir, err)
 				}
-			default:
-				debugp("\terror parsing %s: %v", bpkg.Dir, err)
 			}
+			return nil
+		}
+		if pkg := pkgs[bpkg.Name]; pkg != nil {
+			return pkg
+		}
+		if Debug {
+			debugp("package not found by ParseDir!")
 		}
 		return nil
 	}
-	if pkg := pkgs[bpkg.Name]; pkg != nil {
-		return pkg
-	}
-	if Debug {
-		debugp("package not found by ParseDir!")
-	}
-	return nil
 }
+
+var DefaultImporter = NewImporter("")
 
 // isGoFile returns true if we will consider the file as a
 // possible candidate for parsing as part of a package.
@@ -263,6 +267,7 @@ func exprType(n ast.Node, expectTuple bool, pkg string, importer Importer) (xobj
 		if obj == nil {
 			return nil, badType
 		}
+		_ = "breakpoint"
 		if t.Kind == ast.Pkg {
 			eobj, et := exprType(&ast.Ident{Name: obj.Name, Obj: obj}, false, t.Pkg, importer)
 			et.Pkg = litToString(t.Node.(*ast.ImportSpec).Path)
@@ -499,7 +504,7 @@ func doMembers(typ Type, name string, importer Importer, fn func(*ast.Object)) {
 	case *ast.ImportSpec:
 		path := litToString(t.Path)
 		if pkg := importer(path); pkg != nil {
-			doScope(pkg.Scope, name, fn, path)
+			doPkg(pkg, name, fn, path)
 		}
 		return
 	}
@@ -522,7 +527,7 @@ func doTypeMembers(t Type, name string, importer Importer, fn func(*ast.Object),
 	}
 	if id, _ := t.Node.(*ast.Ident); id != nil && id.Obj != nil {
 		if scope, ok := id.Obj.Type.(*ast.Scope); ok {
-			doScope(scope, name, fn, t.Pkg)
+			doScope(scope, name, fn, t.Pkg, importer)
 		}
 	}
 	u := t.Underlying(true, importer)
@@ -604,9 +609,21 @@ func unnamedFieldName(t ast.Node) *ast.Ident {
 	panic("no name found for unnamed field")
 }
 
+// doPkg delegates to doScope, but initializes a new importer rooted at the
+// given packages location in the filesystem.
+func doPkg(p *ast.Package, name string, fn func(*ast.Object), pkg string) {
+	var pkgDir string
+	for fn := range p.Files {
+		pkgDir = filepath.Dir(fn)
+		break
+	}
+	importer := NewImporter(pkgDir)
+	doScope(p.Scope, name, fn, pkg, importer)
+}
+
 // doScope iterates through all the functions in the given scope, at
 // the top level only.
-func doScope(s *ast.Scope, name string, fn func(*ast.Object), pkg string) {
+func doScope(s *ast.Scope, name string, fn func(*ast.Object), pkg string, importer Importer) {
 	if s == nil {
 		return
 	}
