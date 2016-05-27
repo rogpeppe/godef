@@ -47,7 +47,7 @@ func parseDir(dir string) *ast.Package {
 	return nil
 }
 
-func checkExprs(t *testing.T, pkg *ast.File, importer Importer) {
+func checkExprs(t *testing.T, pkg *ast.File, importer Importer, fset *token.FileSet) {
 	var visit astVisitor
 	stopped := false
 	visit = func(n ast.Node) bool {
@@ -111,7 +111,7 @@ func checkExprs(t *testing.T, pkg *ast.File, importer Importer) {
 				//t.Fatalf("panic (%v) on %v at %v\n", err, e, FileSet.Position(e.Pos()))
 			}
 		}()
-		obj, _ := ExprType(e, importer)
+		obj, _ := ExprType(e, importer, fset)
 		if obj == nil && mustResolve {
 			t.Errorf("no object for %v(%p, %T) at %v\n", e, e, e, FileSet.Position(e.Pos()))
 		}
@@ -130,12 +130,12 @@ func TestStdLib(t *testing.T) {
 	}()
 	root := os.Getenv("GOROOT") + "/src"
 	cache := make(map[string]*ast.Package)
-	importer := func(path string) *ast.Package {
+	importer := func(path, srcDir string) *ast.Package {
 		p := filepath.Join(root, "pkg", path)
 		if pkg := cache[p]; pkg != nil {
 			return pkg
 		}
-		pkg := DefaultImporter(path)
+		pkg := DefaultImporter(path, srcDir)
 		cache[p] = pkg
 		return pkg
 	}
@@ -155,7 +155,7 @@ func TestStdLib(t *testing.T) {
 		}
 		if pkg != nil {
 			for _, f := range pkg.Files {
-				checkExprs(t, f, importer)
+				checkExprs(t, f, importer, FileSet)
 			}
 		}
 		return nil
@@ -203,7 +203,7 @@ func testExpr(t *testing.T, fset *token.FileSet, e ast.Expr, offsetMap map[int]*
 		panic("unexpected expression type")
 	}
 	from := fset.Position(name.NamePos)
-	obj, typ := ExprType(e, DefaultImporter)
+	obj, typ := ExprType(e, DefaultImporter, fset)
 	if obj == nil {
 		t.Errorf("no object found for %v at %v", pretty{e}, from)
 		return
