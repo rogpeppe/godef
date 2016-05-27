@@ -85,7 +85,7 @@ func DefaultImporter(path string, srcDir string) *ast.Package {
 	if err != nil {
 		return nil
 	}
-	pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, isGoFile, 0)
+	pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, isGoFile, 0, DefaultImportPathToName)
 	if err != nil {
 		if Debug {
 			switch err := err.(type) {
@@ -106,6 +106,13 @@ func DefaultImporter(path string, srcDir string) *ast.Package {
 		debugp("package not found by ParseDir!")
 	}
 	return nil
+}
+
+// DefaultImportPathToName returns the package identifier
+// for the given import path.
+func DefaultImportPathToName(path, srcDir string) (string, error) {
+	pkg, err := build.Default.Import(path, srcDir, 0)
+	return pkg.Name, err
 }
 
 // isGoFile returns true if we will consider the file as a

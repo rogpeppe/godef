@@ -34,7 +34,7 @@ func (f astVisitor) Visit(n ast.Node) ast.Visitor {
 }
 
 func parseDir(dir string) *ast.Package {
-	pkgs, _ := parser.ParseDir(FileSet, dir, isGoFile, 0)
+	pkgs, _ := parser.ParseDir(FileSet, dir, isGoFile, 0, DefaultImportPathToName)
 	if len(pkgs) == 0 {
 		return nil
 	}
@@ -178,7 +178,7 @@ func TestCompile(t *testing.T) {
 func TestOneFile(t *testing.T) {
 	code, offsetMap := translateSymbols(testCode)
 	//fmt.Printf("------------------- {%s}\n", code)
-	f, err := parser.ParseFile(FileSet, "xx.go", code, 0, ast.NewScope(parser.Universe))
+	f, err := parser.ParseFile(FileSet, "xx.go", code, 0, ast.NewScope(parser.Universe), DefaultImportPathToName)
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}

@@ -58,20 +58,22 @@ func NewContext() *Context {
 
 // Import imports and parses the package with the given path.
 // It returns nil if it fails.
-func (ctxt *Context) Import(path string) *ast.Package {
+func (ctxt *Context) Import(path, srcDir string) *ast.Package {
 	// TODO return error.
-	return ctxt.importer(path)
+	return ctxt.importer(path, srcDir)
 }
 
 func (ctxt *Context) importerFunc() types.Importer {
-	return func(path string) *ast.Package {
+	return func(path, srcDir string) *ast.Package {
 		ctxt.pkgMutex.Lock()
 		defer ctxt.pkgMutex.Unlock()
 		if pkg := ctxt.pkgCache[path]; pkg != nil {
 			return pkg
 		}
-		cwd, _ := os.Getwd() // TODO put this into Context?
-		bpkg, err := build.Import(path, cwd, 0)
+		if srcDir == "" {
+			srcDir, _ = os.Getwd() // TODO put this into Context?
+		}
+		bpkg, err := build.Import(path, srcDir, 0)
 		if err != nil {
 			ctxt.logf(token.NoPos, "cannot find %q: %v", path, err)
 			return nil
@@ -88,7 +90,7 @@ func (ctxt *Context) importerFunc() types.Importer {
 		for i, f := range files {
 			files[i] = filepath.Join(bpkg.Dir, f)
 		}
-		pkgs, err := parser.ParseFiles(ctxt.FileSet, files, parser.ParseComments)
+		pkgs, err := parser.ParseFiles(ctxt.FileSet, files, parser.ParseComments, nil)
 		if len(pkgs) == 0 {
 			ctxt.logf(token.NoPos, "cannot parse package %q: %v", path, err)
 			return nil
@@ -215,7 +217,7 @@ func (ctxt *Context) visitExpr(f *ast.File, e ast.Expr, local bool, visitf func(
 		info.Pos = e.Sel.Pos()
 		info.Ident = e.Sel
 	}
-	obj, t := types.ExprType(e, ctxt.importer)
+	obj, t := types.ExprType(e, ctxt.importer, ctxt.FileSet)
 	if obj == nil {
 		ctxt.logf(e.Pos(), "no object for %s", pretty(e))
 		return true
