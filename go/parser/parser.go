@@ -82,9 +82,9 @@ func (p *parser) init(fset *token.FileSet, filename string, src []byte, mode uin
 	p.fset = fset
 	p.file = fset.AddFile(filename, fset.Base(), len(src))
 	p.scanner.Init(p.file, src, p, scannerMode(mode))
-	p.pathToName = naiveImportPathToName
+	p.pathToName = pathToName
 	if p.pathToName == nil {
-		pathToName = naiveImportPathToName
+		p.pathToName = naiveImportPathToName
 	}
 
 	p.mode = mode
