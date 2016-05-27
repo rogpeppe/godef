@@ -11,6 +11,7 @@ package parser
 
 import (
 	"fmt"
+	"go/build"
 	"regexp"
 	"strconv"
 
@@ -24,6 +25,9 @@ var importPathPat = regexp.MustCompile(`((?:\p{L}|_)(?:\p{L}|_|\p{Nd})*)(?:\.v\d
 // ImportPathToName returns the default identifier name
 // for a package path. It is not guaranteed to be correct.
 func ImportPathToName(p string) string {
+	if pkg, err := build.Import(p, "", 0); err == nil {
+		return pkg.Name
+	}
 	id := importPathPat.FindStringSubmatch(p)
 	if id == nil {
 		return ""
