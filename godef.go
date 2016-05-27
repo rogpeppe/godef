@@ -35,23 +35,6 @@ func fail(s string, a ...interface{}) {
 	os.Exit(2)
 }
 
-func init() {
-	// take GOPATH, set types.GoPath to it if it's not empty.
-	p := os.Getenv("GOPATH")
-	if p == "" {
-		return
-	}
-	gopath := strings.Split(p, ":")
-	for i, d := range gopath {
-		gopath[i] = filepath.Join(d, "src")
-	}
-	r := runtime.GOROOT()
-	if r != "" {
-		gopath = append(gopath, r+"/src/pkg", r+"/src")
-	}
-	types.GoPath = gopath
-}
-
 func main() {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: godef [flags] [expr]\n")

@@ -75,9 +75,6 @@ type Importer func(path string, srcDir string) *ast.Package
 // When DefaultImporter is called, it adds any files to FileSet.
 var FileSet = token.NewFileSet()
 
-// GoPath is used by DefaultImporter to find packages.
-var GoPath = []string{filepath.Join(os.Getenv("GOROOT"), "src", "pkg")}
-
 // DefaultImporter looks for the package; if it finds it,
 // it parses and returns it. If no package was found, it returns nil.
 func DefaultImporter(path string, srcDir string) *ast.Package {
