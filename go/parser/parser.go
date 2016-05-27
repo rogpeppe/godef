@@ -11,8 +11,12 @@ package parser
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strconv"
+	"strings"
 
 	"github.com/rogpeppe/godef/go/ast"
 	"github.com/rogpeppe/godef/go/scanner"
@@ -21,10 +25,52 @@ import (
 
 var importPathPat = regexp.MustCompile(`((?:\p{L}|_)(?:\p{L}|_|\p{Nd})*)(?:\.v\d+(-unstable)?)?$`)
 
-// ImportPathToName returns the default identifier name
-// for a package path. It is not guaranteed to be correct.
-func ImportPathToName(p string) string {
-	id := importPathPat.FindStringSubmatch(p)
+func GoPath() []string {
+	// take GOPATH, set types.GoPath to it if it's not empty.
+	p := os.Getenv("GOPATH")
+	if p == "" {
+		return nil
+	}
+	gopath := strings.Split(p, ":")
+	for i, d := range gopath {
+		gopath[i] = filepath.Join(d, "src")
+	}
+	r := runtime.GOROOT()
+	if r != "" {
+		gopath = append(gopath, r+"/src/pkg", r+"/src")
+	}
+	return gopath
+}
+
+// ImportPathToName returns the identifier name for a path.
+func ImportPathToName(packagePath string) string {
+	for _, path := range GoPath() {
+		fullPackagePath := filepath.Join(path, packagePath)
+		if _, err := os.Stat(fullPackagePath); err == nil {
+			done := false
+			packages, err := ParseDir(
+				token.NewFileSet(), fullPackagePath, func(fileInfo os.FileInfo) bool {
+					if done {
+						return false
+					}
+					splitName := strings.Split(fileInfo.Name(), ".")
+					extention := splitName[len(splitName)-1]
+					if extention == "go" {
+						done = true
+						return true
+					}
+					return extention == "go"
+				}, PackageClauseOnly,
+			)
+			if err == nil {
+				for _, p := range packages {
+					return p.Name
+				}
+			}
+		}
+	}
+
+	id := importPathPat.FindStringSubmatch(packagePath)
 	if id == nil {
 		return ""
 	}
