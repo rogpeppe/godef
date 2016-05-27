@@ -120,7 +120,7 @@ func main() {
 	case ast.Expr:
 		if !*tflag {
 			// try local declarations only
-			if obj, typ := types.ExprType(e, types.DefaultImporter); obj != nil {
+			if obj, typ := types.ExprType(e, types.DefaultImporter, types.FileSet); obj != nil {
 				done(obj, typ)
 			}
 		}
@@ -134,7 +134,7 @@ func main() {
 			// resolved the original expression.
 			e = parseExpr(f.Scope, flag.Arg(0)).(ast.Expr)
 		}
-		if obj, typ := types.ExprType(e, types.DefaultImporter); obj != nil {
+		if obj, typ := types.ExprType(e, types.DefaultImporter, types.FileSet); obj != nil {
 			done(obj, typ)
 		}
 		fail("no declaration found for %v", pretty{e})
@@ -232,7 +232,7 @@ func done(obj *ast.Object, typ types.Type) {
 	fmt.Printf("%s\n", strings.Replace(typeStr(obj, typ), "\n", "\n\t", -1))
 	if *aflag || *Aflag {
 		var m orderedObjects
-		for obj := range typ.Iter(types.DefaultImporter) {
+		for obj := range typ.Iter() {
 			m = append(m, obj)
 		}
 		sort.Sort(m)
@@ -243,7 +243,7 @@ func done(obj *ast.Object, typ types.Type) {
 			}
 			id := ast.NewIdent(obj.Name)
 			id.Obj = obj
-			_, mt := types.ExprType(id, types.DefaultImporter)
+			_, mt := types.ExprType(id, types.DefaultImporter, types.FileSet)
 			fmt.Printf("\t%s\n", strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
 			fmt.Printf("\t\t%v\n", types.FileSet.Position(types.DeclPos(obj)))
 		}
@@ -264,7 +264,7 @@ func typeStr(obj *ast.Object, typ types.Type) string {
 	case ast.Lbl:
 		return fmt.Sprintf("label %s", obj.Name)
 	case ast.Typ:
-		typ = typ.Underlying(false, types.DefaultImporter)
+		typ = typ.Underlying(false)
 		return fmt.Sprintf("type %s %v", obj.Name, prettyType{typ})
 	}
 	return fmt.Sprintf("unknown %s %v", obj.Name, typ.Kind)
