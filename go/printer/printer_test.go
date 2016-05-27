@@ -43,7 +43,7 @@ const (
 
 func runcheck(t *testing.T, source, golden string, mode checkMode) {
 	// parse source
-	prog, err := parser.ParseFile(fset, source, nil, parser.ParseComments, nil)
+	prog, err := parser.ParseFile(fset, source, nil, parser.ParseComments, nil, nil)
 	if err != nil {
 		t.Error(err)
 		return
@@ -172,7 +172,7 @@ func TestLineComments(t *testing.T) {
 	`
 
 	fset := token.NewFileSet()
-	ast1, err1 := parser.ParseFile(fset, "", src, parser.ParseComments, nil)
+	ast1, err1 := parser.ParseFile(fset, "", src, parser.ParseComments, nil, nil)
 	if err1 != nil {
 		panic(err1)
 	}

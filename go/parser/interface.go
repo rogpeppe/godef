@@ -19,6 +19,12 @@ import (
 	"github.com/rogpeppe/godef/go/token"
 )
 
+// ImportPathToName is the type of the function that's used
+// to find the package name for an imported package path.
+// The fromDir argument holds the directory that contains the
+// import statement, which may be empty.
+type ImportPathToName func(path string, fromDir string) (string, error)
+
 // If src != nil, readSource converts src to a []byte if possible;
 // otherwise it returns an error. If src == nil, readSource returns
 // the result of reading the file specified by filename.
@@ -62,14 +68,14 @@ func (p *parser) parseEOF() error {
 //
 // if scope is non-nil, it will be used as the scope for the expression.
 //
-func ParseExpr(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope) (ast.Expr, error) {
+func ParseExpr(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope, pathToName ImportPathToName) (ast.Expr, error) {
 	data, err := readSource(filename, src)
 	if err != nil {
 		return nil, err
 	}
 
 	var p parser
-	p.init(fset, filename, data, 0, scope)
+	p.init(fset, filename, data, 0, scope, pathToName)
 	x := p.parseExpr()
 	if p.tok == token.SEMICOLON {
 		p.next() // consume automatically inserted semicolon, if any
@@ -84,14 +90,14 @@ func ParseExpr(fset *token.FileSet, filename string, src interface{}, scope *ast
 //
 // if scope is non-nil, it will be used as the scope for the statements.
 //
-func ParseStmtList(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope) ([]ast.Stmt, error) {
+func ParseStmtList(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope, pathToName ImportPathToName) ([]ast.Stmt, error) {
 	data, err := readSource(filename, src)
 	if err != nil {
 		return nil, err
 	}
 
 	var p parser
-	p.init(fset, filename, data, 0, scope)
+	p.init(fset, filename, data, 0, scope, pathToName)
 	return p.parseStmtList(), p.parseEOF()
 }
 
@@ -102,14 +108,14 @@ func ParseStmtList(fset *token.FileSet, filename string, src interface{}, scope 
 //
 // If scope is non-nil, it will be used for declarations.
 //
-func ParseDeclList(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope) ([]ast.Decl, error) {
+func ParseDeclList(fset *token.FileSet, filename string, src interface{}, scope *ast.Scope, pathToName ImportPathToName) ([]ast.Decl, error) {
 	data, err := readSource(filename, src)
 	if err != nil {
 		return nil, err
 	}
 
 	var p parser
-	p.init(fset, filename, data, 0, scope)
+	p.init(fset, filename, data, 0, scope, pathToName)
 	p.pkgScope = scope
 	p.fileScope = scope
 	return p.parseDeclList(), p.parseEOF()
@@ -135,28 +141,28 @@ func ParseDeclList(fset *token.FileSet, filename string, src interface{}, scope 
 // representing the fragments of erroneous source code). Multiple errors
 // are returned via a scanner.ErrorList which is sorted by file position.
 //
-func ParseFile(fset *token.FileSet, filename string, src interface{}, mode uint, pkgScope *ast.Scope) (*ast.File, error) {
+func ParseFile(fset *token.FileSet, filename string, src interface{}, mode uint, pkgScope *ast.Scope, pathToName ImportPathToName) (*ast.File, error) {
 	data, err := readSource(filename, src)
 	if err != nil {
 		return nil, err
 	}
 
 	var p parser
-	p.init(fset, filename, data, mode, pkgScope)
+	p.init(fset, filename, data, mode, pkgScope, pathToName)
 	p.pkgScope = p.topScope
 	p.openScope()
 	p.fileScope = p.topScope
 	return p.parseFile(), p.GetError(scanner.NoMultiples) // parseFile() reads to EOF
 }
 
-func parseFileInPkg(fset *token.FileSet, pkgs map[string]*ast.Package, filename string, mode uint) (err error) {
+func parseFileInPkg(fset *token.FileSet, pkgs map[string]*ast.Package, filename string, mode uint, pathToName ImportPathToName) (err error) {
 	data, err := readSource(filename, nil)
 	if err != nil {
 		return err
 	}
 	// first find package name, so we can use the correct package
 	// scope when parsing the file.
-	src, err := ParseFile(fset, filename, data, PackageClauseOnly, nil)
+	src, err := ParseFile(fset, filename, data, PackageClauseOnly, nil, pathToName)
 	if err != nil {
 		return
 	}
@@ -166,7 +172,7 @@ func parseFileInPkg(fset *token.FileSet, pkgs map[string]*ast.Package, filename 
 		pkg = &ast.Package{name, ast.NewScope(Universe), nil, make(map[string]*ast.File)}
 		pkgs[name] = pkg
 	}
-	src, err = ParseFile(fset, filename, data, mode, pkg.Scope)
+	src, err = ParseFile(fset, filename, data, mode, pkg.Scope, pathToName)
 	if err != nil {
 		return
 	}
@@ -183,10 +189,10 @@ func parseFileInPkg(fset *token.FileSet, pkgs map[string]*ast.Package, filename 
 // be incomplete (missing packages and/or incomplete packages) and the first
 // error encountered is returned.
 //
-func ParseFiles(fset *token.FileSet, filenames []string, mode uint) (pkgs map[string]*ast.Package, first error) {
+func ParseFiles(fset *token.FileSet, filenames []string, mode uint, pathToName ImportPathToName) (pkgs map[string]*ast.Package, first error) {
 	pkgs = make(map[string]*ast.Package)
 	for _, filename := range filenames {
-		if err := parseFileInPkg(fset, pkgs, filename, mode); err != nil && first == nil {
+		if err := parseFileInPkg(fset, pkgs, filename, mode, pathToName); err != nil && first == nil {
 			first = err
 		}
 	}
@@ -203,7 +209,7 @@ func ParseFiles(fset *token.FileSet, filenames []string, mode uint) (pkgs map[st
 // returned. If a parse error occurred, a non-nil but incomplete map and the
 // error are returned.
 //
-func ParseDir(fset *token.FileSet, path string, filter func(os.FileInfo) bool, mode uint) (map[string]*ast.Package, error) {
+func ParseDir(fset *token.FileSet, path string, filter func(os.FileInfo) bool, mode uint, pathToName ImportPathToName) (map[string]*ast.Package, error) {
 	fd, err := os.Open(path)
 	if err != nil {
 		return nil, err
@@ -226,5 +232,5 @@ func ParseDir(fset *token.FileSet, path string, filter func(os.FileInfo) bool, m
 	}
 	filenames = filenames[0:n]
 
-	return ParseFiles(fset, filenames, mode)
+	return ParseFiles(fset, filenames, mode, pathToName)
 }

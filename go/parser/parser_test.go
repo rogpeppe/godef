@@ -25,7 +25,7 @@ var illegalInputs = []interface{}{
 
 func TestParseIllegalInputs(t *testing.T) {
 	for _, src := range illegalInputs {
-		_, err := ParseFile(fset, "", src, 0, nil)
+		_, err := ParseFile(fset, "", src, 0, nil, naiveImportPathToName)
 		if err == nil {
 			t.Errorf("ParseFile(%v) should have failed", src)
 		}
@@ -56,7 +56,7 @@ var validPrograms = []interface{}{
 
 func TestParseValidPrograms(t *testing.T) {
 	for _, src := range validPrograms {
-		_, err := ParseFile(fset, "", src, Trace, nil)
+		_, err := ParseFile(fset, "", src, Trace, nil, naiveImportPathToName)
 		if err != nil {
 			t.Errorf("ParseFile(%q): %v", src, err)
 		}
@@ -70,7 +70,7 @@ var validFiles = []string{
 
 func TestParse3(t *testing.T) {
 	for _, filename := range validFiles {
-		_, err := ParseFile(fset, filename, nil, DeclarationErrors, nil)
+		_, err := ParseFile(fset, filename, nil, DeclarationErrors, nil, nil)
 		if err != nil {
 			t.Errorf("ParseFile(%s): %v", filename, err)
 		}
@@ -92,7 +92,7 @@ func dirFilter(f os.FileInfo) bool { return nameFilter(f.Name()) }
 
 func TestParse4(t *testing.T) {
 	path := "."
-	pkgs, err := ParseDir(fset, path, dirFilter, 0)
+	pkgs, err := ParseDir(fset, path, dirFilter, 0, naiveImportPathToName)
 	if err != nil {
 		t.Fatalf("ParseDir(%s): %v", path, err)
 	}
