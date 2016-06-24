@@ -239,7 +239,6 @@ func (ctxt *exprTypeContext) exprType(n ast.Node, expectTuple bool, pkg string) 
 			_, t := ctxt.exprType(expr, false, pkg)
 			if t.Kind == ast.Typ {
 				debugp("expected value, got type %v", t)
-				t = badType
 			}
 			return obj, t
 
@@ -310,7 +309,7 @@ func (ctxt *exprTypeContext) exprType(n ast.Node, expectTuple bool, pkg string) 
 			return nil, ctxt.certify(n.Elt, ast.Var, t.Pkg)
 		case *ast.MapType:
 			t := ctxt.certify(n.Value, ast.Var, t.Pkg)
-			if expectTuple {
+			if expectTuple && t.Kind != ast.Bad {
 				return nil, ctxt.newType(MultiValue{[]ast.Expr{t.Node.(ast.Expr), predecl("bool")}}, ast.Var, t.Pkg)
 			}
 			return nil, t
