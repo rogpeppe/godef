@@ -29,6 +29,7 @@ var tflag = flag.Bool("t", false, "print type information")
 var aflag = flag.Bool("a", false, "print public type and member information")
 var Aflag = flag.Bool("A", false, "print all type and members information")
 var fflag = flag.String("f", "", "Go source filename")
+var pflag = flag.String("p", "", "Go file path (used with -i, otherwise ignored)")
 var acmeFlag = flag.Bool("acme", false, "use current acme window")
 var jsonFlag = flag.Bool("json", false, "output location in JSON format (-t flag is ignored)")
 
@@ -61,6 +62,7 @@ func main() {
 		}
 		filename, src, searchpos = afile.name, afile.body, afile.offset
 	} else if *readStdin {
+		filename = *pflag
 		src, _ = ioutil.ReadAll(os.Stdin)
 	} else {
 		// TODO if there's no filename, look in the current
