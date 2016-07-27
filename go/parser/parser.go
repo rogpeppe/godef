@@ -1967,6 +1967,9 @@ func parseImportSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, _ int)
 		if declIdent == nil {
 			filename := p.fset.Position(path.Pos()).Filename
 			name, err := p.pathToName(litToString(path), filepath.Dir(filename))
+			if litToString(path) == "C" {
+				name = "C"
+			}
 			if name == "" {
 				p.error(path.Pos(), fmt.Sprintf("cannot find identifier for package %q: %v", litToString(path), err))
 			} else {
