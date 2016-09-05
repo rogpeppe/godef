@@ -272,11 +272,11 @@ func done(obj *ast.Object, typ types.Type) {
 		}
 		fmt.Println(string(jsonStr))
 	} else {
-		doneOld(obj, typ)
+		doneSimple(obj, typ)
 	}
 }
 
-func doneOld(obj *ast.Object, typ types.Type) {
+func doneSimple(obj *ast.Object, typ types.Type) {
 	defer os.Exit(0)
 	pos := types.FileSet.Position(types.DeclPos(obj))
 	if *jsonFlag {
