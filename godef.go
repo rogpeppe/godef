@@ -212,6 +212,73 @@ func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 func done(obj *ast.Object, typ types.Type) {
 	defer os.Exit(0)
 	pos := types.FileSet.Position(types.DeclPos(obj))
+	if *jsonFlag && *Aflag {
+		type field struct {
+			Name     string `json:"name,omitempty"`
+			Def      string `json:"def,omitempty"`
+			Type     string `json:"type,omitempty"`
+			Filename string `json:"filename,omitempty"`
+			Line     int    `json:"line,omitempty"`
+			Column   int    `json:"column,omitempty"`
+		}
+		var JSONOutput = struct {
+			Filename   string   `json:"filename,omitempty"`
+			Line       int      `json:"line,omitempty"`
+			Column     int      `json:"column,omitempty"`
+			Definition string   `json:"definition,omitempty"`
+			Fields     []*field `json:"fields,omitmepty"`
+		}{
+			Filename: pos.Filename,
+			Line:     pos.Line,
+			Column:   pos.Column,
+		}
+		if typ.Kind == ast.Bad || !*tflag {
+			jsonStr, err := json.Marshal(JSONOutput)
+			if err != nil {
+				fail("JSON marshal error: %v", err)
+			}
+			fmt.Println(string(jsonStr))
+			return
+		}
+
+		JSONOutput.Definition = typeStr(obj, typ)
+		var m orderedObjects
+		for obj := range typ.Iter() {
+			m = append(m, obj)
+		}
+		// sort.Sort(m)
+		JSONOutput.Fields = make([]*field, 0, len(m))
+		ts := map[ast.ObjKind]string{ast.Fun: "function", ast.Var: "variable"}
+		for _, obj := range m {
+			id := ast.NewIdent(obj.Name)
+			id.Obj = obj
+			if obj.Kind == ast.Fun || obj.Kind == ast.Var {
+				_, mt := types.ExprType(id, types.DefaultImporter, types.FileSet)
+				var innerPos = types.FileSet.Position(types.DeclPos(obj))
+				f := &field{
+					Name:     obj.Name,
+					Def:      fmt.Sprint(prettyType{mt}),
+					Type:     ts[obj.Kind],
+					Filename: innerPos.Filename,
+					Line:     innerPos.Line,
+					Column:   innerPos.Column,
+				}
+				JSONOutput.Fields = append(JSONOutput.Fields, f)
+			}
+		}
+		jsonStr, err := json.MarshalIndent(JSONOutput, "", "\t")
+		if err != nil {
+			fail("JSON marshal error: %v", err)
+		}
+		fmt.Println(string(jsonStr))
+	} else {
+		doneOld(obj, typ)
+	}
+}
+
+func doneOld(obj *ast.Object, typ types.Type) {
+	defer os.Exit(0)
+	pos := types.FileSet.Position(types.DeclPos(obj))
 	if *jsonFlag {
 		p := struct {
 			Filename string `json:"filename,omitempty"`
