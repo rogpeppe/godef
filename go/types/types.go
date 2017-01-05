@@ -114,12 +114,9 @@ func DefaultImportPathToName(path, srcDir string) (string, error) {
 
 // isGoFile returns true if we will consider the file as a
 // possible candidate for parsing as part of a package.
-// Including _test.go here isn't quite right, but what
-// else can we do?
 //
 func isGoFile(d os.FileInfo) bool {
 	return strings.HasSuffix(d.Name(), ".go") &&
-		!strings.HasSuffix(d.Name(), "_test.go") &&
 		!strings.HasPrefix(d.Name(), ".") &&
 		goodOSArch(d.Name())
 }
