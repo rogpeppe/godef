@@ -176,7 +176,7 @@ func (p *parser) declare1(decl ast.Node, scope *ast.Scope, kind ast.ObjKind, ide
 					// Partially typed code can get here.
 					return
 				default:
-					panic(fmt.Errorf("unknown type %T (%#v)", t, t))
+					return
 				}
 				if rt.Type == nil {
 					rt.Type = p.newScope(nil)
