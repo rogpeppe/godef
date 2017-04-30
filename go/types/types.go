@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"strconv"
-	"strings"
 
 	"github.com/rogpeppe/godef/go/ast"
 	"github.com/rogpeppe/godef/go/parser"
@@ -82,7 +81,16 @@ func DefaultImporter(path string, srcDir string) *ast.Package {
 	if err != nil {
 		return nil
 	}
-	pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, isGoFile, 0, DefaultImportPathToName)
+	// Create a map for fast lookup of the files we want to parse
+	parseFiles := make(map[string]struct{}, len(bpkg.GoFiles))
+	for _, name := range bpkg.GoFiles {
+		parseFiles[name] = struct{}{}
+	}
+	filter := func(d os.FileInfo) bool {
+		_, found := parseFiles[d.Name()]
+		return found
+	}
+	pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, filter, 0, DefaultImportPathToName)
 	if err != nil {
 		if Debug {
 			switch err := err.(type) {
@@ -110,18 +118,6 @@ func DefaultImporter(path string, srcDir string) *ast.Package {
 func DefaultImportPathToName(path, srcDir string) (string, error) {
 	pkg, err := build.Default.Import(path, srcDir, 0)
 	return pkg.Name, err
-}
-
-// isGoFile returns true if we will consider the file as a
-// possible candidate for parsing as part of a package.
-// Including _test.go here isn't quite right, but what
-// else can we do?
-//
-func isGoFile(d os.FileInfo) bool {
-	return strings.HasSuffix(d.Name(), ".go") &&
-		!strings.HasSuffix(d.Name(), "_test.go") &&
-		!strings.HasPrefix(d.Name(), ".") &&
-		goodOSArch(d.Name())
 }
 
 // When Debug is true, log messages will be printed.
