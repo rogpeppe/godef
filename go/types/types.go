@@ -82,7 +82,17 @@ func DefaultImporter(path string, srcDir string) *ast.Package {
 	if err != nil {
 		return nil
 	}
-	pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, isGoFile, 0, DefaultImportPathToName)
+	goFiles := make(map[string]bool)
+	for _, f := range bpkg.GoFiles {
+		goFiles[f] = true
+	}
+	for _, f := range bpkg.CgoFiles {
+		goFiles[f] = true
+	}
+	shouldInclude := func(d os.FileInfo) bool {
+		return goFiles[d.Name()]
+	}
+	pkgs, err := parser.ParseDir(FileSet, bpkg.Dir, shouldInclude, 0, DefaultImportPathToName)
 	if err != nil {
 		if Debug {
 			switch err := err.(type) {
@@ -108,6 +118,9 @@ func DefaultImporter(path string, srcDir string) *ast.Package {
 // DefaultImportPathToName returns the package identifier
 // for the given import path.
 func DefaultImportPathToName(path, srcDir string) (string, error) {
+	if path == "C" {
+		return "C", nil
+	}
 	pkg, err := build.Default.Import(path, srcDir, 0)
 	return pkg.Name, err
 }
@@ -310,7 +323,7 @@ func (ctxt *exprTypeContext) exprType(n ast.Node, expectTuple bool, pkg string) 
 			return nil, ctxt.certify(n.Elt, ast.Var, t.Pkg)
 		case *ast.MapType:
 			t := ctxt.certify(n.Value, ast.Var, t.Pkg)
-			if expectTuple {
+			if expectTuple && t.Kind != badType.Kind {
 				return nil, ctxt.newType(MultiValue{[]ast.Expr{t.Node.(ast.Expr), predecl("bool")}}, ast.Var, t.Pkg)
 			}
 			return nil, t
