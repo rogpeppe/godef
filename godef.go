@@ -109,6 +109,23 @@ func main() {
 				done(obj, typ)
 			}
 		}
+
+		// add dot imported packages
+		for _, importSpec := range f.DotImports {
+			p := importPath(importSpec)
+			bpkg, err := build.Import(p, filepath.Dir(filename), 0)
+			if err != nil {
+				if !*tflag {
+					fmt.Printf("load package \"%s\" error: %v\n", p, err)
+				}
+			} else {
+				apkg, err := parsePackage(bpkg, pkgScope, types.DefaultImportPathToName)
+				if apkg == nil && !*tflag {
+					fmt.Printf("parsePackage error: %v\n", err)
+				}
+			}
+		}
+
 		// add declarations from other files in the local package and try again
 		pkg, err := parseLocalPackage(filename, f, pkgScope, types.DefaultImportPathToName)
 		if pkg == nil && !*tflag {
@@ -326,7 +343,7 @@ func parseLocalPackage(filename string, src *ast.File, pkgScope *ast.Scope, path
 			pkgName(file) != pkg.Name {
 			continue
 		}
-		src, err := parser.ParseFile(types.FileSet, file, nil, 0, pkg.Scope, types.DefaultImportPathToName)
+		src, err := parser.ParseFile(types.FileSet, file, nil, 0, pkg.Scope, pathToName)
 		if err == nil {
 			pkg.Files[file] = src
 		}
@@ -335,6 +352,34 @@ func parseLocalPackage(filename string, src *ast.File, pkgScope *ast.Scope, path
 		return nil, errNoPkgFiles
 	}
 	return pkg, nil
+}
+
+func parsePackage(pkg *build.Package, pkgScope *ast.Scope, pathToName parser.ImportPathToName) (*ast.Package, error) {
+	apkg := &ast.Package{pkg.Name, pkgScope, nil, map[string]*ast.File{}}
+	d := pkg.Dir
+	fd, err := os.Open(d)
+	if err != nil {
+		return nil, errNoPkgFiles
+	}
+	defer fd.Close()
+
+	list, err := fd.Readdirnames(-1)
+	if err != nil {
+		return nil, errNoPkgFiles
+	}
+
+	for _, pf := range list {
+		file := filepath.Join(d, pf)
+		if !strings.HasSuffix(pf, ".go") ||
+			pkgName(file) != pkg.Name {
+			continue
+		}
+		src, err := parser.ParseFile(types.FileSet, file, nil, 0, apkg.Scope, pathToName)
+		if err == nil {
+			apkg.Files[file] = src
+		}
+	}
+	return apkg, nil
 }
 
 // pkgName returns the package name implemented by the
