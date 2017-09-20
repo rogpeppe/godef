@@ -2028,6 +2028,9 @@ func parseTypeSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, _ int) a
 	// containing block.
 	// (Global identifiers are resolved in a separate phase after parsing.)
 	spec := &ast.TypeSpec{doc, ident, nil, p.lineComment}
+	if p.tok == token.ASSIGN {
+		p.next()
+	}
 	p.declare(spec, p.topScope, ast.Typ, ident)
 	typ := p.parseType()
 	p.expectSemi() // call before accessing p.linecomment
