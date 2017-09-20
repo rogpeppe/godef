@@ -232,7 +232,7 @@ func done(obj *ast.Object, typ types.Type) {
 	if typ.Kind == ast.Bad || !*tflag {
 		return
 	}
-	fmt.Printf("%s\n", strings.Replace(typeStr(obj, typ), "\n", "\n\t", -1))
+	fmt.Printf("%s\n", typeStr(obj, typ))
 	if *aflag || *Aflag {
 		var m orderedObjects
 		for obj := range typ.Iter() {
