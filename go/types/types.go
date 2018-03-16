@@ -230,8 +230,8 @@ func (ctxt *exprTypeContext) exprType(n ast.Node, expectTuple bool, pkg string) 
 		if obj == nil || obj.Kind == ast.Bad {
 			break
 		}
-		// A type object represents itself.
-		if obj.Kind == ast.Typ {
+		// A non-aliased type object represents itself.
+		if obj.Kind == ast.Typ && !isTypeAlias(obj) {
 			// Objects in the universal scope don't live
 			// in any package.
 			if parser.Universe.Lookup(obj.Name) == obj {
@@ -869,6 +869,14 @@ func containsNode(node, x ast.Node) (found bool) {
 
 func isNamedType(typ Type) bool {
 	return typ.Underlying(false).Node != typ.Node
+}
+
+func isTypeAlias(obj *ast.Object) bool {
+	if obj.Kind != ast.Typ {
+		return false
+	}
+	ts, ok := obj.Decl.(*ast.TypeSpec)
+	return ok && ts.Assign.IsValid()
 }
 
 func fields2type(fields *ast.FieldList) ast.Node {
