@@ -5,10 +5,13 @@ package types
 import (
 	"bytes"
 	"container/list"
+	"encoding/json"
 	"fmt"
 	"go/build"
+	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -75,10 +78,12 @@ type Importer func(path string, srcDir string) *ast.Package
 // When DefaultImporter is called, it adds any files to FileSet.
 var FileSet = token.NewFileSet()
 
+var buildImporter = vgoImport
+
 // DefaultImporter looks for the package; if it finds it,
 // it parses and returns it. If no package was found, it returns nil.
 func DefaultImporter(path string, srcDir string) *ast.Package {
-	bpkg, err := build.Default.Import(path, srcDir, 0)
+	bpkg, err := buildImporter(path, srcDir, 0)
 	if err != nil {
 		return nil
 	}
@@ -115,13 +120,123 @@ func DefaultImporter(path string, srcDir string) *ast.Package {
 	return nil
 }
 
+// vgoImportCache is a map from ImportPath to directory
+// as resolved by VgoInit
+var vgoImportCache map[string]*vgoPkgInfo
+
+type vgoPkgInfo struct {
+	Dir          string
+	Deps         []string
+	ImportPath   string
+	TestImports  []string
+	XTestImports []string
+}
+
+// VgoInit is a poor-man's version of what go/build will become. We need to work out where our
+// transitive (test) dependencies exist on disk. This means we need to build a map of:
+//
+// .ImportPath -> .Dir
+//
+// for the set of ImportPaths:
+//
+// path.Deps + (path.TestImports + path.XTestImports).Deps
+//
+// This is therefore a three-step process, involving three calls to vgo
+func VgoInit(dir string) error {
+	buildImporter = vgoImport
+
+	var root *vgoPkgInfo
+	vgoImportCache = make(map[string]*vgoPkgInfo)
+
+	getVgoPkgInfo := func(paths ...string) error {
+		args := append([]string{"vgo", "list", "-json"})
+
+		for _, p := range paths {
+			if vgoImportCache[p] == nil {
+				args = append(args, p)
+			}
+		}
+
+		cmd := exec.Command(args[0], args[1:]...)
+		cmd.Dir = dir
+
+		debugp("dir: %v; running %v\n", dir, strings.Join(args, " "))
+
+		out, err := cmd.CombinedOutput()
+		if err != nil {
+			return fmt.Errorf("failed to run %v: %v\n%v\n", strings.Join(args, " "), err, string(out))
+		}
+
+		debugp("output:\n%v\n", string(out))
+
+		dec := json.NewDecoder(bytes.NewReader(out))
+
+		for {
+			var p vgoPkgInfo
+			if err := dec.Decode(&p); err != nil {
+				if err == io.EOF {
+					break
+				}
+				return fmt.Errorf("failed to decode vgo list output: %v", err)
+			}
+			if root == nil {
+				root = &p
+			}
+			vgoImportCache[p.ImportPath] = &p
+
+		}
+		return nil
+	}
+
+	// get the root package info
+	if err := getVgoPkgInfo(); err != nil {
+		return nil
+	}
+
+	// add the package info for test imports
+	if err := getVgoPkgInfo(append(root.TestImports, root.XTestImports...)...); err != nil {
+		return nil
+	}
+
+	var deps []string
+
+	// get the deps of the lot
+	for _, p := range vgoImportCache {
+		for _, d := range p.Deps {
+			deps = append(deps, d)
+		}
+	}
+
+	if err := getVgoPkgInfo(deps...); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func vgoImport(path string, srcDir string, mode build.ImportMode) (*build.Package, error) {
+	// the directory is irrelevant here because VgoInit will have resolved
+	// the transitive dependencies from where we first tried to lookup a def
+
+	p, ok := vgoImportCache[path]
+	if !ok {
+		// this should NEVER happen
+		return nil, fmt.Errorf("vgoImportCache miss for %v", path)
+	}
+
+	return build.ImportDir(p.Dir, mode)
+}
+
 // DefaultImportPathToName returns the package identifier
 // for the given import path.
 func DefaultImportPathToName(path, srcDir string) (string, error) {
 	if path == "C" {
 		return "C", nil
 	}
-	pkg, err := build.Default.Import(path, srcDir, 0)
+	pkg, err := buildImporter(path, srcDir, 0)
+	if err != nil {
+		return "", err
+	}
 	return pkg.Name, err
 }
 
@@ -166,6 +281,7 @@ func (t Type) Member(name string) *ast.Object {
 			}()
 		}
 		doMembers(t, name, func(obj *ast.Object) {
+			debugp("doMembers: %v %v\n", obj.Name, name)
 			if obj.Name == name {
 				c <- obj
 				runtime.Goexit()
