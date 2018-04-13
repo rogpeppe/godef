@@ -71,6 +71,24 @@ func main() {
 		}
 		src = b
 	}
+
+	// are we in vgo-mode?
+	fDir := filepath.Dir(filename)
+	dir := filepath.Dir(fDir)
+	for {
+		if fi, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil && !fi.IsDir() {
+			if err := types.VgoInit(fDir); err != nil {
+				fail("cannot init vgo in dir %v: %v", fDir, err)
+			}
+			break
+		}
+		d, _ := filepath.Split(dir)
+		if d == dir {
+			break
+		}
+		dir = d
+	}
+
 	pkgScope := ast.NewScope(parser.Universe)
 	f, err := parser.ParseFile(types.FileSet, filename, src, 0, pkgScope, types.DefaultImportPathToName)
 	if f == nil {
