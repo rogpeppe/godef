@@ -388,6 +388,8 @@ func (s xx_structEmbed) xx_value#e@f() {}
 type xx_other@t bool
 func (xx_other) xx_value#x@f() {}
 
+type xx_alias@t = xx_other
+
 var xxv_int@v xx_int
 
 var xx_chan@v chan xx_struct
@@ -450,6 +452,8 @@ func main() {
 	xx_iembed.xx_value#i()
 	xx_iembed.xx_interfaceAndMethod#i()
 
+	var xx_ialiasvar@v xx_alias
+	xx_ialiasvar.xx_value#x()
 
 	xx_map2@v := make(map[xx_int]xx_struct)
 	for xx_a@v, xx_b@v := range xx_map2 {
