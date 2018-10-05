@@ -32,12 +32,14 @@ var fflag = flag.String("f", "", "Go source filename")
 var acmeFlag = flag.Bool("acme", false, "use current acme window")
 var jsonFlag = flag.Bool("json", false, "output location in JSON format (-t flag is ignored)")
 
-func fail(s string, a ...interface{}) {
-	fmt.Fprint(os.Stderr, "godef: "+fmt.Sprintf(s, a...)+"\n")
-	os.Exit(2)
+func main() {
+	if err := run(); err != nil {
+		fmt.Fprintf(os.Stderr, "godef: %v\n", err)
+		os.Exit(2)
+	}
 }
 
-func main() {
+func run() error {
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: godef [flags] [expr]\n")
 		flag.PrintDefaults()
@@ -57,7 +59,7 @@ func main() {
 	if *acmeFlag {
 		var err error
 		if afile, err = acmeCurrentFile(); err != nil {
-			fail("%v", err)
+			return fmt.Errorf("%v", err)
 		}
 		filename, src, searchpos = afile.name, afile.body, afile.offset
 	} else if *readStdin {
@@ -67,46 +69,64 @@ func main() {
 		// directory and do something plausible.
 		b, err := ioutil.ReadFile(filename)
 		if err != nil {
-			fail("cannot read %s: %v", filename, err)
+			return fmt.Errorf("cannot read %s: %v", filename, err)
 		}
 		src = b
 	}
+
+	obj, typ, err := godef(filename, src, searchpos)
+	if err != nil {
+		return err
+	}
+
+	// print old source location to facilitate backtracking
+	if *acmeFlag {
+		fmt.Printf("\t%s:#%d\n", afile.name, afile.runeOffset)
+	}
+
+	return done(obj, typ)
+}
+
+func godef(filename string, src []byte, searchpos int) (*ast.Object, types.Type, error) {
 	pkgScope := ast.NewScope(parser.Universe)
 	f, err := parser.ParseFile(types.FileSet, filename, src, 0, pkgScope, types.DefaultImportPathToName)
 	if f == nil {
-		fail("cannot parse %s: %v", filename, err)
+		return nil, types.Type{}, fmt.Errorf("cannot parse %s: %v", filename, err)
 	}
 
 	var o ast.Node
 	switch {
 	case flag.NArg() > 0:
-		o = parseExpr(f.Scope, flag.Arg(0))
+		o, err = parseExpr(f.Scope, flag.Arg(0))
+		if err != nil {
+			return nil, types.Type{}, err
+		}
 
 	case searchpos >= 0:
-		o = findIdentifier(f, searchpos)
+		o, err = findIdentifier(f, searchpos)
+		if err != nil {
+			return nil, types.Type{}, err
+		}
 
 	default:
-		fmt.Fprintf(os.Stderr, "no expression or offset specified\n")
-		flag.Usage()
-		os.Exit(2)
-	}
-	// print old source location to facilitate backtracking
-	if *acmeFlag {
-		fmt.Printf("\t%s:#%d\n", afile.name, afile.runeOffset)
+		return nil, types.Type{}, fmt.Errorf("no expression or offset specified")
 	}
 	switch e := o.(type) {
 	case *ast.ImportSpec:
-		path := importPath(e)
+		path, err := importPath(e)
+		if err != nil {
+			return nil, types.Type{}, err
+		}
 		pkg, err := build.Default.Import(path, filepath.Dir(filename), build.FindOnly)
 		if err != nil {
-			fail("error finding import path for %s: %s", path, err)
+			return nil, types.Type{}, fmt.Errorf("error finding import path for %s: %s", path, err)
 		}
 		fmt.Println(pkg.Dir)
 	case ast.Expr:
 		if !*tflag {
 			// try local declarations only
 			if obj, typ := types.ExprType(e, types.DefaultImporter, types.FileSet); obj != nil {
-				done(obj, typ)
+				return obj, typ, nil
 			}
 		}
 		// add declarations from other files in the local package and try again
@@ -117,21 +137,30 @@ func main() {
 		if flag.NArg() > 0 {
 			// Reading declarations in other files might have
 			// resolved the original expression.
-			e = parseExpr(f.Scope, flag.Arg(0)).(ast.Expr)
+			e, err = parseExpr(f.Scope, flag.Arg(0))
+			if err != nil {
+				return nil, types.Type{}, err
+			}
 		}
 		if obj, typ := types.ExprType(e, types.DefaultImporter, types.FileSet); obj != nil {
-			done(obj, typ)
+			return obj, typ, nil
 		}
-		fail("no declaration found for %v", pretty{e})
+		return nil, types.Type{}, fmt.Errorf("no declaration found for %v", pretty{e})
 	}
+	return nil, types.Type{}, nil
 }
 
-func importPath(n *ast.ImportSpec) string {
+func importPath(n *ast.ImportSpec) (string, error) {
 	p, err := strconv.Unquote(n.Path.Value)
 	if err != nil {
-		fail("invalid string literal %q in ast.ImportSpec", n.Path.Value)
+		return "", fmt.Errorf("invalid string literal %q in ast.ImportSpec", n.Path.Value)
 	}
-	return p
+	return p, nil
+}
+
+type nodeResult struct {
+	node ast.Node
+	err  error
 }
 
 // findIdentifier looks for an identifier at byte-offset searchpos
@@ -142,8 +171,8 @@ func importPath(n *ast.ImportSpec) string {
 // As a special case, if it finds an import
 // spec, it returns ImportSpec.
 //
-func findIdentifier(f *ast.File, searchpos int) ast.Node {
-	ec := make(chan ast.Node)
+func findIdentifier(f *ast.File, searchpos int) (ast.Node, error) {
+	ec := make(chan nodeResult)
 	found := func(startPos, endPos token.Pos) bool {
 		start := types.FileSet.Position(startPos).Offset
 		end := start + int(endPos-startPos)
@@ -178,7 +207,8 @@ func findIdentifier(f *ast.File, searchpos int) ast.Node {
 					}
 					if id, ok := t.(*ast.Ident); ok {
 						if found(id.NamePos, id.End()) {
-							ec <- parseExpr(f.Scope, id.Name)
+							expr, err := parseExpr(f.Scope, id.Name)
+							ec <- nodeResult{expr, err}
 							runtime.Goexit()
 						}
 					}
@@ -186,19 +216,22 @@ func findIdentifier(f *ast.File, searchpos int) ast.Node {
 				return true
 			}
 			if found(startPos, n.End()) {
-				ec <- n
+				ec <- nodeResult{n, nil}
 				runtime.Goexit()
 			}
 			return true
 		}
 		ast.Walk(FVisitor(visit), f)
-		ec <- nil
+		ec <- nodeResult{nil, nil}
 	}()
 	ev := <-ec
-	if ev == nil {
-		fail("no identifier found")
+	if ev.err != nil {
+		return nil, ev.err
 	}
-	return ev
+	if ev.node == nil {
+		return nil, fmt.Errorf("no identifier found")
+	}
+	return ev.node, nil
 }
 
 type orderedObjects []*ast.Object
@@ -207,7 +240,7 @@ func (o orderedObjects) Less(i, j int) bool { return o[i].Name < o[j].Name }
 func (o orderedObjects) Len() int           { return len(o) }
 func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
-func done(obj *ast.Object, typ types.Type) {
+func done(obj *ast.Object, typ types.Type) error {
 	defer os.Exit(0)
 	pos := types.FileSet.Position(types.DeclPos(obj))
 	if *jsonFlag {
@@ -222,15 +255,15 @@ func done(obj *ast.Object, typ types.Type) {
 		}
 		jsonStr, err := json.Marshal(p)
 		if err != nil {
-			fail("JSON marshal error: %v", err)
+			return fmt.Errorf("JSON marshal error: %v", err)
 		}
 		fmt.Printf("%s\n", jsonStr)
-		return
+		return nil
 	} else {
 		fmt.Printf("%v\n", pos)
 	}
 	if typ.Kind == ast.Bad || !*tflag {
-		return
+		return nil
 	}
 	fmt.Printf("%s\n", typeStr(obj, typ))
 	if *aflag || *Aflag {
@@ -251,6 +284,7 @@ func done(obj *ast.Object, typ types.Type) {
 			fmt.Printf("\t\t%v\n", types.FileSet.Position(types.DeclPos(obj)))
 		}
 	}
+	return nil
 }
 
 func typeStr(obj *ast.Object, typ types.Type) string {
@@ -273,17 +307,16 @@ func typeStr(obj *ast.Object, typ types.Type) string {
 	return fmt.Sprintf("unknown %s %v", obj.Name, typ.Kind)
 }
 
-func parseExpr(s *ast.Scope, expr string) ast.Expr {
+func parseExpr(s *ast.Scope, expr string) (ast.Expr, error) {
 	n, err := parser.ParseExpr(types.FileSet, "<arg>", expr, s, types.DefaultImportPathToName)
 	if err != nil {
-		fail("cannot parse expression: %v", err)
+		return nil, fmt.Errorf("cannot parse expression: %v", err)
 	}
 	switch n := n.(type) {
 	case *ast.Ident, *ast.SelectorExpr:
-		return n
+		return n, nil
 	}
-	fail("no identifier found in expression")
-	return nil
+	return nil, fmt.Errorf("no identifier found in expression")
 }
 
 type FVisitor func(n ast.Node) bool
