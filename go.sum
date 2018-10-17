@@ -2,3 +2,5 @@
 9fans.net/go v0.0.0-20150709035532-65b8cf069318/go.mod h1:diCsxrliIURU9xsYtjCp5AbpQKqdhKmf0ujWDUSkfoY=
 github.com/ianthehat/tools v0.0.0-20181023233804-d182e3d451dd h1:jLXMB+HG6939n3WLVMZRs1956Fc0Y/TYXA9/9516cls=
 github.com/ianthehat/tools v0.0.0-20181023233804-d182e3d451dd/go.mod h1:Xi7aiaH3WwgqRUDZtJRysdVdLNWSyQgY5/gmQO9UPtQ=
+github.com/ianthehat/tools v0.0.0-20181025151029-18a214bc1bc9 h1:T6wJXrB2zT+lvriQVlqc6hL4DPKg56enPcaVW+z7qWM=
+github.com/ianthehat/tools v0.0.0-20181025151029-18a214bc1bc9/go.mod h1:Xi7aiaH3WwgqRUDZtJRysdVdLNWSyQgY5/gmQO9UPtQ=

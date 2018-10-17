@@ -19,5 +19,5 @@ func (p *Pos) Sum() int { //@mark(PosSum, "Sum")
 
 func _() {
 	var p Pos
-	_ = p.Sum() //@godef(`\(\)`, PosSum)
+	_ = p.Sum() //@godef("()", PosSum)
 }

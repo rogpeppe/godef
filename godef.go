@@ -1,25 +1,29 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
-	"go/build"
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"go/types"
 	"io/ioutil"
+	"log"
 	"os"
-	"path/filepath"
 	"runtime"
+	debugpkg "runtime/debug"
+	"runtime/pprof"
+	"runtime/trace"
 	"sort"
-	"strconv"
 	"strings"
 
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/parser"
-	"github.com/rogpeppe/godef/go/printer"
-	"github.com/rogpeppe/godef/go/token"
-	"github.com/rogpeppe/godef/go/types"
+	"golang.org/x/tools/go/ast/astutil"
+	"golang.org/x/tools/go/packages"
+	"golang.org/x/tools/go/types/typeutil"
 )
 
 var readStdin = flag.Bool("i", false, "read file from stdin")
@@ -32,14 +36,19 @@ var fflag = flag.String("f", "", "Go source filename")
 var acmeFlag = flag.Bool("acme", false, "use current acme window")
 var jsonFlag = flag.Bool("json", false, "output location in JSON format (-t flag is ignored)")
 
+var cpuprofile = flag.String("cpuprofile", "", "write CPU profile to this file")
+var memprofile = flag.String("memprofile", "", "write memory profile to this file")
+var traceFlag = flag.String("trace", "", "write trace log to this file")
+
 func main() {
-	if err := run(); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "godef: %v\n", err)
 		os.Exit(2)
 	}
 }
 
-func run() error {
+func run(ctx context.Context) error {
+	debugpkg.SetGCPercent(1600)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: godef [flags] [expr]\n")
 		flag.PrintDefaults()
@@ -49,200 +58,286 @@ func run() error {
 		flag.Usage()
 		os.Exit(2)
 	}
-	types.Debug = *debug
+	if flag.NArg() > 0 {
+		return fmt.Errorf("Expressions not yet supported `%v`", flag.Arg(0))
+	}
+	//TODO: types.Debug = *debug
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			return err
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return err
+		}
+		// NB: profile won't be written in case of error.
+		defer pprof.StopCPUProfile()
+	}
+
+	if *traceFlag != "" {
+		f, err := os.Create(*traceFlag)
+		if err != nil {
+			return err
+		}
+		if err := trace.Start(f); err != nil {
+			return err
+		}
+		// NB: trace log won't be written in case of error.
+		defer func() {
+			trace.Stop()
+			log.Printf("To view the trace, run:\n$ go tool trace view %s", *traceFlag)
+		}()
+	}
+
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			return err
+		}
+		// NB: memprofile won't be written in case of error.
+		defer func() {
+			runtime.GC() // get up-to-date statistics
+			if err := pprof.WriteHeapProfile(f); err != nil {
+				log.Fatalf("Writing memory profile: %v", err)
+			}
+			f.Close()
+		}()
+	}
+
 	*tflag = *tflag || *aflag || *Aflag
 	searchpos := *offset
 	filename := *fflag
 
 	var afile *acmeFile
 	var src []byte
+
 	if *acmeFlag {
 		var err error
 		if afile, err = acmeCurrentFile(); err != nil {
 			return fmt.Errorf("%v", err)
 		}
 		filename, src, searchpos = afile.name, afile.body, afile.offset
-	} else if *readStdin {
-		src, _ = ioutil.ReadAll(os.Stdin)
-	} else {
+	} else if filename == "" {
 		// TODO if there's no filename, look in the current
 		// directory and do something plausible.
-		b, err := ioutil.ReadFile(filename)
-		if err != nil {
-			return fmt.Errorf("cannot read %s: %v", filename, err)
-		}
-		src = b
+		return fmt.Errorf("A filename must be specified")
+	} else if *readStdin {
+		src, _ = ioutil.ReadAll(os.Stdin)
 	}
-
-	obj, typ, err := godef(filename, src, searchpos)
+	if searchpos < 0 {
+		fmt.Fprintf(os.Stderr, "no expression or offset specified\n")
+		flag.Usage()
+		os.Exit(2)
+	}
+	// Load, parse, and type-check the packages named on the command line.
+	cfg := &packages.Config{
+		Context: ctx,
+		Tests:   strings.HasSuffix(filename, "_test.go"),
+	}
+	fset, obj, err := godef(cfg, filename, src, searchpos)
 	if err != nil {
 		return err
 	}
-
 	// print old source location to facilitate backtracking
 	if *acmeFlag {
 		fmt.Printf("\t%s:#%d\n", afile.name, afile.runeOffset)
 	}
 
-	return done(obj, typ)
+	return done(fset, obj, func(p *types.Package) string {
+		//TODO: this matches existing behaviour, but we can do better.
+		//The previous code had the following TODO in it that now belongs here
+		// TODO print path package when appropriate.
+		// Current issues with using p.n.Pkg:
+		//	- we should actually print the local package identifier
+		//	rather than the package path when possible.
+		//	- p.n.Pkg is non-empty even when
+		//	the type is not relative to the package.
+		return ""
+	})
 }
 
-func godef(filename string, src []byte, searchpos int) (*ast.Object, types.Type, error) {
-	pkgScope := ast.NewScope(parser.Universe)
-	f, err := parser.ParseFile(types.FileSet, filename, src, 0, pkgScope, types.DefaultImportPathToName)
-	if f == nil {
-		return nil, types.Type{}, fmt.Errorf("cannot parse %s: %v", filename, err)
-	}
-
-	var o ast.Node
-	switch {
-	case flag.NArg() > 0:
-		o, err = parseExpr(f.Scope, flag.Arg(0))
-		if err != nil {
-			return nil, types.Type{}, err
-		}
-
-	case searchpos >= 0:
-		o, err = findIdentifier(f, searchpos)
-		if err != nil {
-			return nil, types.Type{}, err
-		}
-
-	default:
-		return nil, types.Type{}, fmt.Errorf("no expression or offset specified")
-	}
-	switch e := o.(type) {
-	case *ast.ImportSpec:
-		path, err := importPath(e)
-		if err != nil {
-			return nil, types.Type{}, err
-		}
-		pkg, err := build.Default.Import(path, filepath.Dir(filename), build.FindOnly)
-		if err != nil {
-			return nil, types.Type{}, fmt.Errorf("error finding import path for %s: %s", path, err)
-		}
-		fmt.Println(pkg.Dir)
-	case ast.Expr:
-		if !*tflag {
-			// try local declarations only
-			if obj, typ := types.ExprType(e, types.DefaultImporter, types.FileSet); obj != nil {
-				return obj, typ, nil
-			}
-		}
-		// add declarations from other files in the local package and try again
-		pkg, err := parseLocalPackage(filename, f, pkgScope, types.DefaultImportPathToName)
-		if pkg == nil && !*tflag {
-			fmt.Printf("parseLocalPackage error: %v\n", err)
-		}
-		if flag.NArg() > 0 {
-			// Reading declarations in other files might have
-			// resolved the original expression.
-			e, err = parseExpr(f.Scope, flag.Arg(0))
-			if err != nil {
-				return nil, types.Type{}, err
-			}
-		}
-		if obj, typ := types.ExprType(e, types.DefaultImporter, types.FileSet); obj != nil {
-			return obj, typ, nil
-		}
-		return nil, types.Type{}, fmt.Errorf("no declaration found for %v", pretty{e})
-	}
-	return nil, types.Type{}, nil
-}
-
-func importPath(n *ast.ImportSpec) (string, error) {
-	p, err := strconv.Unquote(n.Path.Value)
+func godef(cfg *packages.Config, filename string, src []byte, searchpos int) (*token.FileSet, types.Object, error) {
+	parser, result := parseFile(filename, src, searchpos)
+	// Load, parse, and type-check the packages named on the command line.
+	cfg.Mode = packages.LoadSyntax
+	cfg.ParseFile = parser
+	lpkgs, err := packages.Load(cfg, "contains:"+filename)
 	if err != nil {
-		return "", fmt.Errorf("invalid string literal %q in ast.ImportSpec", n.Path.Value)
+		return nil, nil, err
 	}
-	return p, nil
+	if len(lpkgs) < 1 {
+		return nil, nil, fmt.Errorf("There must be at least one package that contains the file")
+	}
+	// get the node
+	var ident *ast.Ident
+	select {
+	case ident = <-result:
+	default:
+		return nil, nil, fmt.Errorf("no file found at search pos %d", searchpos)
+	}
+	if ident == nil {
+		return nil, nil, fmt.Errorf("Offset %d was not a valid identifier", searchpos)
+	}
+	obj := lpkgs[0].TypesInfo.ObjectOf(ident)
+	if obj == nil {
+		return nil, nil, fmt.Errorf("no object")
+	}
+	return lpkgs[0].Fset, obj, nil
 }
 
-type nodeResult struct {
-	node ast.Node
-	err  error
-}
-
-// findIdentifier looks for an identifier at byte-offset searchpos
-// inside the parsed source represented by node.
-// If it is part of a selector expression, it returns
-// that expression rather than the identifier itself.
-//
-// As a special case, if it finds an import
-// spec, it returns ImportSpec.
-//
-func findIdentifier(f *ast.File, searchpos int) (ast.Node, error) {
-	ec := make(chan nodeResult)
-	found := func(startPos, endPos token.Pos) bool {
-		start := types.FileSet.Position(startPos).Offset
-		end := start + int(endPos-startPos)
-		return start <= searchpos && searchpos <= end
-	}
-	go func() {
-		var visit func(ast.Node) bool
-		visit = func(n ast.Node) bool {
-			var startPos token.Pos
-			switch n := n.(type) {
-			default:
-				return true
-			case *ast.Ident:
-				startPos = n.NamePos
-			case *ast.SelectorExpr:
-				startPos = n.Sel.NamePos
-			case *ast.ImportSpec:
-				startPos = n.Pos()
-			case *ast.StructType:
-				// If we find an anonymous bare field in a
-				// struct type, its definition points to itself,
-				// but we actually want to go elsewhere,
-				// so assume (dubiously) that the expression
-				// works globally and return a new node for it.
-				for _, field := range n.Fields.List {
-					if field.Names != nil {
-						continue
-					}
-					t := field.Type
-					if pt, ok := field.Type.(*ast.StarExpr); ok {
-						t = pt.X
-					}
-					if id, ok := t.(*ast.Ident); ok {
-						if found(id.NamePos, id.End()) {
-							expr, err := parseExpr(f.Scope, id.Name)
-							ec <- nodeResult{expr, err}
-							runtime.Goexit()
-						}
-					}
-				}
-				return true
-			}
-			if found(startPos, n.End()) {
-				ec <- nodeResult{n, nil}
-				runtime.Goexit()
-			}
-			return true
+// parseFile returns a function that can be used as a Parser in packages.Config.
+// It replaces the contents of a file that matches filename with the src.
+// It also drops all function bodies that do not contain the searchpos.
+// It also modifies the filename to be the canonical form that will appear in the fileset.
+func parseFile(filename string, src []byte, searchpos int) (func(*token.FileSet, string, []byte) (*ast.File, error), chan *ast.Ident) {
+	fstat, fstatErr := os.Stat(filename)
+	result := make(chan *ast.Ident, 1)
+	return func(fset *token.FileSet, fname string, src []byte) (*ast.File, error) {
+		var filedata []byte
+		isInputFile := false
+		if filename == fname {
+			isInputFile = true
+		} else if fstatErr != nil {
+			isInputFile = false
+		} else if s, err := os.Stat(fname); err == nil {
+			isInputFile = os.SameFile(fstat, s)
 		}
-		ast.Walk(FVisitor(visit), f)
-		ec <- nodeResult{nil, nil}
-	}()
-	ev := <-ec
-	if ev.err != nil {
-		return nil, ev.err
-	}
-	if ev.node == nil {
-		return nil, fmt.Errorf("no identifier found")
-	}
-	return ev.node, nil
+		if isInputFile && src != nil {
+			filedata = src
+		} else {
+			var err error
+			if filedata, err = ioutil.ReadFile(fname); err != nil {
+				return nil, fmt.Errorf("cannot read %s: %v", fname, err)
+			}
+		}
+		file, err := parser.ParseFile(fset, fname, filedata, 0)
+		if file == nil {
+			return nil, err
+		}
+		pos := token.Pos(-1)
+		if isInputFile {
+			tfile := fset.File(file.Pos())
+			if tfile == nil {
+				return file, fmt.Errorf("cursor %d is beyond end of file %s (%d)", searchpos, fname, file.End()-file.Pos())
+			}
+			if searchpos > tfile.Size() {
+				return file, fmt.Errorf("cursor %d is beyond end of file %s (%d)", searchpos, fname, tfile.Size())
+			}
+			pos = tfile.Pos(searchpos)
+			ident, err := findIdentifier(file, pos)
+			if err != nil {
+				return nil, err
+			}
+			result <- ident
+		}
+		trimAST(file, pos)
+		return file, err
+	}, result
 }
 
-type orderedObjects []*ast.Object
+// findIdentifier returns the astutil.Ident for a position
+// in a file, accounting for a potentially incomplete selector.
+func findIdentifier(f *ast.File, pos token.Pos) (*ast.Ident, error) {
+	path, _ := astutil.PathEnclosingInterval(f, pos, pos)
+	if path == nil {
+		return nil, fmt.Errorf("can't find node enclosing position")
+	}
+	// If the position is not an identifier but immediately follows
+	// an identifier or selector period (as is common when
+	// requesting a completion), use the path to the preceding node.
+	if ident, ok := path[0].(*ast.Ident); ok {
+		return ident, nil
+	}
+	path, _ = astutil.PathEnclosingInterval(f, pos-1, pos-1)
+	if path == nil {
+		return nil, nil
+	}
+	switch prev := path[0].(type) {
+	case *ast.Ident:
+		return prev, nil
+	case *ast.SelectorExpr:
+		return prev.Sel, nil
+	}
+	return nil, nil
+}
 
-func (o orderedObjects) Less(i, j int) bool { return o[i].Name < o[j].Name }
+func trimAST(file *ast.File, pos token.Pos) {
+	ast.Inspect(file, func(n ast.Node) bool {
+		if n == nil {
+			return false
+		}
+		if pos < n.Pos() || pos >= n.End() {
+			switch n := n.(type) {
+			case *ast.FuncDecl:
+				n.Body = nil
+			case *ast.BlockStmt:
+				n.List = nil
+			case *ast.CaseClause:
+				n.Body = nil
+			case *ast.CommClause:
+				n.Body = nil
+			case *ast.CompositeLit:
+				// Leave elts in place for [...]T
+				// array literals, because they can
+				// affect the expression's type.
+				if !isEllipsisArray(n.Type) {
+					n.Elts = nil
+				}
+			}
+		}
+		return true
+	})
+}
+
+func isEllipsisArray(n ast.Expr) bool {
+	at, ok := n.(*ast.ArrayType)
+	if !ok {
+		return false
+	}
+	_, ok = at.Len.(*ast.Ellipsis)
+	return ok
+}
+
+func objToPos(fSet *token.FileSet, obj types.Object) token.Position {
+	p := obj.Pos()
+	f := fSet.File(p)
+	pos := f.Position(p)
+	if pos.Column != 1 {
+		return pos
+	}
+	// currently exportdata does not store the column
+	// until it does, we have a hacky fix to attempt to find the name within
+	// the line and patch the column to match
+	named, ok := obj.(interface{ Name() string })
+	if !ok {
+		return pos
+	}
+	in, err := os.Open(f.Name())
+	if err != nil {
+		return pos
+	}
+	for l, scanner := 1, bufio.NewScanner(in); scanner.Scan(); l++ {
+		if l < pos.Line {
+			continue
+		}
+		col := bytes.Index([]byte(scanner.Text()), []byte(named.Name()))
+		if col >= 0 {
+			pos.Column = col + 1
+		}
+		break
+	}
+	return pos
+}
+
+type orderedObjects []types.Object
+
+func (o orderedObjects) Less(i, j int) bool { return o[i].Name() < o[j].Name() }
 func (o orderedObjects) Len() int           { return len(o) }
 func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
-func done(obj *ast.Object, typ types.Type) error {
-	defer os.Exit(0)
-	pos := types.FileSet.Position(types.DeclPos(obj))
+func done(fSet *token.FileSet, obj types.Object, q types.Qualifier) error {
+	pos := objToPos(fSet, obj)
 	if *jsonFlag {
 		p := struct {
 			Filename string `json:"filename,omitempty"`
@@ -259,152 +354,81 @@ func done(obj *ast.Object, typ types.Type) error {
 		}
 		fmt.Printf("%s\n", jsonStr)
 		return nil
-	} else {
-		fmt.Printf("%v\n", pos)
 	}
-	if typ.Kind == ast.Bad || !*tflag {
+	fmt.Printf("%v\n", posToString(pos))
+	if !*tflag {
 		return nil
 	}
-	fmt.Printf("%s\n", typeStr(obj, typ))
+	fmt.Printf("%s\n", typeStr(obj, q))
 	if *aflag || *Aflag {
-		var m orderedObjects
-		for obj := range typ.Iter() {
-			m = append(m, obj)
-		}
+		m := orderedObjects(members(obj))
 		sort.Sort(m)
 		for _, obj := range m {
 			// Ignore unexported members unless Aflag is set.
-			if !*Aflag && (typ.Pkg != "" || !ast.IsExported(obj.Name)) {
+			if !*Aflag && !ast.IsExported(obj.Name()) {
 				continue
 			}
-			id := ast.NewIdent(obj.Name)
-			id.Obj = obj
-			_, mt := types.ExprType(id, types.DefaultImporter, types.FileSet)
-			fmt.Printf("\t%s\n", strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
-			fmt.Printf("\t\t%v\n", types.FileSet.Position(types.DeclPos(obj)))
+			fmt.Printf("\t%s\n", strings.Replace(typeStr(obj, q), "\n", "\n\t\t", -1))
+			fmt.Printf("\t\t%v\n", posToString(fSet.Position(obj.Pos())))
 		}
 	}
 	return nil
 }
 
-func typeStr(obj *ast.Object, typ types.Type) string {
-	switch obj.Kind {
-	case ast.Fun, ast.Var:
-		return fmt.Sprintf("%s %v", obj.Name, prettyType{typ})
-	case ast.Pkg:
-		return fmt.Sprintf("import (%s %s)", obj.Name, typ.Node.(*ast.ImportSpec).Path.Value)
-	case ast.Con:
-		if decl, ok := obj.Decl.(*ast.ValueSpec); ok {
-			return fmt.Sprintf("const %s %v = %s", obj.Name, prettyType{typ}, pretty{decl.Values[0]})
+func typeStr(obj types.Object, q types.Qualifier) string {
+	buf := &bytes.Buffer{}
+	switch obj := obj.(type) {
+	case *types.Func:
+		buf.WriteString(obj.Name())
+		buf.WriteString(" ")
+		types.WriteType(buf, obj.Type(), q)
+	case *types.Var:
+		buf.WriteString(obj.Name())
+		buf.WriteString(" ")
+		types.WriteType(buf, obj.Type(), q)
+	case *types.PkgName:
+		fmt.Fprintf(buf, "import (%v %q)", obj.Name(), obj.Imported().Path())
+	case *types.Const:
+		fmt.Fprintf(buf, "const %s ", obj.Name())
+		types.WriteType(buf, obj.Type(), q)
+		if obj.Val() != nil {
+			buf.WriteString(" ")
+			buf.WriteString(obj.Val().String())
 		}
-		return fmt.Sprintf("const %s %v", obj.Name, prettyType{typ})
-	case ast.Lbl:
-		return fmt.Sprintf("label %s", obj.Name)
-	case ast.Typ:
-		typ = typ.Underlying(false)
-		return fmt.Sprintf("type %s %v", obj.Name, prettyType{typ})
+	case *types.Label:
+		fmt.Fprintf(buf, "label %s ", obj.Name())
+	case *types.TypeName:
+		fmt.Fprintf(buf, "type %s ", obj.Name())
+		types.WriteType(buf, obj.Type().Underlying(), q)
+	default:
+		fmt.Fprintf(buf, "unknown %v [%T] ", obj.Name(), obj)
+		types.WriteType(buf, obj.Type(), q)
 	}
-	return fmt.Sprintf("unknown %s %v", obj.Name, typ.Kind)
+	return buf.String()
 }
 
-func parseExpr(s *ast.Scope, expr string) (ast.Expr, error) {
-	n, err := parser.ParseExpr(types.FileSet, "<arg>", expr, s, types.DefaultImportPathToName)
-	if err != nil {
-		return nil, fmt.Errorf("cannot parse expression: %v", err)
-	}
-	switch n := n.(type) {
-	case *ast.Ident, *ast.SelectorExpr:
-		return n, nil
-	}
-	return nil, fmt.Errorf("no identifier found in expression")
-}
-
-type FVisitor func(n ast.Node) bool
-
-func (f FVisitor) Visit(n ast.Node) ast.Visitor {
-	if f(n) {
-		return f
-	}
-	return nil
-}
-
-var errNoPkgFiles = errors.New("no more package files found")
-
-// parseLocalPackage reads and parses all go files from the
-// current directory that implement the same package name
-// the principal source file, except the original source file
-// itself, which will already have been parsed.
-//
-func parseLocalPackage(filename string, src *ast.File, pkgScope *ast.Scope, pathToName parser.ImportPathToName) (*ast.Package, error) {
-	pkg := &ast.Package{src.Name.Name, pkgScope, nil, map[string]*ast.File{filename: src}}
-	d, f := filepath.Split(filename)
-	if d == "" {
-		d = "./"
-	}
-	fd, err := os.Open(d)
-	if err != nil {
-		return nil, errNoPkgFiles
-	}
-	defer fd.Close()
-
-	list, err := fd.Readdirnames(-1)
-	if err != nil {
-		return nil, errNoPkgFiles
-	}
-
-	for _, pf := range list {
-		file := filepath.Join(d, pf)
-		if !strings.HasSuffix(pf, ".go") ||
-			pf == f ||
-			pkgName(file) != pkg.Name {
-			continue
+func members(obj types.Object) []types.Object {
+	var result []types.Object
+	switch typ := obj.Type().Underlying().(type) {
+	case *types.Struct:
+		for i := 0; i < typ.NumFields(); i++ {
+			result = append(result, typ.Field(i))
 		}
-		src, err := parser.ParseFile(types.FileSet, file, nil, 0, pkg.Scope, types.DefaultImportPathToName)
-		if err == nil {
-			pkg.Files[file] = src
-		}
+	default:
 	}
-	if len(pkg.Files) == 1 {
-		return nil, errNoPkgFiles
+	mset := typeutil.IntuitiveMethodSet(obj.Type(), nil)
+	for _, m := range mset {
+		result = append(result, m.Obj())
 	}
-	return pkg, nil
+	return result
 }
 
-// pkgName returns the package name implemented by the
-// go source filename.
-//
-func pkgName(filename string) string {
-	prog, _ := parser.ParseFile(types.FileSet, filename, nil, parser.PackageClauseOnly, nil, types.DefaultImportPathToName)
-	if prog != nil {
-		return prog.Name.Name
+func posToString(pos token.Position) string {
+	const prefix = "$GOROOT"
+	filename := pos.Filename
+	if strings.HasPrefix(filename, prefix) {
+		suffix := strings.TrimPrefix(filename, prefix)
+		filename = runtime.GOROOT() + suffix
 	}
-	return ""
-}
-
-func hasSuffix(s, suff string) bool {
-	return len(s) >= len(suff) && s[len(s)-len(suff):] == suff
-}
-
-type pretty struct {
-	n interface{}
-}
-
-func (p pretty) String() string {
-	var b bytes.Buffer
-	printer.Fprint(&b, types.FileSet, p.n)
-	return b.String()
-}
-
-type prettyType struct {
-	n types.Type
-}
-
-func (p prettyType) String() string {
-	// TODO print path package when appropriate.
-	// Current issues with using p.n.Pkg:
-	//	- we should actually print the local package identifier
-	//	rather than the package path when possible.
-	//	- p.n.Pkg is non-empty even when
-	//	the type is not relative to the package.
-	return pretty{p.n.Node}.String()
+	return fmt.Sprintf("%v:%v:%v", filename, pos.Line, pos.Column)
 }
