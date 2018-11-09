@@ -4,3 +4,9 @@ github.com/ianthehat/tools v0.0.0-20181023233804-d182e3d451dd h1:jLXMB+HG6939n3W
 github.com/ianthehat/tools v0.0.0-20181023233804-d182e3d451dd/go.mod h1:Xi7aiaH3WwgqRUDZtJRysdVdLNWSyQgY5/gmQO9UPtQ=
 github.com/ianthehat/tools v0.0.0-20181025151029-18a214bc1bc9 h1:T6wJXrB2zT+lvriQVlqc6hL4DPKg56enPcaVW+z7qWM=
 github.com/ianthehat/tools v0.0.0-20181025151029-18a214bc1bc9/go.mod h1:Xi7aiaH3WwgqRUDZtJRysdVdLNWSyQgY5/gmQO9UPtQ=
+golang.org/x/tools v0.0.0-20181008205924-a2b3f7f249e9 h1:T3nuFyXXDj5KXX9CqQm/r/YEL4Gua01s/ZEdfdLyJ2c=
+golang.org/x/tools v0.0.0-20181008205924-a2b3f7f249e9/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+golang.org/x/tools v0.0.0-20181106213628-e21233ffa6c3 h1:mWDqf+8WK8+4aHsqe+AyUfxE1nkL+QGCVk1Rxivr0aM=
+golang.org/x/tools v0.0.0-20181106213628-e21233ffa6c3/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+golang.org/x/tools v0.0.0-20181111003725-6d71ab8aade0 h1:/3bE5RJC79/P5HYl3owP5NbsS+fnVQvUj9tsEE5x/qM=
+golang.org/x/tools v0.0.0-20181111003725-6d71ab8aade0/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=

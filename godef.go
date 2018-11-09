@@ -192,31 +192,30 @@ func godef(cfg *packages.Config, filename string, src []byte, searchpos int) (*t
 // It also modifies the filename to be the canonical form that will appear in the fileset.
 func parseFile(filename string, src []byte, searchpos int) (func(*token.FileSet, string, []byte) (*ast.File, error), chan *ast.Ident) {
 	fstat, fstatErr := os.Stat(filename)
-	result := make(chan *ast.Ident, 1)
-	return func(fset *token.FileSet, fname string, src []byte) (*ast.File, error) {
-		var filedata []byte
-		isInputFile := false
+	isInputFile := func(fname string) bool {
 		if filename == fname {
-			isInputFile = true
-		} else if fstatErr != nil {
-			isInputFile = false
-		} else if s, err := os.Stat(fname); err == nil {
-			isInputFile = os.SameFile(fstat, s)
+			return true
 		}
-		if isInputFile && src != nil {
+		if fstatErr != nil {
+			return false
+		}
+		if s, err := os.Stat(fname); err == nil {
+			return os.SameFile(fstat, s)
+		}
+		return false
+	}
+	result := make(chan *ast.Ident, 1)
+	return func(fset *token.FileSet, fname string, filedata []byte) (*ast.File, error) {
+		isInput := isInputFile(fname)
+		if isInput && src != nil {
 			filedata = src
-		} else {
-			var err error
-			if filedata, err = ioutil.ReadFile(fname); err != nil {
-				return nil, fmt.Errorf("cannot read %s: %v", fname, err)
-			}
 		}
 		file, err := parser.ParseFile(fset, fname, filedata, 0)
 		if file == nil {
 			return nil, err
 		}
 		pos := token.Pos(-1)
-		if isInputFile {
+		if isInput {
 			tfile := fset.File(file.Pos())
 			if tfile == nil {
 				return file, fmt.Errorf("cursor %d is beyond end of file %s (%d)", searchpos, fname, file.End()-file.Pos())
