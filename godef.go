@@ -29,6 +29,7 @@ var tflag = flag.Bool("t", false, "print type information")
 var aflag = flag.Bool("a", false, "print public type and member information")
 var Aflag = flag.Bool("A", false, "print all type and members information")
 var fflag = flag.String("f", "", "Go source filename")
+var pflag = flag.String("p", "", "Go file path (used with -i, otherwise ignored)")
 var acmeFlag = flag.Bool("acme", false, "use current acme window")
 var jsonFlag = flag.Bool("json", false, "output location in JSON format (-t flag is ignored)")
 
@@ -63,6 +64,7 @@ func run() error {
 		}
 		filename, src, searchpos = afile.name, afile.body, afile.offset
 	} else if *readStdin {
+		filename = *pflag
 		src, _ = ioutil.ReadAll(os.Stdin)
 	} else {
 		// TODO if there's no filename, look in the current
@@ -241,6 +243,73 @@ func (o orderedObjects) Len() int           { return len(o) }
 func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
 func done(obj *ast.Object, typ types.Type) error {
+	defer os.Exit(0)
+	pos := types.FileSet.Position(types.DeclPos(obj))
+	if *jsonFlag && *Aflag {
+		type field struct {
+			Name     string `json:"name,omitempty"`
+			Def      string `json:"def,omitempty"`
+			Type     string `json:"type,omitempty"`
+			Filename string `json:"filename,omitempty"`
+			Line     int    `json:"line,omitempty"`
+			Column   int    `json:"column,omitempty"`
+		}
+		var JSONOutput = struct {
+			Filename   string   `json:"filename,omitempty"`
+			Line       int      `json:"line,omitempty"`
+			Column     int      `json:"column,omitempty"`
+			Definition string   `json:"definition,omitempty"`
+			Fields     []*field `json:"fields,omitmepty"`
+		}{
+			Filename: pos.Filename,
+			Line:     pos.Line,
+			Column:   pos.Column,
+		}
+		if typ.Kind == ast.Bad || !*tflag {
+			jsonStr, err := json.Marshal(JSONOutput)
+			if err != nil {
+				fail("JSON marshal error: %v", err)
+			}
+			fmt.Println(string(jsonStr))
+			return
+		}
+
+		JSONOutput.Definition = typeStr(obj, typ)
+		var m orderedObjects
+		for obj := range typ.Iter() {
+			m = append(m, obj)
+		}
+		// sort.Sort(m)
+		JSONOutput.Fields = make([]*field, 0, len(m))
+		ts := map[ast.ObjKind]string{ast.Fun: "function", ast.Var: "variable"}
+		for _, obj := range m {
+			id := ast.NewIdent(obj.Name)
+			id.Obj = obj
+			if obj.Kind == ast.Fun || obj.Kind == ast.Var {
+				_, mt := types.ExprType(id, types.DefaultImporter, types.FileSet)
+				var innerPos = types.FileSet.Position(types.DeclPos(obj))
+				f := &field{
+					Name:     obj.Name,
+					Def:      fmt.Sprint(prettyType{mt}),
+					Type:     ts[obj.Kind],
+					Filename: innerPos.Filename,
+					Line:     innerPos.Line,
+					Column:   innerPos.Column,
+				}
+				JSONOutput.Fields = append(JSONOutput.Fields, f)
+			}
+		}
+		jsonStr, err := json.MarshalIndent(JSONOutput, "", "\t")
+		if err != nil {
+			fail("JSON marshal error: %v", err)
+		}
+		fmt.Println(string(jsonStr))
+	} else {
+		doneSimple(obj, typ)
+	}
+}
+
+func doneSimple(obj *ast.Object, typ types.Type) {
 	defer os.Exit(0)
 	pos := types.FileSet.Position(types.DeclPos(obj))
 	if *jsonFlag {
