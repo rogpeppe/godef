@@ -9,17 +9,28 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/rogpeppe/godef/go/ast"
 	"github.com/rogpeppe/godef/go/types"
 	"golang.org/x/tools/go/packages/packagestest"
 )
 
 func TestGoDef(t *testing.T) { packagestest.TestAll(t, testGoDef) }
 func testGoDef(t *testing.T, exporter packagestest.Exporter) {
-	const godefAction = ">"
-	modules := []packagestest.Module{{
+	runGoDefTest(t, exporter, 1, []packagestest.Module{{
 		Name:  "github.com/rogpeppe/godef",
 		Files: packagestest.MustCopyFileTree("testdata"),
-	}}
+	}})
+}
+
+func BenchmarkGoDef(b *testing.B) { packagestest.BenchmarkAll(b, benchGoDef) }
+func benchGoDef(b *testing.B, exporter packagestest.Exporter) {
+	runGoDefTest(b, exporter, b.N, []packagestest.Module{{
+		Name:  "github.com/rogpeppe/godef",
+		Files: packagestest.MustCopyFileTree("testdata"),
+	}})
+}
+
+func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, modules []packagestest.Module) {
 	exported := packagestest.Export(t, exporter, modules)
 	defer exported.Cleanup()
 
@@ -65,10 +76,14 @@ func testGoDef(t *testing.T, exporter packagestest.Exporter) {
 				}
 				defer ioutil.WriteFile(src.Filename, input, 0666)
 			}
-			obj, _, err := godef(src.Filename, input, src.Offset)
-			if err != nil {
-				t.Errorf("Failed %v: %v", src, err)
-				return
+			// repeat the actual godef part n times, for benchmark support
+			var obj *ast.Object
+			for i := 0; i < runCount; i++ {
+				obj, _, err = godef(src.Filename, input, src.Offset)
+				if err != nil {
+					t.Errorf("Failed %v: %v", src, err)
+					return
+				}
 			}
 			pos := types.FileSet.Position(types.DeclPos(obj))
 			check := token.Position{
@@ -105,4 +120,3 @@ func localPos(pos token.Position, e *packagestest.Exported, modules []packageste
 	}
 	return pos.String()
 }
-
