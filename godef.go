@@ -2,15 +2,20 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"go/build"
 	"io/ioutil"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
+	debugpkg "runtime/debug"
+	"runtime/pprof"
+	"runtime/trace"
 	"sort"
 	"strconv"
 	"strings"
@@ -32,14 +37,19 @@ var fflag = flag.String("f", "", "Go source filename")
 var acmeFlag = flag.Bool("acme", false, "use current acme window")
 var jsonFlag = flag.Bool("json", false, "output location in JSON format (-t flag is ignored)")
 
+var cpuprofile = flag.String("cpuprofile", "", "write CPU profile to this file")
+var memprofile = flag.String("memprofile", "", "write memory profile to this file")
+var traceFlag = flag.String("trace", "", "write trace log to this file")
+
 func main() {
-	if err := run(); err != nil {
+	if err := run(context.Background()); err != nil {
 		fmt.Fprintf(os.Stderr, "godef: %v\n", err)
 		os.Exit(2)
 	}
 }
 
-func run() error {
+func run(ctx context.Context) error {
+	debugpkg.SetGCPercent(1600)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: godef [flags] [expr]\n")
 		flag.PrintDefaults()
@@ -49,6 +59,49 @@ func run() error {
 		flag.Usage()
 		os.Exit(2)
 	}
+
+	if *cpuprofile != "" {
+		f, err := os.Create(*cpuprofile)
+		if err != nil {
+			return err
+		}
+		if err := pprof.StartCPUProfile(f); err != nil {
+			return err
+		}
+		// NB: profile won't be written in case of error.
+		defer pprof.StopCPUProfile()
+	}
+
+	if *traceFlag != "" {
+		f, err := os.Create(*traceFlag)
+		if err != nil {
+			return err
+		}
+		if err := trace.Start(f); err != nil {
+			return err
+		}
+		// NB: trace log won't be written in case of error.
+		defer func() {
+			trace.Stop()
+			log.Printf("To view the trace, run:\n$ go tool trace view %s", *traceFlag)
+		}()
+	}
+
+	if *memprofile != "" {
+		f, err := os.Create(*memprofile)
+		if err != nil {
+			return err
+		}
+		// NB: memprofile won't be written in case of error.
+		defer func() {
+			runtime.GC() // get up-to-date statistics
+			if err := pprof.WriteHeapProfile(f); err != nil {
+				log.Fatalf("Writing memory profile: %v", err)
+			}
+			f.Close()
+		}()
+	}
+
 	types.Debug = *debug
 	*tflag = *tflag || *aflag || *Aflag
 	searchpos := *offset
@@ -408,3 +461,4 @@ func (p prettyType) String() string {
 	//	the type is not relative to the package.
 	return pretty{p.n.Node}.String()
 }
+
