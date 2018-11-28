@@ -4,6 +4,8 @@ import "github.com/rogpeppe/godef/a"
 
 type S1 struct { //@S1
 	F1 int //@mark(S1F1, "F1")
+	f2 int
+	f3 S2
 	S2     //@godef("S2", S2), mark(S1S2, "S2")
 }
 

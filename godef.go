@@ -8,6 +8,7 @@ import (
 	"flag"
 	"fmt"
 	"go/build"
+	"io"
 	"io/ioutil"
 	"log"
 	"os"
@@ -137,7 +138,7 @@ func run(ctx context.Context) error {
 		fmt.Printf("\t%s:#%d\n", afile.name, afile.runeOffset)
 	}
 
-	return done(obj, typ)
+	return print(os.Stdout, obj, typ)
 }
 
 func godef(filename string, src []byte, searchpos int) (*ast.Object, types.Type, error) {
@@ -293,8 +294,7 @@ func (o orderedObjects) Less(i, j int) bool { return o[i].Name < o[j].Name }
 func (o orderedObjects) Len() int           { return len(o) }
 func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
-func done(obj *ast.Object, typ types.Type) error {
-	defer os.Exit(0)
+func print(out io.Writer, obj *ast.Object, typ types.Type) error {
 	pos := types.FileSet.Position(types.DeclPos(obj))
 	if *jsonFlag {
 		p := struct {
@@ -310,15 +310,15 @@ func done(obj *ast.Object, typ types.Type) error {
 		if err != nil {
 			return fmt.Errorf("JSON marshal error: %v", err)
 		}
-		fmt.Printf("%s\n", jsonStr)
+		fmt.Fprintf(out, "%s\n", jsonStr)
 		return nil
 	} else {
-		fmt.Printf("%v\n", pos)
+		fmt.Fprintf(out, "%v\n", pos)
 	}
 	if typ.Kind == ast.Bad || !*tflag {
 		return nil
 	}
-	fmt.Printf("%s\n", typeStr(obj, typ))
+	fmt.Fprintf(out, "%s\n", typeStr(obj, typ))
 	if *aflag || *Aflag {
 		var m orderedObjects
 		for obj := range typ.Iter() {
@@ -333,8 +333,8 @@ func done(obj *ast.Object, typ types.Type) error {
 			id := ast.NewIdent(obj.Name)
 			id.Obj = obj
 			_, mt := types.ExprType(id, types.DefaultImporter, types.FileSet)
-			fmt.Printf("\t%s\n", strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
-			fmt.Printf("\t\t%v\n", types.FileSet.Position(types.DeclPos(obj)))
+			fmt.Fprintf(out, "\t%s\n", strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
+			fmt.Fprintf(out, "\t\t%v\n", types.FileSet.Position(types.DeclPos(obj)))
 		}
 	}
 	return nil
@@ -461,4 +461,3 @@ func (p prettyType) String() string {
 	//	the type is not relative to the package.
 	return pretty{p.n.Node}.String()
 }
-
