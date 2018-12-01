@@ -65,4 +65,3 @@ start:
 		)type S1 struct\s*\{\s*F1\s+int[\n;]\s*f2\s+int[\n;]\s*f3\s+S2[\n;]\s*S2\s*\}\n$`)
 	*/
 }
-

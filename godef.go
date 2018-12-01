@@ -17,15 +17,14 @@ import (
 	debugpkg "runtime/debug"
 	"runtime/pprof"
 	"runtime/trace"
-	"sort"
 	"strconv"
 	"strings"
 
 	"github.com/rogpeppe/godef/go/ast"
 	"github.com/rogpeppe/godef/go/parser"
-	"github.com/rogpeppe/godef/go/printer"
 	"github.com/rogpeppe/godef/go/token"
 	"github.com/rogpeppe/godef/go/types"
+	"golang.org/x/tools/go/packages"
 )
 
 var readStdin = flag.Bool("i", false, "read file from stdin")
@@ -127,8 +126,12 @@ func run(ctx context.Context) error {
 		}
 		src = b
 	}
-
-	obj, typ, err := godef(filename, src, searchpos)
+	// Load, parse, and type-check the packages named on the command line.
+	cfg := &packages.Config{
+		Context: ctx,
+		Tests:   strings.HasSuffix(filename, "_test.go"),
+	}
+	obj, err := adaptGodef(cfg, filename, src, searchpos)
 	if err != nil {
 		return err
 	}
@@ -138,7 +141,7 @@ func run(ctx context.Context) error {
 		fmt.Printf("\t%s:#%d\n", afile.name, afile.runeOffset)
 	}
 
-	return print(os.Stdout, obj, typ)
+	return print(os.Stdout, obj)
 }
 
 func godef(filename string, src []byte, searchpos int) (*ast.Object, types.Type, error) {
@@ -288,76 +291,104 @@ func findIdentifier(f *ast.File, searchpos int) (ast.Node, error) {
 	return ev.node, nil
 }
 
-type orderedObjects []*ast.Object
+type Position struct {
+	Filename string `json:"filename,omitempty"`
+	Line     int    `json:"line,omitempty"`
+	Column   int    `json:"column,omitempty"`
+}
+
+type Kind string
+
+const (
+	BadKind    Kind = "bad"
+	FuncKind   Kind = "func"
+	VarKind    Kind = "var"
+	ImportKind Kind = "import"
+	ConstKind  Kind = "const"
+	LabelKind  Kind = "label"
+	TypeKind   Kind = "type"
+)
+
+type Object struct {
+	Name     string
+	Kind     Kind
+	Pkg      string
+	Position Position
+	Members  []*Object
+	Type     interface{}
+	Value    interface{}
+}
+
+type orderedObjects []*Object
 
 func (o orderedObjects) Less(i, j int) bool { return o[i].Name < o[j].Name }
 func (o orderedObjects) Len() int           { return len(o) }
 func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
-func print(out io.Writer, obj *ast.Object, typ types.Type) error {
-	pos := types.FileSet.Position(types.DeclPos(obj))
+//func print(out io.Writer, obj *ast.Object, typ types.Type) error {
+func print(out io.Writer, obj *Object) error {
 	if *jsonFlag {
-		p := struct {
-			Filename string `json:"filename,omitempty"`
-			Line     int    `json:"line,omitempty"`
-			Column   int    `json:"column,omitempty"`
-		}{
-			Filename: pos.Filename,
-			Line:     pos.Line,
-			Column:   pos.Column,
-		}
-		jsonStr, err := json.Marshal(p)
+		jsonStr, err := json.Marshal(obj.Position)
 		if err != nil {
 			return fmt.Errorf("JSON marshal error: %v", err)
 		}
 		fmt.Fprintf(out, "%s\n", jsonStr)
 		return nil
 	} else {
-		fmt.Fprintf(out, "%v\n", pos)
+		fmt.Fprintf(out, "%v\n", obj.Position)
 	}
-	if typ.Kind == ast.Bad || !*tflag {
+	if obj.Kind == BadKind || !*tflag {
 		return nil
 	}
-	fmt.Fprintf(out, "%s\n", typeStr(obj, typ))
+	fmt.Fprintf(out, "%s\n", typeStr(obj))
 	if *aflag || *Aflag {
-		var m orderedObjects
-		for obj := range typ.Iter() {
-			m = append(m, obj)
-		}
-		sort.Sort(m)
-		for _, obj := range m {
+		for _, obj := range obj.Members {
 			// Ignore unexported members unless Aflag is set.
-			if !*Aflag && (typ.Pkg != "" || !ast.IsExported(obj.Name)) {
+			if !*Aflag && (obj.Pkg != "" || !ast.IsExported(obj.Name)) {
 				continue
 			}
-			id := ast.NewIdent(obj.Name)
-			id.Obj = obj
-			_, mt := types.ExprType(id, types.DefaultImporter, types.FileSet)
-			fmt.Fprintf(out, "\t%s\n", strings.Replace(typeStr(obj, mt), "\n", "\n\t\t", -1))
-			fmt.Fprintf(out, "\t\t%v\n", types.FileSet.Position(types.DeclPos(obj)))
+			fmt.Fprintf(out, "\t%s\n", strings.Replace(typeStr(obj), "\n", "\n\t\t", -1))
+			fmt.Fprintf(out, "\t\t%v\n", obj.Position)
 		}
 	}
 	return nil
 }
 
-func typeStr(obj *ast.Object, typ types.Type) string {
+func typeStr(obj *Object) string {
+	buf := &bytes.Buffer{}
+	valueFmt := " = %v"
 	switch obj.Kind {
-	case ast.Fun, ast.Var:
-		return fmt.Sprintf("%s %v", obj.Name, prettyType{typ})
-	case ast.Pkg:
-		return fmt.Sprintf("import (%s %s)", obj.Name, typ.Node.(*ast.ImportSpec).Path.Value)
-	case ast.Con:
-		if decl, ok := obj.Decl.(*ast.ValueSpec); ok {
-			return fmt.Sprintf("const %s %v = %s", obj.Name, prettyType{typ}, pretty{decl.Values[0]})
-		}
-		return fmt.Sprintf("const %s %v", obj.Name, prettyType{typ})
-	case ast.Lbl:
-		return fmt.Sprintf("label %s", obj.Name)
-	case ast.Typ:
-		typ = typ.Underlying(false)
-		return fmt.Sprintf("type %s %v", obj.Name, prettyType{typ})
+	case VarKind, FuncKind:
+		// don't print these
+	case "import":
+		valueFmt = " %v)"
+		fmt.Fprint(buf, obj.Kind)
+		fmt.Fprint(buf, " (")
+	default:
+		fmt.Fprint(buf, obj.Kind)
+		fmt.Fprint(buf, " ")
 	}
-	return fmt.Sprintf("unknown %s %v", obj.Name, typ.Kind)
+	fmt.Fprint(buf, obj.Name)
+	if obj.Type != nil {
+		fmt.Fprintf(buf, " %v", pretty{obj.Type})
+	}
+	if obj.Value != nil {
+		fmt.Fprintf(buf, valueFmt, pretty{obj.Value})
+	}
+	return buf.String()
+}
+
+func (pos Position) Format(f fmt.State, c rune) {
+	switch {
+	case pos.Filename != "" && pos.Line > 0:
+		fmt.Fprintf(f, "%s:%d:%d", pos.Filename, pos.Line, pos.Column)
+	case pos.Line > 0:
+		fmt.Fprintf(f, "%d:%d", pos.Line, pos.Column)
+	case pos.Filename != "":
+		fmt.Fprint(f, pos.Filename)
+	default:
+		fmt.Fprint(f, "-")
+	}
 }
 
 func parseExpr(s *ast.Scope, expr string) (ast.Expr, error) {
@@ -436,28 +467,4 @@ func pkgName(filename string) string {
 
 func hasSuffix(s, suff string) bool {
 	return len(s) >= len(suff) && s[len(s)-len(suff):] == suff
-}
-
-type pretty struct {
-	n interface{}
-}
-
-func (p pretty) String() string {
-	var b bytes.Buffer
-	printer.Fprint(&b, types.FileSet, p.n)
-	return b.String()
-}
-
-type prettyType struct {
-	n types.Type
-}
-
-func (p prettyType) String() string {
-	// TODO print path package when appropriate.
-	// Current issues with using p.n.Pkg:
-	//	- we should actually print the local package identifier
-	//	rather than the package path when possible.
-	//	- p.n.Pkg is non-empty even when
-	//	the type is not relative to the package.
-	return pretty{p.n.Node}.String()
 }

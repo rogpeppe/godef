@@ -12,8 +12,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/types"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/packages/packagestest"
 )
 
@@ -56,17 +55,15 @@ func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, mo
 	if err := exported.Expect(map[string]interface{}{
 		"godef": func(src, target token.Position) {
 			count++
-			obj, _, err := invokeGodef(src, runCount)
+			obj, err := invokeGodef(exported.Config, src, runCount)
 			if err != nil {
 				t.Error(err)
 				return
 			}
-			pos := types.FileSet.Position(types.DeclPos(obj))
 			check := token.Position{
-				Filename: pos.Filename,
-				Line:     pos.Line,
-				Column:   pos.Column,
-				Offset:   pos.Offset,
+				Filename: obj.Position.Filename,
+				Line:     obj.Position.Line,
+				Column:   obj.Position.Column,
 			}
 			if posStr(check) != posStr(target) {
 				t.Errorf("Got %v expected %v", posStr(check), posStr(target))
@@ -74,7 +71,7 @@ func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, mo
 		},
 		"godefPrint": func(src token.Position, mode string, re *regexp.Regexp) {
 			count++
-			obj, typ, err := invokeGodef(src, runCount)
+			obj, err := invokeGodef(exported.Config, src, runCount)
 			if err != nil {
 				t.Error(err)
 				return
@@ -105,7 +102,7 @@ func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, mo
 				t.Fatalf("Invalid print mode %v", mode)
 			}
 
-			print(buf, obj, typ)
+			print(buf, obj)
 			if !re.Match(buf.Bytes()) {
 				t.Errorf("in mode %q got %v want %v", mode, buf, re)
 			}
@@ -120,10 +117,10 @@ func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, mo
 
 var cwd, _ = os.Getwd()
 
-func invokeGodef(src token.Position, runCount int) (*ast.Object, types.Type, error) {
+func invokeGodef(cfg *packages.Config, src token.Position, runCount int) (*Object, error) {
 	input, err := ioutil.ReadFile(src.Filename)
 	if err != nil {
-		return nil, types.Type{}, fmt.Errorf("Failed %v: %v", src, err)
+		return nil, fmt.Errorf("Failed %v: %v", src, err)
 	}
 	// There's a "saved" version of the file, so
 	// copy it to the original version; we want the
@@ -136,23 +133,22 @@ func invokeGodef(src token.Position, runCount int) (*ast.Object, types.Type, err
 	if _, err := os.Stat(savedFile); err == nil {
 		savedData, err := ioutil.ReadFile(savedFile)
 		if err != nil {
-			return nil, types.Type{}, fmt.Errorf("cannot read saved file: %v", err)
+			return nil, fmt.Errorf("cannot read saved file: %v", err)
 		}
 		if err := ioutil.WriteFile(src.Filename, savedData, 0666); err != nil {
-			return nil, types.Type{}, fmt.Errorf("cannot write saved file: %v", err)
+			return nil, fmt.Errorf("cannot write saved file: %v", err)
 		}
 		defer ioutil.WriteFile(src.Filename, input, 0666)
 	}
 	// repeat the actual godef part n times, for benchmark support
-	var obj *ast.Object
-	var typ types.Type
+	var obj *Object
 	for i := 0; i < runCount; i++ {
-		obj, typ, err = godef(src.Filename, input, src.Offset)
+		obj, err = adaptGodef(cfg, src.Filename, input, src.Offset)
 		if err != nil {
-			return nil, types.Type{}, fmt.Errorf("Failed %v: %v", src, err)
+			return nil, fmt.Errorf("Failed %v: %v", src, err)
 		}
 	}
-	return obj, typ, nil
+	return obj, nil
 }
 
 func localPos(pos token.Position, e *packagestest.Exported, modules []packagestest.Module) string {
