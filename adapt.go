@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -206,7 +207,7 @@ func objToPos(fSet *gotoken.FileSet, obj gotypes.Object) Position {
 	f := fSet.File(p)
 	goPos := f.Position(p)
 	pos := Position{
-		Filename: goPos.Filename,
+		Filename: cleanFilename(goPos.Filename),
 		Line:     goPos.Line,
 		Column:   goPos.Column,
 	}
@@ -235,6 +236,16 @@ func objToPos(fSet *gotoken.FileSet, obj gotypes.Object) Position {
 		break
 	}
 	return pos
+}
+
+// cleanFilename normalizes any file names that come out of the fileset.
+func cleanFilename(path string) string {
+	const prefix = "$GOROOT"
+	if !strings.EqualFold(prefix, path[:len(prefix)]) {
+		return path
+	}
+	//TODO: we need a better way to get the GOROOT that uses the packages api
+	return runtime.GOROOT() + path[len(prefix):]
 }
 
 type pretty struct {
