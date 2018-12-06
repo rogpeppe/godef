@@ -181,7 +181,7 @@ func godef(filename string, src []byte, searchpos int) (*ast.Object, types.Type,
 		if err != nil {
 			return nil, types.Type{}, fmt.Errorf("error finding import path for %s: %s", path, err)
 		}
-		fmt.Println(pkg.Dir)
+		return &ast.Object{Kind: ast.Pkg, Data: pkg.Dir}, types.Type{}, nil
 	case ast.Expr:
 		if !*tflag {
 			// try local declarations only
@@ -310,6 +310,7 @@ const (
 	ConstKind  Kind = "const"
 	LabelKind  Kind = "label"
 	TypeKind   Kind = "type"
+	PathKind   Kind = "path"
 )
 
 type Object struct {
@@ -329,6 +330,10 @@ func (o orderedObjects) Len() int           { return len(o) }
 func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
 func print(out io.Writer, obj *Object) error {
+	if obj.Kind == PathKind {
+		fmt.Fprintf(out, "%s\n", obj.Value)
+		return nil
+	}
 	if *jsonFlag {
 		jsonStr, err := json.Marshal(obj.Position)
 		if err != nil {

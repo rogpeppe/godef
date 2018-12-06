@@ -146,7 +146,12 @@ func adaptRPObject(obj *rpast.Object, typ rptypes.Type) (*Object, error) {
 	case rpast.Pkg:
 		result.Kind = ImportKind
 		result.Type = nil
-		result.Value = typ.Node.(*rpast.ImportSpec).Path.Value
+		if typ.Node != nil {
+			result.Value = typ.Node.(*rpast.ImportSpec).Path.Value
+		} else {
+			result.Kind = PathKind
+			result.Value = obj.Data.(string)
+		}
 	case rpast.Con:
 		result.Kind = ConstKind
 		if decl, ok := obj.Decl.(*rpast.ValueSpec); ok {
@@ -172,8 +177,7 @@ func adaptRPObject(obj *rpast.Object, typ rptypes.Type) (*Object, error) {
 
 func adaptGoObject(fset *gotoken.FileSet, obj gotypes.Object) (*Object, error) {
 	result := &Object{
-		Name: obj.Name(),
-		//Pkg:  typ.Pkg,
+		Name:     obj.Name(),
 		Position: objToPos(fset, obj),
 		Type:     obj.Type(),
 	}
@@ -185,7 +189,12 @@ func adaptGoObject(fset *gotoken.FileSet, obj gotypes.Object) (*Object, error) {
 	case *gotypes.PkgName:
 		result.Kind = ImportKind
 		result.Type = nil
-		result.Value = strconv.Quote(obj.Imported().Path())
+		if obj.Pkg() != nil {
+			result.Value = strconv.Quote(obj.Imported().Path())
+		} else {
+			result.Value = obj.Imported().Path()
+			result.Kind = PathKind
+		}
 	case *gotypes.Const:
 		result.Kind = ConstKind
 		result.Value = obj.Val()
@@ -241,7 +250,7 @@ func objToPos(fSet *gotoken.FileSet, obj gotypes.Object) Position {
 // cleanFilename normalizes any file names that come out of the fileset.
 func cleanFilename(path string) string {
 	const prefix = "$GOROOT"
-	if !strings.EqualFold(prefix, path[:len(prefix)]) {
+	if len(path) < len(prefix) || !strings.EqualFold(prefix, path[:len(prefix)]) {
 		return path
 	}
 	//TODO: we need a better way to get the GOROOT that uses the packages api

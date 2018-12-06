@@ -7,6 +7,8 @@ import (
 	"go/token"
 	"go/types"
 	"os"
+	"path/filepath"
+	"strconv"
 
 	"golang.org/x/tools/go/ast/astutil"
 	"golang.org/x/tools/go/packages"
@@ -40,6 +42,14 @@ func godefPackages(cfg *packages.Config, filename string, src []byte, searchpos 
 		return nil, nil, fmt.Errorf("Offset %d was not a valid identifier", searchpos)
 	}
 	obj := lpkgs[0].TypesInfo.ObjectOf(m.ident)
+	if obj == nil && !m.ident.Pos().IsValid() {
+		pkg := lpkgs[0].Imports[m.ident.Name]
+		if pkg != nil && len(pkg.GoFiles) > 0 {
+			fmt.Printf("package was %v\n", pkg.ID)
+			dir := filepath.Dir(pkg.GoFiles[0])
+			obj = types.NewPkgName(token.NoPos, nil, "", types.NewPackage(dir, ""))
+		}
+	}
 	if obj == nil {
 		return nil, nil, fmt.Errorf("no object")
 	}
@@ -141,6 +151,16 @@ func checkMatch(f *ast.File, pos token.Pos) (match, error) {
 		result.ident = node
 	case *ast.SelectorExpr:
 		result.ident = node.Sel
+	case *ast.BasicLit:
+		// if there was a literal import path, we build a special ident of
+		// the same value, which we eventually use to print the path
+		if len(path) > 1 {
+			if spec, ok := path[1].(*ast.ImportSpec); ok {
+				if p, err := strconv.Unquote(spec.Path.Value); err == nil {
+					result.ident = ast.NewIdent(p)
+				}
+			}
+		}
 	}
 	if result.ident != nil {
 		for _, n := range path[1:] {

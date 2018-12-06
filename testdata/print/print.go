@@ -1,7 +1,7 @@
 package print
 
 import (
-	"github.com/rogpeppe/godef/a"
+	"github.com/rogpeppe/godef/a" //@mark(PrintImportDir, "rogpeppe")
 	"github.com/rogpeppe/godef/b"
 )
 
@@ -24,6 +24,8 @@ start:
 	}
 
 	/*@
+	godefPrint(PrintImportDir, "json", re`godef[/\\]a\s*$`)
+
 	godefPrint(PrintA, "json", re`^(|
 		){"filename":".*godef.print.print\.go","line":\d+,"column":\d+}\n$`)
 	godefPrint(PrintA, "type", re`^(|
