@@ -49,6 +49,12 @@ func main() {
 }
 
 func run(ctx context.Context) error {
+	// for most godef invocations we want to produce the result and quit without
+	// ever triggering the GC, but we don't want to outright disable it for the
+	// rare case when we are asked to handle a truly huge data set, so we set it
+	// to a very large ratio. This number was picked to be significantly bigger
+	// than needed to prevent GC on a common very large build, but is essentially
+	// a magic number not a calculated one
 	debugpkg.SetGCPercent(1600)
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "usage: godef [flags] [expr]\n")
@@ -68,7 +74,6 @@ func run(ctx context.Context) error {
 		if err := pprof.StartCPUProfile(f); err != nil {
 			return err
 		}
-		// NB: profile won't be written in case of error.
 		defer pprof.StopCPUProfile()
 	}
 
@@ -80,7 +85,6 @@ func run(ctx context.Context) error {
 		if err := trace.Start(f); err != nil {
 			return err
 		}
-		// NB: trace log won't be written in case of error.
 		defer func() {
 			trace.Stop()
 			log.Printf("To view the trace, run:\n$ go tool trace view %s", *traceFlag)
@@ -92,11 +96,10 @@ func run(ctx context.Context) error {
 		if err != nil {
 			return err
 		}
-		// NB: memprofile won't be written in case of error.
 		defer func() {
 			runtime.GC() // get up-to-date statistics
 			if err := pprof.WriteHeapProfile(f); err != nil {
-				log.Fatalf("Writing memory profile: %v", err)
+				log.Printf("Writing memory profile: %v", err)
 			}
 			f.Close()
 		}()
@@ -325,7 +328,6 @@ func (o orderedObjects) Less(i, j int) bool { return o[i].Name < o[j].Name }
 func (o orderedObjects) Len() int           { return len(o) }
 func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
-//func print(out io.Writer, obj *ast.Object, typ types.Type) error {
 func print(out io.Writer, obj *Object) error {
 	if *jsonFlag {
 		jsonStr, err := json.Marshal(obj.Position)

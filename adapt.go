@@ -9,9 +9,9 @@ import (
 	"bytes"
 	"flag"
 	"fmt"
-	"golang.org/x/tools/go/packages"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,50 +19,95 @@ import (
 	rpast "github.com/rogpeppe/godef/go/ast"
 	rpprinter "github.com/rogpeppe/godef/go/printer"
 	rptypes "github.com/rogpeppe/godef/go/types"
-
-	//goast "go/ast"
-	//goparser "go/parser"
-	//goprinter "go/printer"
 	gotoken "go/token"
 	gotypes "go/types"
+	"golang.org/x/tools/go/packages"
 )
 
 var forcePackages triBool
+
 func init() {
-	flag.Var(&forcePackages, "force-packages", "force godef to use the go/packages implentation")
+	flag.Var(&forcePackages, "new-implementation", "force godef to use the new go/packages implentation")
 }
 
-type triBool struct { value, set bool }
+// triBool is used as a unset, on or off valued flag
+type triBool int
+
+const (
+	// unset means the triBool does not yet have a value
+	unset = triBool(iota)
+	// on means the triBool has been set to true
+	on
+	// off means the triBool has been set to false
+	off
+)
+
 func (b *triBool) Set(s string) error {
 	v, err := strconv.ParseBool(s)
-	b.set = true
-	b.value = v
+	if v {
+		*b = on
+	} else {
+		*b = off
+	}
 	return err
 }
+
 func (b *triBool) Get() interface{} {
-	if !b.set {
-		return "default"
-	}
-	return b.value
+	return *b
 }
+
 func (b *triBool) String() string {
-	if !b.set {
+	switch *b {
+	case unset:
 		return "default"
+	case on:
+		return "true"
+	case off:
+		return "false"
+	default:
+		return "invalid"
 	}
-	return strconv.FormatBool(b.value)
 }
-func (b *triBool) IsBoolFlag() bool { return true }
+
+func (b *triBool) IsBoolFlag() bool {
+	return true
+}
+
+func detectModuleMode(cfg *packages.Config) bool {
+	// first see if the config forces module mode
+	for _, e := range cfg.Env {
+		switch e {
+		case "GO111MODULE=off":
+			return false
+		case "GO111MODULE=on":
+			return true
+		}
+	}
+	// do a fast test for go.mod in the working directory
+	if _, err := os.Stat(filepath.Join(cfg.Dir, "go.mod")); !os.IsNotExist(err) {
+		return true
+	}
+	// fall back to invoking the go tool to see if it will pick module mode
+	cmd := exec.Command("go", "env", "GOMOD")
+	cmd.Env = cfg.Env
+	cmd.Dir = cfg.Dir
+	out, err := cmd.Output()
+	if err == nil {
+		return len(strings.TrimSpace(string(out))) > 0
+	}
+	// default to non module mode
+	return false
+}
 
 func adaptGodef(cfg *packages.Config, filename string, src []byte, searchpos int) (*Object, error) {
-	usePackages := forcePackages.value
-	if !forcePackages.set {
-		cmd := exec.Command("go", "env", "GOMOD")
-		cmd.Env = cfg.Env
-		cmd.Dir = cfg.Dir
-		out, err := cmd.Output()
-		if err == nil && len(strings.TrimSpace(string(out))) > 0 {
-			usePackages = true
-		}
+	usePackages := false
+	switch forcePackages {
+	case unset:
+		usePackages = detectModuleMode(cfg)
+	case on:
+		usePackages = true
+	case off:
+		usePackages = false
 	}
 	if usePackages {
 		fset, obj, err := godefPackages(cfg, filename, src, searchpos)
@@ -129,7 +174,7 @@ func adaptGoObject(fset *gotoken.FileSet, obj gotypes.Object) (*Object, error) {
 		Name: obj.Name(),
 		//Pkg:  typ.Pkg,
 		Position: objToPos(fset, obj),
-		Type: obj.Type(),
+		Type:     obj.Type(),
 	}
 	switch obj := obj.(type) {
 	case *gotypes.Func:
@@ -142,7 +187,7 @@ func adaptGoObject(fset *gotoken.FileSet, obj gotypes.Object) (*Object, error) {
 		result.Value = strconv.Quote(obj.Imported().Path())
 	case *gotypes.Const:
 		result.Kind = ConstKind
-	 	result.Value = obj.Val()
+		result.Value = obj.Val()
 	case *gotypes.Label:
 		result.Kind = LabelKind
 		result.Type = nil
@@ -162,8 +207,8 @@ func objToPos(fSet *gotoken.FileSet, obj gotypes.Object) Position {
 	goPos := f.Position(p)
 	pos := Position{
 		Filename: goPos.Filename,
-		Line: goPos.Line,
-		Column: goPos.Column,
+		Line:     goPos.Line,
+		Column:   goPos.Column,
 	}
 	if pos.Column != 1 {
 		return pos
@@ -210,7 +255,7 @@ func (p pretty) Format(f fmt.State, c rune) {
 		rpprinter.Fprint(f, rptypes.FileSet, n.Node)
 	case gotypes.Type:
 		buf := &bytes.Buffer{}
-		gotypes.WriteType(buf, n, func(p *gotypes.Package) string { return ""} )
+		gotypes.WriteType(buf, n, func(p *gotypes.Package) string { return "" })
 		buf.WriteTo(f)
 	default:
 		fmt.Fprint(f, n)

@@ -55,16 +55,17 @@ func godefPackages(cfg *packages.Config, filename string, src []byte, searchpos 
 	return lpkgs[0].Fset, obj, nil
 }
 
-// match returns the ident plus any extra information needed
+// match holds the ident plus any extra information needed
 type match struct {
 	ident            *ast.Ident
 	wasEmbeddedField bool
 }
 
-// parseFile returns a function that can be used as a Parser in packages.Config.
+// parseFile returns a function that can be used as a Parser in packages.Config
+// and a channel which will be sent a value when a token is found at the given
+// search position.
 // It replaces the contents of a file that matches filename with the src.
 // It also drops all function bodies that do not contain the searchpos.
-// It also modifies the filename to be the canonical form that will appear in the fileset.
 func parseFile(filename string, searchpos int) (func(*token.FileSet, string, []byte) (*ast.File, error), chan match) {
 	result := make(chan match, 1)
 	isInputFile := newFileCompare(filename)
@@ -90,11 +91,14 @@ func parseFile(filename string, searchpos int) (func(*token.FileSet, string, []b
 			}
 			result <- m
 		}
+		// Trim unneeded parts from the AST to make the type checking faster.
 		trimAST(file, pos)
 		return file, err
 	}, result
 }
 
+// newFileCompare returns a function that reports whether its argument
+// refers to the same file as the given filename.
 func newFileCompare(filename string) func(string) bool {
 	fstat, fstatErr := os.Stat(filename)
 	return func(compare string) bool {
