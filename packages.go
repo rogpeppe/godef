@@ -45,7 +45,6 @@ func godefPackages(cfg *packages.Config, filename string, src []byte, searchpos 
 	if obj == nil && !m.ident.Pos().IsValid() {
 		pkg := lpkgs[0].Imports[m.ident.Name]
 		if pkg != nil && len(pkg.GoFiles) > 0 {
-			fmt.Printf("package was %v\n", pkg.ID)
 			dir := filepath.Dir(pkg.GoFiles[0])
 			obj = types.NewPkgName(token.NoPos, nil, "", types.NewPackage(dir, ""))
 		}
