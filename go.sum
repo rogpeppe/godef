@@ -1,4 +1,4 @@
 9fans.net/go v0.0.0-20181112161441-237454027057 h1:OcHlKWkAMJEF1ndWLGxp5dnJQkYM/YImUOvsBoz6h5E=
 9fans.net/go v0.0.0-20181112161441-237454027057/go.mod h1:diCsxrliIURU9xsYtjCp5AbpQKqdhKmf0ujWDUSkfoY=
-golang.org/x/tools v0.0.0-20181130195746-895048a75ecf h1:1efYtlcDNt7EL138lS6P4KphZ1KEMWvhFa3FsLbTWEY=
-golang.org/x/tools v0.0.0-20181130195746-895048a75ecf/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=
+golang.org/x/tools v0.0.0-20181207222222-4c874b978acb h1:YIXCxYolAiiPmVSqA4gVUVcHo8Mi1ivU7ANnK9a63JY=
+golang.org/x/tools v0.0.0-20181207222222-4c874b978acb/go.mod h1:n7NCudcB/nEzxVGmLbDWY5pfWTLqBcC2KZ6jyYvM4mQ=

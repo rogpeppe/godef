@@ -12,15 +12,26 @@ import (
 	"strings"
 	"testing"
 
-	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/packages/packagestest"
 )
 
 func TestGoDef(t *testing.T) { packagestest.TestAll(t, testGoDef) }
 func testGoDef(t *testing.T, exporter packagestest.Exporter) {
+	files := packagestest.MustCopyFileTree("testdata")
+	overlay := make(map[string][]byte)
+	for fragment := range files {
+		if trimmed := strings.TrimSuffix(fragment, ".overlay"); trimmed != fragment {
+			delete(files, fragment)
+			content, err := ioutil.ReadFile(filepath.Join("testdata", fragment))
+			if err == nil {
+				overlay[trimmed] = content
+			}
+		}
+	}
 	runGoDefTest(t, exporter, 1, []packagestest.Module{{
 		Name:  "github.com/rogpeppe/godef",
-		Files: packagestest.MustCopyFileTree("testdata"),
+		Files: files,
+		Overlay: overlay,
 	}})
 }
 
@@ -35,10 +46,6 @@ func benchGoDef(b *testing.B, exporter packagestest.Exporter) {
 func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, modules []packagestest.Module) {
 	exported := packagestest.Export(t, exporter, modules)
 	defer exported.Cleanup()
-
-	posStr := func(p token.Position) string {
-		return localPos(p, exported, modules)
-	}
 
 	const gopathPrefix = "GOPATH="
 	const gorootPrefix = "GOROOT="
@@ -55,7 +62,7 @@ func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, mo
 	if err := exported.Expect(map[string]interface{}{
 		"godef": func(src, target token.Position) {
 			count++
-			obj, err := invokeGodef(exported.Config, src, runCount)
+			obj, err := invokeGodef(exported, src, runCount)
 			if err != nil {
 				t.Error(err)
 				return
@@ -65,13 +72,13 @@ func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, mo
 				Line:     obj.Position.Line,
 				Column:   obj.Position.Column,
 			}
-			if posStr(check) != posStr(target) {
-				t.Errorf("Got %v expected %v", posStr(check), posStr(target))
+			if check, target := localPos(check, exported), localPos(target, exported); check != target {
+				t.Errorf("Got %v expected %v", check, target)
 			}
 		},
 		"godefPrint": func(src token.Position, mode string, re *regexp.Regexp) {
 			count++
-			obj, err := invokeGodef(exported.Config, src, runCount)
+			obj, err := invokeGodef(exported, src, runCount)
 			if err != nil {
 				t.Error(err)
 				return
@@ -117,33 +124,15 @@ func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, mo
 
 var cwd, _ = os.Getwd()
 
-func invokeGodef(cfg *packages.Config, src token.Position, runCount int) (*Object, error) {
-	input, err := ioutil.ReadFile(src.Filename)
+func invokeGodef(e *packagestest.Exported, src token.Position, runCount int) (*Object, error) {
+	input, err := e.FileContents(src.Filename)
 	if err != nil {
 		return nil, fmt.Errorf("Failed %v: %v", src, err)
-	}
-	// There's a "saved" version of the file, so
-	// copy it to the original version; we want the
-	// Expect method to see the in-editor-buffer
-	// versions of the files, but we want the godef
-	// function to see the files as they should
-	// be on disk, so that we're actually testing the
-	// define-in-buffer functionality.
-	savedFile := src.Filename + ".saved"
-	if _, err := os.Stat(savedFile); err == nil {
-		savedData, err := ioutil.ReadFile(savedFile)
-		if err != nil {
-			return nil, fmt.Errorf("cannot read saved file: %v", err)
-		}
-		if err := ioutil.WriteFile(src.Filename, savedData, 0666); err != nil {
-			return nil, fmt.Errorf("cannot write saved file: %v", err)
-		}
-		defer ioutil.WriteFile(src.Filename, input, 0666)
 	}
 	// repeat the actual godef part n times, for benchmark support
 	var obj *Object
 	for i := 0; i < runCount; i++ {
-		obj, err = adaptGodef(cfg, src.Filename, input, src.Offset)
+		obj, err = adaptGodef(e.Config, src.Filename, input, src.Offset)
 		if err != nil {
 			return nil, fmt.Errorf("Failed %v: %v", src, err)
 		}
@@ -151,12 +140,12 @@ func invokeGodef(cfg *packages.Config, src token.Position, runCount int) (*Objec
 	return obj, nil
 }
 
-func localPos(pos token.Position, e *packagestest.Exported, modules []packagestest.Module) string {
+func localPos(pos token.Position, e *packagestest.Exported) string {
 	fstat, fstatErr := os.Stat(pos.Filename)
 	if fstatErr != nil {
 		return pos.String()
 	}
-	for _, m := range modules {
+	for _, m := range e.Modules {
 		for fragment := range m.Files {
 			fname := e.File(m.Name, fragment)
 			if s, err := os.Stat(fname); err == nil && os.SameFile(s, fstat) {
