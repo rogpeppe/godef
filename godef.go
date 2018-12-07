@@ -367,7 +367,7 @@ func typeStr(obj *Object) string {
 	switch obj.Kind {
 	case VarKind, FuncKind:
 		// don't print these
-	case "import":
+	case ImportKind:
 		valueFmt = " %v)"
 		fmt.Fprint(buf, obj.Kind)
 		fmt.Fprint(buf, " (")
