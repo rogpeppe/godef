@@ -1,25 +1,38 @@
 package main
 
 import (
+	"bytes"
+	"fmt"
 	"go/build"
 	"go/token"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
-	"github.com/rogpeppe/godef/go/types"
+	"golang.org/x/tools/go/packages"
 	"golang.org/x/tools/go/packages/packagestest"
 )
 
 func TestGoDef(t *testing.T) { packagestest.TestAll(t, testGoDef) }
 func testGoDef(t *testing.T, exporter packagestest.Exporter) {
-	const godefAction = ">"
-	modules := []packagestest.Module{{
+	runGoDefTest(t, exporter, 1, []packagestest.Module{{
 		Name:  "github.com/rogpeppe/godef",
 		Files: packagestest.MustCopyFileTree("testdata"),
-	}}
+	}})
+}
+
+func BenchmarkGoDef(b *testing.B) { packagestest.BenchmarkAll(b, benchGoDef) }
+func benchGoDef(b *testing.B, exporter packagestest.Exporter) {
+	runGoDefTest(b, exporter, b.N, []packagestest.Module{{
+		Name:  "github.com/rogpeppe/godef",
+		Files: packagestest.MustCopyFileTree("testdata"),
+	}})
+}
+
+func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, modules []packagestest.Module) {
 	exported := packagestest.Export(t, exporter, modules)
 	defer exported.Cleanup()
 
@@ -39,55 +52,104 @@ func testGoDef(t *testing.T, exporter packagestest.Exporter) {
 	}
 
 	count := 0
-	exported.Expect(map[string]interface{}{
+	if err := exported.Expect(map[string]interface{}{
 		"godef": func(src, target token.Position) {
 			count++
-			input, err := ioutil.ReadFile(src.Filename)
+			obj, err := invokeGodef(exported.Config, src, runCount)
 			if err != nil {
-				t.Errorf("Failed %v: %v", src, err)
+				t.Error(err)
 				return
 			}
-			// There's a "saved" version of the file, so
-			// copy it to the original version; we want the
-			// Expect method to see the in-editor-buffer
-			// versions of the files, but we want the godef
-			// function to see the files as they should
-			// be on disk, so that we're actually testing the
-			// define-in-buffer functionality.
-			savedFile := src.Filename + ".saved"
-			if _, err := os.Stat(savedFile); err == nil {
-				savedData, err := ioutil.ReadFile(savedFile)
-				if err != nil {
-					t.Fatalf("cannot read saved file: %v", err)
-				}
-				if err := ioutil.WriteFile(src.Filename, savedData, 0666); err != nil {
-					t.Fatalf("cannot write saved file: %v", err)
-				}
-				defer ioutil.WriteFile(src.Filename, input, 0666)
-			}
-			obj, _, err := godef(src.Filename, input, src.Offset)
-			if err != nil {
-				t.Errorf("Failed %v: %v", src, err)
-				return
-			}
-			pos := types.FileSet.Position(types.DeclPos(obj))
 			check := token.Position{
-				Filename: pos.Filename,
-				Line:     pos.Line,
-				Column:   pos.Column,
-				Offset:   pos.Offset,
+				Filename: obj.Position.Filename,
+				Line:     obj.Position.Line,
+				Column:   obj.Position.Column,
 			}
 			if posStr(check) != posStr(target) {
 				t.Errorf("Got %v expected %v", posStr(check), posStr(target))
 			}
 		},
-	})
+		"godefPrint": func(src token.Position, mode string, re *regexp.Regexp) {
+			count++
+			obj, err := invokeGodef(exported.Config, src, runCount)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			buf := &bytes.Buffer{}
+			switch mode {
+			case "json":
+				*jsonFlag = true
+				*tflag = false
+				*aflag = false
+				*Aflag = false
+			case "all":
+				*jsonFlag = false
+				*tflag = true
+				*aflag = true
+				*Aflag = true
+			case "public":
+				*jsonFlag = false
+				*tflag = true
+				*aflag = true
+				*Aflag = false
+			case "type":
+				*jsonFlag = false
+				*tflag = true
+				*aflag = false
+				*Aflag = false
+			default:
+				t.Fatalf("Invalid print mode %v", mode)
+			}
+
+			print(buf, obj)
+			if !re.Match(buf.Bytes()) {
+				t.Errorf("in mode %q got %v want %v", mode, buf, re)
+			}
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
 	if count == 0 {
 		t.Fatalf("No godef tests were run")
 	}
 }
 
 var cwd, _ = os.Getwd()
+
+func invokeGodef(cfg *packages.Config, src token.Position, runCount int) (*Object, error) {
+	input, err := ioutil.ReadFile(src.Filename)
+	if err != nil {
+		return nil, fmt.Errorf("Failed %v: %v", src, err)
+	}
+	// There's a "saved" version of the file, so
+	// copy it to the original version; we want the
+	// Expect method to see the in-editor-buffer
+	// versions of the files, but we want the godef
+	// function to see the files as they should
+	// be on disk, so that we're actually testing the
+	// define-in-buffer functionality.
+	savedFile := src.Filename + ".saved"
+	if _, err := os.Stat(savedFile); err == nil {
+		savedData, err := ioutil.ReadFile(savedFile)
+		if err != nil {
+			return nil, fmt.Errorf("cannot read saved file: %v", err)
+		}
+		if err := ioutil.WriteFile(src.Filename, savedData, 0666); err != nil {
+			return nil, fmt.Errorf("cannot write saved file: %v", err)
+		}
+		defer ioutil.WriteFile(src.Filename, input, 0666)
+	}
+	// repeat the actual godef part n times, for benchmark support
+	var obj *Object
+	for i := 0; i < runCount; i++ {
+		obj, err = adaptGodef(cfg, src.Filename, input, src.Offset)
+		if err != nil {
+			return nil, fmt.Errorf("Failed %v: %v", src, err)
+		}
+	}
+	return obj, nil
+}
 
 func localPos(pos token.Position, e *packagestest.Exported, modules []packagestest.Module) string {
 	fstat, fstatErr := os.Stat(pos.Filename)
@@ -105,4 +167,3 @@ func localPos(pos token.Position, e *packagestest.Exported, modules []packageste
 	}
 	return pos.String()
 }
-
