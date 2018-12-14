@@ -3,7 +3,7 @@
 // Many of the functions in this package take a format string and optional
 // parameters.  In the documentation, the notation format, ... denotes the result
 // of formatting the string and arguments using fmt.Sprintf.
-package acme
+package acme // import "9fans.net/go/acme"
 
 import (
 	"bufio"
@@ -11,10 +11,14 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
+	"9fans.net/go/draw"
 	"9fans.net/go/plan9"
 	"9fans.net/go/plan9/client"
 )
@@ -29,13 +33,18 @@ type Win struct {
 	event      *client.Fid
 	data       *client.Fid
 	xdata      *client.Fid
+	errors     *client.Fid
 	ebuf       *bufio.Reader
 	c          chan *Event
 	next, prev *Win
 	buf        []byte
 	e2, e3, e4 Event
+	name       string
+
+	errorPrefix string
 }
 
+var windowsMu sync.Mutex
 var windows, last *Win
 
 var fsys *client.Fsys
@@ -154,6 +163,22 @@ func Windows() ([]WinInfo, error) {
 	return info, nil
 }
 
+func Show(name string) *Win {
+	windowsMu.Lock()
+	defer windowsMu.Unlock()
+
+	for w := windows; w != nil; w = w.next {
+		if w.name == name {
+			if err := w.Ctl("show"); err != nil {
+				w.dropLocked()
+				return nil
+			}
+			return w
+		}
+	}
+	return nil
+}
+
 // Open connects to the existing window with the given id.
 // If ctl is non-nil, Open uses it as the window's control file
 // and takes ownership of it.
@@ -213,6 +238,9 @@ func (w *Win) CloseFiles() {
 
 	w.xdata.Close()
 	w.xdata = nil
+
+	w.errors.Close()
+	w.errors = nil
 }
 
 // Ctl writes the command format, ... to the window's ctl file.
@@ -243,6 +271,7 @@ func (w *Win) OpenEvent() error {
 
 func (w *Win) fid(name string) (*client.Fid, error) {
 	var f **client.Fid
+	var mode uint8 = plan9.ORDWR
 	switch name {
 	case "addr":
 		f = &w.addr
@@ -258,12 +287,15 @@ func (w *Win) fid(name string) (*client.Fid, error) {
 		f = &w.tag
 	case "xdata":
 		f = &w.xdata
+	case "errors":
+		f = &w.errors
+		mode = plan9.OWRITE
 	default:
 		return nil, errors.New("unknown acme file: " + name)
 	}
 	if *f == nil {
 		var err error
-		*f, err = fsys.Open(fmt.Sprintf("%d/%s", w.id, name), plan9.ORDWR)
+		*f, err = fsys.Open(fmt.Sprintf("%d/%s", w.id, name), mode)
 		if err != nil {
 			return nil, err
 		}
@@ -281,8 +313,17 @@ func (w *Win) ReadAll(file string) ([]byte, error) {
 	return ioutil.ReadAll(f)
 }
 
+func (w *Win) ID() int {
+	return w.id
+}
+
 func (w *Win) Name(format string, args ...interface{}) error {
-	return w.Ctl("name "+format, args...)
+	name := fmt.Sprintf(format, args...)
+	if err := w.Ctl("name %s", name); err != nil {
+		return err
+	}
+	w.name = name
+	return nil
 }
 
 func (w *Win) Fprintf(file, format string, args ...interface{}) error {
@@ -337,7 +378,7 @@ func (w *Win) Seek(file string, offset int64, whence int) (int64, error) {
 func (w *Win) Write(file string, b []byte) (n int, err error) {
 	f, err := w.fid(file)
 	if err != nil {
-		return 0, nil
+		return 0, err
 	}
 	return f.Write(b)
 }
@@ -504,5 +545,284 @@ func (w *Win) eventReader() {
 		}
 		w.c <- e
 	}
+	w.drop()
 	close(w.c)
+}
+
+func (w *Win) drop() {
+	windowsMu.Lock()
+	defer windowsMu.Unlock()
+	w.dropLocked()
+}
+
+func (w *Win) dropLocked() {
+	if w.prev == nil && w.next == nil && windows != w {
+		return
+	}
+	if w.prev != nil {
+		w.prev.next = w.next
+	} else {
+		windows = w.next
+	}
+	if w.next != nil {
+		w.next.prev = w.prev
+	} else {
+		last = w.prev
+	}
+	w.prev = nil
+	w.next = nil
+}
+
+var fontCache struct {
+	sync.Mutex
+	m map[string]*draw.Font
+}
+
+// Font returns the window's current tab width (in zeros) and font.
+func (w *Win) Font() (tab int, font *draw.Font, err error) {
+	ctl := make([]byte, 1000)
+	w.Seek("ctl", 0, 0)
+	n, err := w.Read("ctl", ctl)
+	if err != nil {
+		return 0, nil, err
+	}
+	f := strings.Fields(string(ctl[:n]))
+	if len(f) < 8 {
+		return 0, nil, fmt.Errorf("malformed ctl file")
+	}
+	tab, _ = strconv.Atoi(f[7])
+	if tab == 0 {
+		return 0, nil, fmt.Errorf("malformed ctl file")
+	}
+	name := f[6]
+
+	fontCache.Lock()
+	font = fontCache.m[name]
+	fontCache.Unlock()
+
+	if font != nil {
+		return tab, font, nil
+	}
+
+	var disp *draw.Display = nil
+	font, err = disp.OpenFont(name)
+	if err != nil {
+		return tab, nil, err
+	}
+
+	fontCache.Lock()
+	if fontCache.m == nil {
+		fontCache.m = make(map[string]*draw.Font)
+	}
+	if fontCache.m[name] != nil {
+		font = fontCache.m[name]
+	} else {
+		fontCache.m[name] = font
+	}
+	fontCache.Unlock()
+
+	return tab, font, nil
+}
+
+// Blink starts the window tag blinking and returns a function that stops it.
+// When stop returns, the blinking is over.
+func (w *Win) Blink() (stop func()) {
+	c := make(chan struct{})
+	go func() {
+		t := time.NewTicker(1000 * time.Millisecond)
+		defer t.Stop()
+		dirty := false
+		for {
+			select {
+			case <-t.C:
+				dirty = !dirty
+				if dirty {
+					w.Ctl("dirty")
+				} else {
+					w.Ctl("clean")
+				}
+			case <-c:
+				if dirty {
+					w.Ctl("clean")
+				}
+				c <- struct{}{}
+				return
+			}
+		}
+	}()
+	return func() {
+		c <- struct{}{}
+		<-c
+	}
+}
+
+// Sort sorts the lines in the current address range
+// according to the comparison function.
+func (w *Win) Sort(less func(x, y string) bool) error {
+	q0, q1, err := w.ReadAddr()
+	if err != nil {
+		return err
+	}
+	data, err := w.ReadAll("xdata")
+	if err != nil {
+		return err
+	}
+	suffix := ""
+	lines := strings.Split(string(data), "\n")
+	if lines[len(lines)-1] == "" {
+		suffix = "\n"
+		lines = lines[:len(lines)-1]
+	}
+	sort.SliceStable(lines, func(i, j int) bool { return less(lines[i], lines[j]) })
+	w.Addr("#%d,#%d", q0, q1)
+	w.Write("data", []byte(strings.Join(lines, "\n")+suffix))
+	return nil
+}
+
+// PrintTabbed prints tab-separated columnated text to body,
+// replacing single tabs with runs of tabs as needed to align columns.
+func (w *Win) PrintTabbed(text string) {
+	tab, font, _ := w.Font()
+
+	lines := strings.SplitAfter(text, "\n")
+	var allRows [][]string
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		line = strings.TrimSuffix(line, "\n")
+		allRows = append(allRows, strings.Split(line, "\t"))
+	}
+
+	var buf bytes.Buffer
+	for len(allRows) > 0 {
+		if row := allRows[0]; len(row) <= 1 {
+			if len(row) > 0 {
+				buf.WriteString(row[0])
+			}
+			buf.WriteString("\n")
+			allRows = allRows[1:]
+			continue
+		}
+
+		i := 0
+		for i < len(allRows) && len(allRows[i]) > 1 {
+			i++
+		}
+
+		rows := allRows[:i]
+		allRows = allRows[i:]
+
+		var wid []int
+		if font != nil {
+			for _, row := range rows {
+				for len(wid) < len(row) {
+					wid = append(wid, 0)
+				}
+				for i, col := range row {
+					n := font.StringWidth(col)
+					if wid[i] < n {
+						wid[i] = n
+					}
+				}
+			}
+		}
+
+		for _, row := range rows {
+			for i, col := range row {
+				buf.WriteString(col)
+				if i == len(row)-1 {
+					break
+				}
+				if font == nil || tab == 0 {
+					buf.WriteString("\t")
+					continue
+				}
+				pos := font.StringWidth(col)
+				for pos <= wid[i] {
+					buf.WriteString("\t")
+					pos += tab - pos%tab
+				}
+			}
+			buf.WriteString("\n")
+		}
+	}
+
+	w.Write("body", buf.Bytes())
+}
+
+// Clear clears the window body.
+func (w *Win) Clear() {
+	w.Addr(",")
+	w.Write("data", nil)
+}
+
+type EventHandler interface {
+	Execute(cmd string) bool
+	Look(arg string) bool
+}
+
+func (w *Win) loadText(e *Event, h EventHandler) {
+	if len(e.Text) == 0 && e.Q0 < e.Q1 {
+		w.Addr("#%d,#%d", e.Q0, e.Q1)
+		data, err := w.ReadAll("xdata")
+		if err != nil {
+			w.Err(err.Error())
+		}
+		e.Text = data
+	}
+}
+
+func (w *Win) EventLoop(h EventHandler) {
+	for e := range w.EventChan() {
+		switch e.C2 {
+		case 'x', 'X': // execute
+			cmd := strings.TrimSpace(string(e.Text))
+			if !h.Execute(cmd) {
+				w.WriteEvent(e)
+			}
+		case 'l', 'L': // look
+			// TODO(rsc): Expand selection, especially for URLs.
+			w.loadText(e, h)
+			if !h.Look(string(e.Text)) {
+				w.WriteEvent(e)
+			}
+		}
+	}
+}
+
+func (w *Win) Selection() string {
+	w.Ctl("addr=dot")
+	data, err := w.ReadAll("xdata")
+	if err != nil {
+		w.Err(err.Error())
+	}
+	return string(data)
+}
+
+func (w *Win) SetErrorPrefix(p string) {
+	w.errorPrefix = p
+}
+
+func (w *Win) Err(s string) {
+	if !strings.HasSuffix(s, "\n") {
+		s = s + "\n"
+	}
+	w1 := Show(w.errorPrefix + "+Errors")
+	if w1 == nil {
+		var err error
+		w1, err = New()
+		if err != nil {
+			time.Sleep(100 * time.Millisecond)
+			w1, err = New()
+			if err != nil {
+				log.Fatalf("cannot create +Errors window")
+			}
+		}
+		w1.Name("%s", w.errorPrefix+"+Errors")
+	}
+	w1.Fprintf("body", "%s", s)
+	w1.Addr("$")
+	w1.Ctl("dot=addr")
+	w1.Ctl("show")
 }
