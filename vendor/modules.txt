@@ -1,0 +1,17 @@
+# 9fans.net/go v0.0.0-20181112161441-237454027057
+9fans.net/go/acme
+9fans.net/go/draw
+9fans.net/go/plan9
+9fans.net/go/plan9/client
+9fans.net/go/draw/drawfcall
+# golang.org/x/tools v0.0.0-20181130195746-895048a75ecf
+golang.org/x/tools/go/ast/astutil
+golang.org/x/tools/go/packages
+golang.org/x/tools/go/gcexportdata
+golang.org/x/tools/go/internal/cgo
+golang.org/x/tools/internal/gopathwalk
+golang.org/x/tools/internal/semver
+golang.org/x/tools/go/packages/packagestest
+golang.org/x/tools/go/internal/gcimporter
+golang.org/x/tools/internal/fastwalk
+golang.org/x/tools/go/expect

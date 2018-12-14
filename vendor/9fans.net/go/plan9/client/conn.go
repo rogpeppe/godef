@@ -1,4 +1,4 @@
-package client
+package client // import "9fans.net/go/plan9/client"
 
 import (
 	"fmt"
