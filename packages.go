@@ -18,9 +18,10 @@ func godefPackages(cfg *packages.Config, filename string, src []byte, searchpos 
 	parser, result := parseFile(filename, searchpos)
 	// Load, parse, and type-check the packages named on the command line.
 	if src != nil {
-		cfg.Overlay = map[string][]byte{
-			filename: src,
+		if cfg.Overlay == nil {
+			cfg.Overlay = make(map[string][]byte)
 		}
+		cfg.Overlay[filename] = src
 	}
 	cfg.Mode = packages.LoadSyntax
 	cfg.ParseFile = parser
