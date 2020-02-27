@@ -3,7 +3,9 @@ language: go
 matrix:
   include:
     - os: linux
-      go: "1.11.x"
+      go:
+              - "1.13.x"
+              - "1.14.x"
 
 env:
   global:
