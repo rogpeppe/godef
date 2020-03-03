@@ -3,7 +3,9 @@ language: go
 matrix:
   include:
     - os: linux
-      go: "1.11.x"
+      go:
+              - "1.13.x"
+              - "1.14"
 
 env:
   global:
@@ -34,4 +36,4 @@ script:
     # https://github.com/golang/go/issues/27868#issuecomment-431413621
   - go list all > /dev/null
 
-  - test -z "$(git status --porcelain)" || (git status; git diff; false)
+  - test -z "$(git status --porcelain)" || (git status; git diff; git show; false)
