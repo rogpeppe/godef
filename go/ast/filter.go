@@ -471,5 +471,5 @@ func MergePackageFiles(pkg *Package, mode MergeMode) *File {
 
 	// TODO(gri) need to compute pkgScope and unresolved identifiers!
 	// TODO(gri) need to compute imports!
-	return &File{doc, pos, NewIdent(pkg.Name), decls, nil, nil, nil, comments}
+	return &File{doc, pos, NewIdent(pkg.Name), decls, nil, nil, nil, comments, nil}
 }

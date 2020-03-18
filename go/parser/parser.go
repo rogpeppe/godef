@@ -67,6 +67,8 @@ type parser struct {
 	// (maintained by open/close LabelScope)
 	labelScope  *ast.Scope     // label scope for current function
 	targetStack [][]*ast.Ident // stack of unresolved labels
+
+	dotImports []*ast.ImportSpec
 }
 
 // scannerMode returns the scanner mode bits given the parser's mode bits.
@@ -86,6 +88,7 @@ func (p *parser) init(fset *token.FileSet, filename string, src []byte, mode uin
 	if p.pathToName == nil {
 		p.pathToName = naiveImportPathToName
 	}
+	p.dotImports = make([]*ast.ImportSpec, 0)
 
 	p.mode = mode
 	p.trace = mode&Trace != 0 // for convenience (p.trace is used frequently)
@@ -1982,6 +1985,8 @@ func parseImportSpec(p *parser, doc *ast.CommentGroup, decl *ast.GenDecl, _ int)
 	spec := &ast.ImportSpec{doc, ident, path, p.lineComment}
 	if declIdent != nil && declIdent.Name != "." {
 		p.declare(spec, p.topScope, ast.Pkg, declIdent)
+	} else {
+		p.dotImports = append(p.dotImports, spec)
 	}
 	return spec
 }
@@ -2256,5 +2261,5 @@ func (p *parser) parseFile() *ast.File {
 		panic("internal error: imbalanced scopes")
 	}
 
-	return &ast.File{doc, pos, ident, decls, p.fileScope, nil, nil, p.comments}
+	return &ast.File{doc, pos, ident, decls, p.fileScope, nil, nil, p.comments, p.dotImports}
 }
