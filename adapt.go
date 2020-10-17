@@ -117,14 +117,14 @@ func adaptGodef(cfg *packages.Config, filename string, src []byte, searchpos int
 		}
 		return adaptGoObject(fset, obj)
 	}
-	obj, typ, err := godef(filename, src, searchpos)
+	f, obj, typ, err := godef(filename, src, searchpos)
 	if err != nil {
 		return nil, err
 	}
-	return adaptRPObject(obj, typ)
+	return adaptRPObject(f, obj, typ)
 }
 
-func adaptRPObject(obj *rpast.Object, typ rptypes.Type) (*Object, error) {
+func adaptRPObject(f *rpast.File, obj *rpast.Object, typ rptypes.Type) (*Object, error) {
 	pos := rptypes.FileSet.Position(rptypes.DeclPos(obj))
 	result := &Object{
 		Name: obj.Name,
@@ -141,6 +141,25 @@ func adaptRPObject(obj *rpast.Object, typ rptypes.Type) (*Object, error) {
 		result.Kind = BadKind
 	case rpast.Fun:
 		result.Kind = FuncKind
+
+		if *rflag {
+			switch decl := obj.Decl.(type) {
+			// Normal function/method
+			case *rpast.FuncDecl:
+				if decl.Recv != nil {
+					buf := strings.Builder{}
+					rpprinter.Fprint(&buf, rptypes.FileSet, decl.Recv.List[0].Type)
+					result.Recv = buf.String()
+				}
+
+			// Interface method
+			case *rpast.Field:
+				interfaceType := findInterface(f, decl)
+				if interfaceType != nil {
+					result.Recv = interfaceType.Name.Name
+				}
+			}
+		}
 	case rpast.Var:
 		result.Kind = VarKind
 	case rpast.Pkg:
@@ -165,7 +184,7 @@ func adaptRPObject(obj *rpast.Object, typ rptypes.Type) (*Object, error) {
 		result.Type = typ.Underlying(false)
 	}
 	for child := range typ.Iter() {
-		m, err := adaptRPObject(child, rptypes.Type{})
+		m, err := adaptRPObject(f, child, rptypes.Type{})
 		if err != nil {
 			return nil, err
 		}
@@ -184,6 +203,15 @@ func adaptGoObject(fset *gotoken.FileSet, obj gotypes.Object) (*Object, error) {
 	switch obj := obj.(type) {
 	case *gotypes.Func:
 		result.Kind = FuncKind
+
+		if *rflag {
+			signature := obj.Type().(*gotypes.Signature)
+			if signature.Recv() != nil {
+				result.Recv = gotypes.TypeString(
+					signature.Recv().Type(),
+					func(*gotypes.Package) string { return "" })
+			}
+		}
 	case *gotypes.Var:
 		result.Kind = VarKind
 	case *gotypes.PkgName:

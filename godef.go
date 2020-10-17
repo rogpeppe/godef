@@ -33,6 +33,7 @@ var debug = flag.Bool("debug", false, "debug mode")
 var tflag = flag.Bool("t", false, "print type information")
 var aflag = flag.Bool("a", false, "print public type and member information")
 var Aflag = flag.Bool("A", false, "print all type and members information")
+var rflag = flag.Bool("r", false, "print method receivers")
 var fflag = flag.String("f", "", "Go source filename")
 var acmeFlag = flag.Bool("acme", false, "use current acme window")
 var jsonFlag = flag.Bool("json", false, "output location in JSON format (-t flag is ignored)")
@@ -147,11 +148,11 @@ func run(ctx context.Context) error {
 	return print(os.Stdout, obj)
 }
 
-func godef(filename string, src []byte, searchpos int) (*ast.Object, types.Type, error) {
+func godef(filename string, src []byte, searchpos int) (*ast.File, *ast.Object, types.Type, error) {
 	pkgScope := ast.NewScope(parser.Universe)
 	f, err := parser.ParseFile(types.FileSet, filename, src, 0, pkgScope, types.DefaultImportPathToName)
 	if f == nil {
-		return nil, types.Type{}, fmt.Errorf("cannot parse %s: %v", filename, err)
+		return nil, nil, types.Type{}, fmt.Errorf("cannot parse %s: %v", filename, err)
 	}
 
 	var o ast.Node
@@ -159,34 +160,34 @@ func godef(filename string, src []byte, searchpos int) (*ast.Object, types.Type,
 	case flag.NArg() > 0:
 		o, err = parseExpr(f.Scope, flag.Arg(0))
 		if err != nil {
-			return nil, types.Type{}, err
+			return nil, nil, types.Type{}, err
 		}
 
 	case searchpos >= 0:
 		o, err = findIdentifier(f, searchpos)
 		if err != nil {
-			return nil, types.Type{}, err
+			return nil, nil, types.Type{}, err
 		}
 
 	default:
-		return nil, types.Type{}, fmt.Errorf("no expression or offset specified")
+		return nil, nil, types.Type{}, fmt.Errorf("no expression or offset specified")
 	}
 	switch e := o.(type) {
 	case *ast.ImportSpec:
 		path, err := importPath(e)
 		if err != nil {
-			return nil, types.Type{}, err
+			return nil, nil, types.Type{}, err
 		}
 		pkg, err := build.Default.Import(path, filepath.Dir(filename), build.FindOnly)
 		if err != nil {
-			return nil, types.Type{}, fmt.Errorf("error finding import path for %s: %s", path, err)
+			return nil, nil, types.Type{}, fmt.Errorf("error finding import path for %s: %s", path, err)
 		}
-		return &ast.Object{Kind: ast.Pkg, Data: pkg.Dir}, types.Type{}, nil
+		return f, &ast.Object{Kind: ast.Pkg, Data: pkg.Dir}, types.Type{}, nil
 	case ast.Expr:
 		if !*tflag {
 			// try local declarations only
 			if obj, typ := types.ExprType(e, types.DefaultImporter, types.FileSet); obj != nil {
-				return obj, typ, nil
+				return f, obj, typ, nil
 			}
 		}
 		// add declarations from other files in the local package and try again
@@ -199,15 +200,15 @@ func godef(filename string, src []byte, searchpos int) (*ast.Object, types.Type,
 			// resolved the original expression.
 			e, err = parseExpr(f.Scope, flag.Arg(0))
 			if err != nil {
-				return nil, types.Type{}, err
+				return nil, nil, types.Type{}, err
 			}
 		}
 		if obj, typ := types.ExprType(e, types.DefaultImporter, types.FileSet); obj != nil {
-			return obj, typ, nil
+			return f, obj, typ, nil
 		}
-		return nil, types.Type{}, fmt.Errorf("no declaration found for %v", pretty{e})
+		return nil, nil, types.Type{}, fmt.Errorf("no declaration found for %v", pretty{e})
 	}
-	return nil, types.Type{}, nil
+	return nil, nil, types.Type{}, nil
 }
 
 func importPath(n *ast.ImportSpec) (string, error) {
@@ -294,6 +295,28 @@ func findIdentifier(f *ast.File, searchpos int) (ast.Node, error) {
 	return ev.node, nil
 }
 
+// findInterface finds the interface type spec for a given method
+// in an interface
+func findInterface(f *ast.File, method *ast.Field) *ast.TypeSpec {
+	var result *ast.TypeSpec
+
+	ast.Inspect(f, func(node ast.Node) bool {
+		if node, ok := node.(*ast.TypeSpec); ok {
+			if typ, ok := node.Type.(*ast.InterfaceType); ok {
+				for _, m := range typ.Methods.List {
+					if m == method {
+						result = node
+					}
+				}
+			}
+		}
+
+		return result == nil
+	})
+
+	return result
+}
+
 type Position struct {
 	Filename string `json:"filename,omitempty"`
 	Line     int    `json:"line,omitempty"`
@@ -321,6 +344,7 @@ type Object struct {
 	Members  []*Object
 	Type     interface{}
 	Value    interface{}
+	Recv     string
 }
 
 type orderedObjects []*Object
@@ -376,6 +400,9 @@ func typeStr(obj *Object) string {
 		fmt.Fprint(buf, " ")
 	}
 	fmt.Fprint(buf, obj.Name)
+	if *rflag && len(obj.Recv) != 0 {
+		fmt.Fprintf(buf, " (%s)", obj.Recv)
+	}
 	if obj.Type != nil {
 		fmt.Fprintf(buf, " %v", pretty{obj.Type})
 	}
