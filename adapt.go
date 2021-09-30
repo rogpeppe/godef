@@ -94,7 +94,8 @@ func detectModuleMode(cfg *packages.Config) bool {
 	cmd.Dir = cfg.Dir
 	out, err := cmd.Output()
 	if err == nil {
-		return len(strings.TrimSpace(string(out))) > 0
+		outstr := strings.TrimSpace(string(out))
+		return len(outstr) > 0 && outstr != os.DevNull
 	}
 	// default to non module mode
 	return false
