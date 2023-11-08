@@ -10,7 +10,7 @@ import (
 	"bytes"
 	"fmt"
 
-	"github.com/rogpeppe/godef/go/token"
+	"github.com/gregorynisbet-google/godef/go/token"
 )
 
 // A Scope maintains the set of named language entities declared

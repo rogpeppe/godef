@@ -11,7 +11,7 @@ env:
   global:
     - GO111MODULE=on
 
-go_import_path: github.com/rogpeppe/godef
+go_import_path: github.com/gregorynisbet-google/godef
 
 # Add this before_install until we have a definitive resolution on
 # https://travis-ci.community/t/files-in-checkout-have-eol-changed-from-lf-to-crlf/349/2

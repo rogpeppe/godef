@@ -1,8 +1,8 @@
 package print
 
 import (
-	"github.com/rogpeppe/godef/a" //@mark(PrintImportDir, "rogpeppe")
-	"github.com/rogpeppe/godef/b"
+	"github.com/gregorynisbet-google/godef/a" //@mark(PrintImportDir, "gregorynisbet-google")
+	"github.com/gregorynisbet-google/godef/b"
 )
 
 type localStruct struct {
@@ -30,7 +30,7 @@ start:
 		){"filename":".*godef.print.print\.go","line":\d+,"column":\d+}\n$`)
 	godefPrint(PrintA, "type", re`^(|
 		).*godef.print.print\.go:\d+:\d+(\n|
-		)import \(a "github\.com/rogpeppe/godef/a"\)\n$`)
+		)import \(a "github\.com/gregorynisbet-google/godef/a"\)\n$`)
 
 	godefPrint(PrintStuff, "json", re`^(|
 		){"filename":".*godef.a.a\.go","line":\d+,"column":\d+}\n$`)

@@ -14,9 +14,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/scanner"
-	"github.com/rogpeppe/godef/go/token"
+	"github.com/gregorynisbet-google/godef/go/ast"
+	"github.com/gregorynisbet-google/godef/go/scanner"
+	"github.com/gregorynisbet-google/godef/go/token"
 )
 
 // ImportPathToName is the type of the function that's used

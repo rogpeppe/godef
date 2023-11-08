@@ -15,9 +15,9 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/rogpeppe/godef/go/ast"
-	"github.com/rogpeppe/godef/go/scanner"
-	"github.com/rogpeppe/godef/go/token"
+	"github.com/gregorynisbet-google/godef/go/ast"
+	"github.com/gregorynisbet-google/godef/go/scanner"
+	"github.com/gregorynisbet-google/godef/go/token"
 )
 
 // The mode parameter to the Parse* functions is a set of flags (or 0).

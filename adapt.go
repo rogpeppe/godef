@@ -17,9 +17,9 @@ import (
 	"strconv"
 	"strings"
 
-	rpast "github.com/rogpeppe/godef/go/ast"
-	rpprinter "github.com/rogpeppe/godef/go/printer"
-	rptypes "github.com/rogpeppe/godef/go/types"
+	rpast "github.com/gregorynisbet-google/godef/go/ast"
+	rpprinter "github.com/gregorynisbet-google/godef/go/printer"
+	rptypes "github.com/gregorynisbet-google/godef/go/types"
 	gotoken "go/token"
 	gotypes "go/types"
 	"golang.org/x/tools/go/packages"

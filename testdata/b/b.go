@@ -1,6 +1,6 @@
 package b
 
-import "github.com/rogpeppe/godef/a"
+import "github.com/gregorynisbet-google/godef/a"
 
 type S1 struct { //@S1
 	F1 int //@mark(S1F1, "F1")

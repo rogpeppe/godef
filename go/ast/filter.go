@@ -4,7 +4,7 @@
 
 package ast
 
-import "github.com/rogpeppe/godef/go/token"
+import "github.com/gregorynisbet-google/godef/go/token"
 
 // ----------------------------------------------------------------------------
 // Export filtering
