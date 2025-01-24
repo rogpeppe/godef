@@ -28,7 +28,7 @@ import (
 var forcePackages triBool
 
 func init() {
-	flag.Var(&forcePackages, "new-implementation", "force godef to use the new go/packages implentation")
+	flag.Var(&forcePackages, "new-implementation", "force godef to use the new go/packages implementation")
 }
 
 // triBool is used as a unset, on or off valued flag
