@@ -61,7 +61,7 @@ func (e *Error) Error() string {
 // An ErrorList is a (possibly sorted) list of Errors.
 type ErrorList []*Error
 
-// ErrorList implements the sort Interface.
+// implements the sort Interface.
 func (p ErrorList) Len() int      { return len(p) }
 func (p ErrorList) Swap(i, j int) { p[i], p[j] = p[j], p[i] }
 
@@ -148,7 +148,7 @@ func (h *ErrorVector) GetError(mode int) error {
 	return h.GetErrorList(mode)
 }
 
-// ErrorVector implements the ErrorHandler interface.
+// Error implements the ErrorHandler interface.
 func (h *ErrorVector) Error(pos token.Position, msg string) {
 	h.errors = append(h.errors, &Error{pos, msg})
 }
