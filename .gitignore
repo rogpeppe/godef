@@ -1,1 +1,4 @@
-godef
+*.exe
+*.test
+/godef
+/godef.test
