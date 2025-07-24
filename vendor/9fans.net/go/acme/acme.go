@@ -10,8 +10,12 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"io"
 	"io/ioutil"
 	"log"
+	"os"
+	"path"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -46,13 +50,19 @@ type Win struct {
 
 var windowsMu sync.Mutex
 var windows, last *Win
+var autoExit bool
 
 var fsys *client.Fsys
 var fsysErr error
 var fsysOnce sync.Once
 
-func mountAcme() {
-	fsys, fsysErr = client.MountService("acme")
+// AutoExit sets whether to call os.Exit the next time the last managed acme window is deleted.
+// If there are no acme windows at the time of the call, the exit does not happen until one
+// is created and then deleted.
+func AutoExit(exit bool) {
+	windowsMu.Lock()
+	defer windowsMu.Unlock()
+	autoExit = exit
 }
 
 // New creates a new window.
@@ -85,8 +95,34 @@ func New() (*Win, error) {
 }
 
 type WinInfo struct {
-	ID   int
+	ID int
+	// TagLen holds the length of the tag in runes.
+	TagLen int
+	// TagLen holds the length of the body in runes.
+	BodyLen    int
+	IsDir      bool
+	IsModified bool
+	// Name and Tag are only populated when the
+	// WinInfo has been obtained by calling the Windows
+	// function, as they're not available by reading the ctl file.
+
+	// Name holds the filename of the window.
 	Name string
+
+	// Tag holds the rest of the tag after the filename.
+	Tag string
+
+	// The Size and History fields can only be non-nil
+	// when WinInfo has been obtained by calling
+	// the Win.Info method, because that information
+	// isn't available as part of the index file.
+	Size *WinSizeInfo
+}
+
+type WinSizeInfo struct {
+	Width    int
+	Font     string
+	TabWidth int
 }
 
 // A LogReader provides read access to the acme log file.
@@ -151,18 +187,38 @@ func Windows() ([]WinInfo, error) {
 	if err != nil {
 		return nil, err
 	}
-	var info []WinInfo
+	var infos []WinInfo
 	for _, line := range strings.Split(string(data), "\n") {
-		f := strings.Fields(line)
-		if len(f) < 6 {
+		if len(line) == 0 {
 			continue
 		}
-		n, _ := strconv.Atoi(f[0])
-		info = append(info, WinInfo{n, f[5]})
+		var info WinInfo
+		tag, err := splitFields(line,
+			&info.ID,
+			&info.TagLen,
+			&info.BodyLen,
+			&info.IsDir,
+			&info.IsModified,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("invalid index line %q: %v", line, err)
+		}
+		i := strings.Index(tag, " Del Snarf ")
+		if i == -1 {
+			return nil, fmt.Errorf("cannot determine filename in tag %q", tag)
+		}
+		info.Name = tag[:i]
+		info.Tag = tag[i:]
+		infos = append(infos, info)
 	}
-	return info, nil
+	return infos, nil
 }
 
+// Show looks and causes acme to show the window with the given name,
+// returning that window.
+// If this process has not created a window with the given name
+// (or if any such window has since been deleted),
+// Show returns nil.
 func Show(name string) *Win {
 	windowsMu.Lock()
 	defer windowsMu.Unlock()
@@ -306,10 +362,10 @@ func (w *Win) fid(name string) (*client.Fid, error) {
 // ReadAll
 func (w *Win) ReadAll(file string) ([]byte, error) {
 	f, err := w.fid(file)
-	f.Seek(0, 0)
 	if err != nil {
 		return nil, err
 	}
+	f.Seek(0, 0)
 	return ioutil.ReadAll(f)
 }
 
@@ -352,7 +408,7 @@ func (w *Win) ReadAddr() (q0, q1 int, err error) {
 	}
 	buf := make([]byte, 40)
 	n, err := f.ReadAt(buf, 0)
-	if err != nil {
+	if err != nil && err != io.EOF {
 		return 0, 0, err
 	}
 	a := strings.Fields(string(buf[0:n]))
@@ -365,6 +421,35 @@ func (w *Win) ReadAddr() (q0, q1 int, err error) {
 		return 0, 0, errors.New("invalid read from acme addr")
 	}
 	return q0, q1, nil
+}
+
+func (w *Win) Info() (WinInfo, error) {
+	f, err := w.fid("ctl")
+	if err != nil {
+		return WinInfo{}, err
+	}
+	buf := make([]byte, 8192)
+	n, err := f.ReadAt(buf, 0)
+	if err != nil && err != io.EOF {
+		return WinInfo{}, err
+	}
+	line := string(buf[:n])
+	info := WinInfo{
+		Size: new(WinSizeInfo),
+	}
+	if _, err := splitFields(line,
+		&info.ID,
+		&info.TagLen,
+		&info.BodyLen,
+		&info.IsDir,
+		&info.IsModified,
+		&info.Size.Width,
+		&info.Size.Font,
+		&info.Size.TabWidth,
+	); err != nil {
+		return WinInfo{}, fmt.Errorf("invalid ctl contents %q: %v", line, err)
+	}
+	return info, nil
 }
 
 func (w *Win) Seek(file string, offset int64, whence int) (int64, error) {
@@ -518,7 +603,7 @@ func (w *Win) geten() int {
 // indicating to acme that the event should be handled internally.
 func (w *Win) WriteEvent(e *Event) error {
 	var buf bytes.Buffer
-	fmt.Fprintf(&buf, "%c%c%d %d \n", e.C1, e.C2, e.Q0, e.Q1)
+	fmt.Fprintf(&buf, "%c%c%d %d \n", e.C1, e.C2, e.OrigQ0, e.OrigQ1)
 	_, err := w.Write("event", buf.Bytes())
 	return err
 }
@@ -545,6 +630,7 @@ func (w *Win) eventReader() {
 		}
 		w.c <- e
 	}
+	w.c <- new(Event) // make sure event reader is done processing last event; drop might exit
 	w.drop()
 	close(w.c)
 }
@@ -571,6 +657,9 @@ func (w *Win) dropLocked() {
 	}
 	w.prev = nil
 	w.next = nil
+	if autoExit && windows == nil {
+		os.Exit(0)
+	}
 }
 
 var fontCache struct {
@@ -625,7 +714,7 @@ func (w *Win) Font() (tab int, font *draw.Font, err error) {
 }
 
 // Blink starts the window tag blinking and returns a function that stops it.
-// When stop returns, the blinking is over.
+// When stop returns, the blinking is over and the window state is clean.
 func (w *Win) Blink() (stop func()) {
 	c := make(chan struct{})
 	go func() {
@@ -642,9 +731,7 @@ func (w *Win) Blink() (stop func()) {
 					w.Ctl("clean")
 				}
 			case <-c:
-				if dirty {
-					w.Ctl("clean")
-				}
+				w.Ctl("clean")
 				c <- struct{}{}
 				return
 			}
@@ -778,7 +865,7 @@ func (w *Win) EventLoop(h EventHandler) {
 		switch e.C2 {
 		case 'x', 'X': // execute
 			cmd := strings.TrimSpace(string(e.Text))
-			if !h.Execute(cmd) {
+			if !w.execute(h, cmd) {
 				w.WriteEvent(e)
 			}
 		case 'l', 'L': // look
@@ -789,6 +876,70 @@ func (w *Win) EventLoop(h EventHandler) {
 			}
 		}
 	}
+}
+
+func (w *Win) execute(h EventHandler, cmd string) bool {
+	verb, arg := cmd, ""
+	if i := strings.IndexAny(verb, " \t"); i >= 0 {
+		verb, arg = verb[:i], strings.TrimSpace(verb[i+1:])
+	}
+
+	// Look for specific method.
+	m := reflect.ValueOf(h).MethodByName("Exec" + verb)
+	if !m.IsValid() {
+		// Fall back to general Execute.
+		return h.Execute(cmd)
+	}
+
+	// Found method.
+	// Committed to handling the event.
+	// All returns below should be return true.
+
+	// Check method signature.
+	t := m.Type()
+	switch t.NumOut() {
+	default:
+		w.Errf("bad method %s: too many results", cmd)
+		return true
+	case 0:
+		// ok
+	case 1:
+		if t.Out(0) != reflect.TypeOf((*error)(nil)).Elem() {
+			w.Errf("bad method %s: return type %v, not error", cmd, t.Out(0))
+			return true
+		}
+	}
+	varg := reflect.ValueOf(arg)
+	switch t.NumIn() {
+	default:
+		w.Errf("bad method %s: too many arguments", cmd)
+		return true
+	case 0:
+		if arg != "" {
+			w.Errf("%s takes no arguments", cmd)
+			return true
+		}
+	case 1:
+		if t.In(0) != varg.Type() {
+			w.Errf("bad method %s: argument type %v, not string", cmd, t.In(0))
+			return true
+		}
+	}
+
+	args := []reflect.Value{}
+	if t.NumIn() > 0 {
+		args = append(args, varg)
+	}
+	out := m.Call(args)
+	var err error
+	if len(out) == 1 {
+		err, _ = out[0].Interface().(error)
+	}
+	if err != nil {
+		w.Errf("%v", err)
+	}
+
+	return true
 }
 
 func (w *Win) Selection() string {
@@ -804,11 +955,29 @@ func (w *Win) SetErrorPrefix(p string) {
 	w.errorPrefix = p
 }
 
-func (w *Win) Err(s string) {
-	if !strings.HasSuffix(s, "\n") {
-		s = s + "\n"
+// Err finds or creates a window appropriate for showing errors related to w
+// and then prints msg to that window.
+// It adds a final newline to msg if needed.
+func (w *Win) Err(msg string) {
+	Err(w.errorPrefix, msg)
+}
+
+func (w *Win) Errf(format string, args ...interface{}) {
+	w.Err(fmt.Sprintf(format, args...))
+}
+
+// Err finds or creates a window appropriate for showing errors related to a window titled src
+// and then prints msg to that window. It adds a final newline to msg if needed.
+func Err(src, msg string) {
+	if !strings.HasSuffix(msg, "\n") {
+		msg = msg + "\n"
 	}
-	w1 := Show(w.errorPrefix + "+Errors")
+	prefix, _ := path.Split(src)
+	if prefix == "/" || prefix == "." {
+		prefix = ""
+	}
+	name := prefix + "+Errors"
+	w1 := Show(name)
 	if w1 == nil {
 		var err error
 		w1, err = New()
@@ -819,10 +988,63 @@ func (w *Win) Err(s string) {
 				log.Fatalf("cannot create +Errors window")
 			}
 		}
-		w1.Name("%s", w.errorPrefix+"+Errors")
+		w1.Name("%s", name)
 	}
-	w1.Fprintf("body", "%s", s)
 	w1.Addr("$")
 	w1.Ctl("dot=addr")
+	w1.Fprintf("body", "%s", msg)
+	w1.Addr(".,")
+	w1.Ctl("dot=addr")
 	w1.Ctl("show")
+}
+
+// Errf is like Err but accepts a printf-style formatting.
+func Errf(src, format string, args ...interface{}) {
+	Err(src, fmt.Sprintf(format, args...))
+}
+
+// splitFields parses the line into fields.
+// Each element of fields must be one of *int, *string or *bool
+// which are set to the respective field value.
+// Boolean and numeric fields are expected to numbers formatted
+// in 11 characters followed by a space.
+// String fields are expected to be space terminated.
+//
+// It returns the rest of line after all the fields have been parsed.
+func splitFields(line string, fields ...interface{}) (string, error) {
+	n := 0
+	for len(fields) > 0 {
+		switch f := fields[0].(type) {
+		case *int, *bool:
+			if len(line) < 12 {
+				return "", fmt.Errorf("field %d is too short", n)
+			}
+			if line[11] != ' ' {
+				return "", fmt.Errorf("field %d doesn't terminate in a space", n)
+			}
+			fn, err := strconv.Atoi(strings.TrimSpace(line[:11]))
+			if err != nil {
+				return "", fmt.Errorf("field %d is invalid: %v", n, err)
+			}
+			switch f := f.(type) {
+			case *int:
+				*f = fn
+			case *bool:
+				if fn != 0 && fn != 1 {
+					return "", fmt.Errorf("field %d should be either 0 or 1", n)
+				}
+				*f = fn != 0
+			}
+			line = line[12:]
+		case *string:
+			i := strings.IndexByte(line, ' ')
+			if i == -1 {
+				return "", fmt.Errorf("no space found at end of string field %d", n)
+			}
+			*f = line[:i]
+			line = line[i+1:]
+		}
+		fields = fields[1:]
+	}
+	return line, nil
 }

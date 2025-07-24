@@ -21,7 +21,7 @@ import (
 const commentStart = "@"
 const commentStartLen = len(commentStart)
 
-// Identifier is the type for an identifier in an Note argument list.
+// Identifier is the type for an identifier in a Note argument list.
 type Identifier string
 
 // Parse collects all the notes present in a file.
@@ -32,7 +32,7 @@ type Identifier string
 // See the package documentation for details about the syntax of those
 // notes.
 func Parse(fset *token.FileSet, filename string, content []byte) ([]*Note, error) {
-	var src interface{}
+	var src any
 	if content != nil {
 		src = content
 	}
@@ -42,7 +42,7 @@ func Parse(fset *token.FileSet, filename string, content []byte) ([]*Note, error
 		// there are ways you can break the parser such that it will not add all the
 		// comments to the ast, which may result in files where the tests are silently
 		// not run.
-		file, err := parser.ParseFile(fset, filename, src, parser.ParseComments)
+		file, err := parser.ParseFile(fset, filename, src, parser.ParseComments|parser.AllErrors|parser.SkipObjectResolution)
 		if file == nil {
 			return nil, err
 		}
@@ -54,7 +54,7 @@ func Parse(fset *token.FileSet, filename string, content []byte) ([]*Note, error
 		}
 		f := fset.AddFile(filename, -1, len(content))
 		f.SetLinesForContent(content)
-		notes, err := extractMod(fset, file)
+		notes, err := extractModWork(fset, file.Syntax.Stmt)
 		if err != nil {
 			return nil, err
 		}
@@ -64,39 +64,45 @@ func Parse(fset *token.FileSet, filename string, content []byte) ([]*Note, error
 			note.Pos += token.Pos(f.Base())
 		}
 		return notes, nil
+	case ".work":
+		file, err := modfile.ParseWork(filename, content, nil)
+		if err != nil {
+			return nil, err
+		}
+		f := fset.AddFile(filename, -1, len(content))
+		f.SetLinesForContent(content)
+		notes, err := extractModWork(fset, file.Syntax.Stmt)
+		if err != nil {
+			return nil, err
+		}
+		// As with go.mod files, we need to compute a synthetic token.Pos.
+		for _, note := range notes {
+			note.Pos += token.Pos(f.Base())
+		}
+		return notes, nil
 	}
 	return nil, nil
 }
 
-// extractMod collects all the notes present in a go.mod file.
+// extractModWork collects all the notes present in a go.mod file or go.work
+// file, by way of the shared modfile.Expr statement node.
+//
 // Each comment whose text starts with @ is parsed as a comma-separated
 // sequence of notes.
 // See the package documentation for details about the syntax of those
 // notes.
 // Only allow notes to appear with the following format: "//@mark()" or // @mark()
-func extractMod(fset *token.FileSet, file *modfile.File) ([]*Note, error) {
+func extractModWork(fset *token.FileSet, exprs []modfile.Expr) ([]*Note, error) {
 	var notes []*Note
-	for _, stmt := range file.Syntax.Stmt {
+	for _, stmt := range exprs {
 		comment := stmt.Comment()
 		if comment == nil {
 			continue
 		}
-		// Handle the case for markers of `// indirect` to be on the line before
-		// the require statement.
-		// TODO(golang/go#36894): have a more intuitive approach for // indirect
-		for _, cmt := range comment.Before {
-			text, adjust := getAdjustedNote(cmt.Token)
-			if text == "" {
-				continue
-			}
-			parsed, err := parse(fset, token.Pos(int(cmt.Start.Byte)+adjust), text)
-			if err != nil {
-				return nil, err
-			}
-			notes = append(notes, parsed...)
-		}
-		// Handle the normal case for markers on the same line.
-		for _, cmt := range comment.Suffix {
+		var allComments []modfile.Comment
+		allComments = append(allComments, comment.Before...)
+		allComments = append(allComments, comment.Suffix...)
+		for _, cmt := range allComments {
 			text, adjust := getAdjustedNote(cmt.Token)
 			if text == "" {
 				continue
@@ -214,7 +220,7 @@ func (t *tokens) Pos() token.Pos {
 	return t.base + token.Pos(t.scanner.Position.Offset)
 }
 
-func (t *tokens) Errorf(msg string, args ...interface{}) {
+func (t *tokens) Errorf(msg string, args ...any) {
 	if t.err != nil {
 		return
 	}
@@ -274,9 +280,9 @@ func parseNote(t *tokens) *Note {
 	}
 }
 
-func parseArgumentList(t *tokens) []interface{} {
-	args := []interface{}{} // @name() is represented by a non-nil empty slice.
-	t.Consume()             // '('
+func parseArgumentList(t *tokens) []any {
+	args := []any{} // @name() is represented by a non-nil empty slice.
+	t.Consume()     // '('
 	t.Skip('\n')
 	for t.Token() != ')' {
 		args = append(args, parseArgument(t))
@@ -294,7 +300,7 @@ func parseArgumentList(t *tokens) []interface{} {
 	return args
 }
 
-func parseArgument(t *tokens) interface{} {
+func parseArgument(t *tokens) any {
 	switch t.Token() {
 	case scanner.Ident:
 		v := t.Consume()

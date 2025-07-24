@@ -1,9 +1,7 @@
 package draw
 
-import "image"
-
 // ReplClipr sets the replication boolean and clip rectangle for the specified image.
-func (dst *Image) ReplClipr(repl bool, clipr image.Rectangle) {
+func (dst *Image) ReplClipr(repl bool, clipr Rectangle) {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
 	b := dst.Display.bufimage(22)

@@ -2,7 +2,6 @@ package draw
 
 import (
 	"fmt"
-	"image"
 	"log"
 	"os"
 
@@ -11,18 +10,26 @@ import (
 
 // Mouse is the structure describing the current state of the mouse.
 type Mouse struct {
-	image.Point        // Location.
-	Buttons     int    // Buttons; bit 0 is button 1, bit 1 is button 2, etc.
-	Msec        uint32 // Time stamp in milliseconds.
+	Point          // Location.
+	Buttons int    // Buttons; bit 0 is button 1, bit 1 is button 2, etc.
+	Msec    uint32 // Time stamp in milliseconds.
 }
 
-// TODO: Mouse field is racy but okay.
-
 // Mousectl holds the interface to receive mouse events.
-// The Mousectl's Mouse is updated after send so it doesn't
-// have the wrong value if the sending goroutine blocks during send.
-// This means that programs should receive into Mousectl.Mouse
-//  if they want full synchrony.
+//
+// This Go library differs from the Plan 9 C library in its updating
+// of Mouse. Updating the Mouse field is the duty of every
+// receiver from C. The Read method does the update, but any use
+// of C in a select needs to update the field as well, as in:
+//
+//	case mc.Mouse <- mc.C:
+//
+// In the Plan 9 C library, the sender does the write after the send,
+// but that write could not be relied upon due to scheduling delays,
+// so receivers conventionally also did the write, as above.
+// This write-write race, while harmless, impedes using the race detector
+// to find more serious races, and it is easily avoided:
+// the receiver is now in charge of updating Mouse.
 type Mousectl struct {
 	Mouse                // Store Mouse events here.
 	C       <-chan Mouse // Channel of Mouse events.
@@ -47,17 +54,14 @@ func mouseproc(mc *Mousectl, d *Display, ch chan Mouse, rch chan bool) {
 	for {
 		m, resized, err := d.conn.ReadMouse()
 		if err != nil {
-			log.Fatal(err)
+			log.Fatal("readmouse: ", err)
 		}
 		if resized {
 			rch <- true
 		}
-		mm := Mouse{image.Point{m.X, m.Y}, m.Buttons, uint32(m.Msec)}
+		mm := Mouse{Point{m.X, m.Y}, m.Buttons, uint32(m.Msec)}
 		ch <- mm
-		/*
-		 * See comment above.
-		 */
-		mc.Mouse = mm
+		// No "mc.Mouse = mm" here! See Mousectl doc comment.
 	}
 }
 
@@ -69,8 +73,8 @@ func (mc *Mousectl) Read() Mouse {
 	return m
 }
 
-// MoveTo moves the mouse cursor to the specified location.
-func (d *Display) MoveTo(pt image.Point) error {
+// MoveCursor moves the mouse cursor to the specified location.
+func (d *Display) MoveCursor(pt Point) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	err := d.conn.MoveTo(pt)
@@ -81,12 +85,26 @@ func (d *Display) MoveTo(pt image.Point) error {
 	return nil
 }
 
-// SetCursor sets the mouse cursor to the specified cursor image.
-// SetCursor(nil) changes the cursor to the standard system cursor.
-func (d *Display) SetCursor(c *Cursor) error {
+// SwitchCursor sets the mouse cursor to the specified cursor image.
+// SwitchCursor(nil) changes the cursor to the standard system cursor.
+func (d *Display) SwitchCursor(c *Cursor) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	err := d.conn.Cursor((*drawfcall.Cursor)(c))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "SetCursor: %v\n", err)
+		return err
+	}
+	return nil
+}
+
+// SwitchCursor2 sets the mouse cursor to the specified cursor images.
+// SwitchCursor2(nil, nil) changes the cursor to the standard system cursor.
+// If c2 is omitted, a scaled version of c is used instead.
+func (d *Display) SwitchCursor2(c *Cursor, c2 *Cursor2) error {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	err := d.conn.Cursor2((*drawfcall.Cursor)(c), (*drawfcall.Cursor2)(c2))
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "SetCursor: %v\n", err)
 		return err

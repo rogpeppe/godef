@@ -1,117 +1,102 @@
 package draw
 
-import (
-	"image"
-)
-
 // String draws the string in the specified font, placing the upper left corner at p.
-// It draws the text using src, with sp aligned to pt, using operation SoverD onto dst.
-func (dst *Image) String(pt image.Point, src *Image, sp image.Point, f *Font, s string) image.Point {
+// It draws the text using src, with sp aligned to p, using operation SoverD onto dst.
+// String returns a Point that is the position of the next character that would be drawn
+// if the string were longer.
+//
+// For characters with undefined or zero-width images in the font,
+// the character at font position 0 (NUL) is drawn instead.
+func (dst *Image) String(p Point, src *Image, sp Point, f *Font, s string) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, s, nil, nil, dst.Clipr, nil, image.ZP, SoverD)
+	return _string(dst, p, src, sp, f, s, nil, nil, dst.Clipr, nil, ZP, SoverD)
 }
 
-// StringOp draws the string in the specified font, placing the upper left corner at p.
-// It draws the text using src, with sp aligned to pt, using the specified operation onto dst.
-func (dst *Image) StringOp(pt image.Point, src *Image, sp image.Point, f *Font, s string, op Op) image.Point {
+// StringOp is like String but specifies an explicit Porter-Duff operator.
+func (dst *Image) StringOp(p Point, src *Image, sp Point, f *Font, s string, op Op) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, s, nil, nil, dst.Clipr, nil, image.ZP, op)
+	return _string(dst, p, src, sp, f, s, nil, nil, dst.Clipr, nil, ZP, op)
 }
 
-// StringBg draws the string in the specified font, placing the upper left corner at p.
-// It first draws the background bg, with bgp aligned to pt, using operation SoverD onto dst.
-// It then draws the text using src, with sp aligned to pt, using operation SoverD onto dst.
-func (dst *Image) StringBg(pt image.Point, src *Image, sp image.Point, f *Font, s string, bg *Image, bgp image.Point) image.Point {
+// StringBg is like String but draws the background bg behind the characters,
+// with bgp aligned to p, before drawing the text.
+func (dst *Image) StringBg(p Point, src *Image, sp Point, f *Font, s string, bg *Image, bgp Point) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, s, nil, nil, dst.Clipr, bg, bgp, SoverD)
+	return _string(dst, p, src, sp, f, s, nil, nil, dst.Clipr, bg, bgp, SoverD)
 }
 
-// StringBgOp draws the string in the specified font, placing the upper left corner at p.
-// It first draws the background bg, with bgp aligned to pt, using operation SoverD onto dst.
-// It then draws the text using src, with sp aligned to pt, using operation SoverD onto dst.
-func (dst *Image) StringBgOp(pt image.Point, src *Image, sp image.Point, f *Font, s string, bg *Image, bgp image.Point, op Op) image.Point {
+// StringBgOp is like StringBg but specifies an explicit Porter-Duff operator.
+func (dst *Image) StringBgOp(p Point, src *Image, sp Point, f *Font, s string, bg *Image, bgp Point, op Op) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, s, nil, nil, dst.Clipr, bg, bgp, op)
+	return _string(dst, p, src, sp, f, s, nil, nil, dst.Clipr, bg, bgp, op)
 }
 
-// Runes draws the rune slice in the specified font, placing the upper left corner at p.
-// It draws the text using src, with sp aligned to pt, using operation SoverD onto dst.
-func (dst *Image) Runes(pt image.Point, src *Image, sp image.Point, f *Font, r []rune) image.Point {
+// Runes is like String but accepts a rune slice instead of a string.
+func (dst *Image) Runes(p Point, src *Image, sp Point, f *Font, r []rune) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, "", nil, r, dst.Clipr, nil, image.ZP, SoverD)
+	return _string(dst, p, src, sp, f, "", nil, r, dst.Clipr, nil, ZP, SoverD)
 }
 
-// RunesOp draws the rune slice in the specified font, placing the upper left corner at p.
-// It draws the text using src, with sp aligned to pt, using the specified operation onto dst.
-func (dst *Image) RunesOp(pt image.Point, src *Image, sp image.Point, f *Font, r []rune, op Op) image.Point {
+// RunesOp is like StringOp but accepts a rune slice instead of a string.
+func (dst *Image) RunesOp(p Point, src *Image, sp Point, f *Font, r []rune, op Op) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, "", nil, r, dst.Clipr, nil, image.ZP, op)
+	return _string(dst, p, src, sp, f, "", nil, r, dst.Clipr, nil, ZP, op)
 }
 
-// RunesBg draws the rune slice in the specified font, placing the upper left corner at p.
-// It first draws the background bg, with bgp aligned to pt, using operation SoverD onto dst.
-// It then draws the text using src, with sp aligned to pt, using operation SoverD onto dst.
-func (dst *Image) RunesBg(pt image.Point, src *Image, sp image.Point, f *Font, r []rune, bg *Image, bgp image.Point) image.Point {
+// RunesBg is like StringBg but accepts a rune slice instead of a string.
+func (dst *Image) RunesBg(p Point, src *Image, sp Point, f *Font, r []rune, bg *Image, bgp Point) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, "", nil, r, dst.Clipr, bg, bgp, SoverD)
+	return _string(dst, p, src, sp, f, "", nil, r, dst.Clipr, bg, bgp, SoverD)
 }
 
-// RunesBgOp draws the rune slice in the specified font, placing the upper left corner at p.
-// It first draws the background bg, with bgp aligned to pt, using operation SoverD onto dst.
-// It then draws the text using src, with sp aligned to pt, using operation SoverD onto dst.
-func (dst *Image) RunesBgOp(pt image.Point, src *Image, sp image.Point, f *Font, r []rune, bg *Image, bgp image.Point, op Op) image.Point {
+// RunesBgOp is like StringBgOp but accepts a rune slice instead of a string.
+func (dst *Image) RunesBgOp(p Point, src *Image, sp Point, f *Font, r []rune, bg *Image, bgp Point, op Op) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, "", nil, r, dst.Clipr, bg, bgp, op)
+	return _string(dst, p, src, sp, f, "", nil, r, dst.Clipr, bg, bgp, op)
 }
 
-// Bytes draws the byte slice in the specified font, placing the upper left corner at p.
-// It draws the text using src, with sp aligned to pt, using operation SoverD onto dst.
-func (dst *Image) Bytes(pt image.Point, src *Image, sp image.Point, f *Font, b []byte) image.Point {
+// Bytes is like String but accepts a UTF-8-encoded byte slice instead of a string.
+func (dst *Image) Bytes(p Point, src *Image, sp Point, f *Font, b []byte) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, "", b, nil, dst.Clipr, nil, image.ZP, SoverD)
+	return _string(dst, p, src, sp, f, "", b, nil, dst.Clipr, nil, ZP, SoverD)
 }
 
-// BytesOp draws the byte slice in the specified font, placing the upper left corner at p.
-// It draws the text using src, with sp aligned to pt, using the specified operation onto dst.
-func (dst *Image) BytesOp(pt image.Point, src *Image, sp image.Point, f *Font, b []byte, op Op) image.Point {
+// BytesOp is like StringOp but accepts a UTF-8-encoded byte slice instead of a string.
+func (dst *Image) BytesOp(p Point, src *Image, sp Point, f *Font, b []byte, op Op) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, "", b, nil, dst.Clipr, nil, image.ZP, op)
+	return _string(dst, p, src, sp, f, "", b, nil, dst.Clipr, nil, ZP, op)
 }
 
-// BytesBg draws the rune slice in the specified font, placing the upper left corner at p.
-// It first draws the background bg, with bgp aligned to pt, using operation SoverD onto dst.
-// It then draws the text using src, with sp aligned to pt, using operation SoverD onto dst.
-func (dst *Image) BytesBg(pt image.Point, src *Image, sp image.Point, f *Font, b []byte, bg *Image, bgp image.Point) image.Point {
+// BytesBg is like StringBg but accepts a UTF-8-encoded byte slice instead of a string.
+func (dst *Image) BytesBg(p Point, src *Image, sp Point, f *Font, b []byte, bg *Image, bgp Point) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, "", b, nil, dst.Clipr, bg, bgp, SoverD)
+	return _string(dst, p, src, sp, f, "", b, nil, dst.Clipr, bg, bgp, SoverD)
 }
 
-// BytesBgOp draws the rune slice in the specified font, placing the upper left corner at p.
-// It first draws the background bg, with bgp aligned to pt, using operation SoverD onto dst.
-// It then draws the text using src, with sp aligned to pt, using operation SoverD onto dst.
-func (dst *Image) BytesBgOp(pt image.Point, src *Image, sp image.Point, f *Font, b []byte, bg *Image, bgp image.Point, op Op) image.Point {
+// BytesBgOp is like StringBgOp but accepts a UTF-8-encoded byte slice instead of a string.
+func (dst *Image) BytesBgOp(p Point, src *Image, sp Point, f *Font, b []byte, bg *Image, bgp Point, op Op) Point {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
-	return _string(dst, pt, src, sp, f, "", b, nil, dst.Clipr, bg, bgp, op)
+	return _string(dst, p, src, sp, f, "", b, nil, dst.Clipr, bg, bgp, op)
 }
 
-func _string(dst *Image, pt image.Point, src *Image, sp image.Point, f *Font, s string, b []byte, r []rune, clipr image.Rectangle, bg *Image, bgp image.Point, op Op) image.Point {
+func _string(dst *Image, p Point, src *Image, sp Point, f *Font, s string, b []byte, r []rune, clipr Rectangle, bg *Image, bgp Point, op Op) Point {
 	var in input
 	in.init(s, b, r)
 	const Max = 100
 	cbuf := make([]uint16, Max)
-	var sf *Subfont
+	var sf *subfont
 	for !in.done {
 		max := Max
 		n, wid, subfontname := cachechars(f, &in, cbuf, max)
@@ -130,8 +115,8 @@ func _string(dst *Image, pt image.Point, src *Image, sp image.Point, f *Font, s 
 			bplong(b[1:], uint32(dst.id))
 			bplong(b[5:], uint32(src.id))
 			bplong(b[9:], uint32(f.cacheimage.id))
-			bplong(b[13:], uint32(pt.X))
-			bplong(b[17:], uint32(pt.Y+f.Ascent))
+			bplong(b[13:], uint32(p.X))
+			bplong(b[17:], uint32(p.Y+f.Ascent))
 			bplong(b[21:], uint32(clipr.Min.X))
 			bplong(b[25:], uint32(clipr.Min.Y))
 			bplong(b[29:], uint32(clipr.Max.X))
@@ -149,7 +134,7 @@ func _string(dst *Image, pt image.Point, src *Image, sp image.Point, f *Font, s 
 			for i, c := range cbuf[:n] {
 				bpshort(b[2*i:], c)
 			}
-			pt.X += wid
+			p.X += wid
 			bgp.X += wid
 			agefont(f)
 		}
@@ -158,8 +143,8 @@ func _string(dst *Image, pt image.Point, src *Image, sp image.Point, f *Font, s 
 			var err error
 			sf, err = getsubfont(f.Display, subfontname)
 			if err != nil {
-				if f.Display != nil && f != f.Display.DefaultFont {
-					f = f.Display.DefaultFont
+				if f.Display != nil && f != f.Display.Font {
+					f = f.Display.Font
 					continue
 				}
 				break
@@ -170,5 +155,5 @@ func _string(dst *Image, pt image.Point, src *Image, sp image.Point, f *Font, s 
 			 */
 		}
 	}
-	return pt
+	return p
 }

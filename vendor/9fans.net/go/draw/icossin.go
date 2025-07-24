@@ -98,8 +98,9 @@ var sinus = [91]int16{
 	1024, /* 90 */
 }
 
-// IntCosSin returns an approximation of the cosine and sine of the angle.
-// The angle is in degrees and the result values are scaled up by 1024.
+// IntCosSin returns scaled integers representing the cosine and sine
+// of the angle deg, measured in integer degrees.
+// The values are scaled by ICOSSCALE (1024), so that cos(0) is 1024.
 func IntCosSin(deg int) (cos, sin int) {
 	deg %= 360
 	if deg < 0 {

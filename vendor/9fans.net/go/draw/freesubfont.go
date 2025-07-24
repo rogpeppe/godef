@@ -4,7 +4,7 @@ package draw
 // calls Free automatically, if necessary, for garbage collected Images, but it
 // is more efficient to be explicit.
 // TODO: Implement the finalizer!
-func (f *Subfont) Free() {
+func (f *subfont) Free() {
 	if f == nil {
 		return
 	}
@@ -13,7 +13,7 @@ func (f *Subfont) Free() {
 	f.free()
 }
 
-func (f *Subfont) free() {
+func (f *subfont) free() {
 	if f == nil {
 		return
 	}

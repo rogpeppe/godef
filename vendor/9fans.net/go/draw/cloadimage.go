@@ -1,12 +1,15 @@
 package draw
 
-import (
-	"fmt"
-	"image"
-)
+import "fmt"
 
-// Cload is like Load, but uses image-compressed data.
-func (dst *Image) Cload(r image.Rectangle, data []byte) (int, error) {
+// Cload replaces the specified rectangle in image i with the compressed data,
+// returning the number of bytes copied from data.
+// It is an error if data does not contain pixels for the entire rectangle.
+//
+// See the package documentation for details about the compressed data format.
+// Each call to Cload must pass data starting at the beginning of a compressed
+// data block, specifically the y coordinate and data length for the block.
+func (dst *Image) Cload(r Rectangle, data []byte) (int, error) {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
 	i := dst

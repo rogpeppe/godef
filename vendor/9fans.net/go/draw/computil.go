@@ -1,7 +1,5 @@
 package draw
 
-import "image"
-
 // Compressed image file parameters.
 const (
 	_NMATCH  = 3              /* shortest match possible */
@@ -34,7 +32,7 @@ func twiddlecompressed(buf []byte) {
 	}
 }
 
-func compblocksize(r image.Rectangle, depth int) int {
+func compblocksize(r Rectangle, depth int) int {
 	bpl := BytesPerLine(r, depth)
 	bpl = 2 * bpl /* add plenty extra for blocking, etc. */
 	if bpl < _NCBLOCK {

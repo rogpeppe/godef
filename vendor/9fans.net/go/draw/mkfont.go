@@ -6,7 +6,7 @@ package draw
 
 // MakeFont creates a Font from an existing subfont. The first character of the
 // subfont will be rendered with rune value min.
-func (subfont *Subfont) MakeFont(min rune) *Font {
+func (subfont *subfont) MakeFont(min rune) *Font {
 	font := &Font{
 		Display:  subfont.Bits.Display,
 		Name:     "<synthetic>",

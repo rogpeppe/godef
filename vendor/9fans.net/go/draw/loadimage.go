@@ -1,19 +1,29 @@
 package draw
 
-import (
-	"fmt"
-	"image"
-)
+import "fmt"
 
-// Load copies the pixel data from the buffer to the specified rectangle of the image.
-// The buffer must be big enough to fill the rectangle.
-func (dst *Image) Load(r image.Rectangle, data []byte) (int, error) {
+// Load replaces the specified rectangle in image dst with the data,
+// returning the number of bytes copied from data.
+// It is an error if data is too small to supply pixels for the entire rectangle.
+//
+// In data, the pixels are presented one horizontal line at a time,
+// starting with the top-left pixel of r. Each scan line starts with a new byte
+// in the array, leaving the last byte of the previous line partially empty
+// if necessary when i.Depth < 8. Pixels are packed as tightly as possible
+// within a line, regardless of the rectangle being extracted.
+// Bytes are filled from most to least significant bit order,
+// as the x coordinate increases, aligned so that x = r.Min would appear as
+// the leftmost pixel of its byte.
+// Thus, for depth 1, the pixel at x offset 165 within the rectangle
+// will be in a data byte at bit-position 0x04 regardless of the overall
+// rectangle: 165 mod 8 equals 5, and 0x80 >> 5 equals 0x04.
+func (dst *Image) Load(r Rectangle, data []byte) (n int, err error) {
 	dst.Display.mu.Lock()
 	defer dst.Display.mu.Unlock()
 	return dst.load(r, data)
 }
 
-func (dst *Image) load(r image.Rectangle, data []byte) (int, error) {
+func (dst *Image) load(r Rectangle, data []byte) (int, error) {
 	i := dst
 	chunk := i.Display.bufsize - 64
 	if !r.In(i.R) {

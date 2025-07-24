@@ -1,3 +1,5 @@
+// +build !plan9
+
 package client
 
 import (
@@ -39,6 +41,18 @@ func MountService(service string) (*Fsys, error) {
 		return nil, err
 	}
 	fsys, err := c.Attach(nil, getuser(), "")
+	if err != nil {
+		c.Close()
+	}
+	return fsys, err
+}
+
+func MountServiceAname(service, aname string) (*Fsys, error) {
+	c, err := DialService(service)
+	if err != nil {
+		return nil, err
+	}
+	fsys, err := c.Attach(nil, getuser(), aname)
 	if err != nil {
 		c.Close()
 	}

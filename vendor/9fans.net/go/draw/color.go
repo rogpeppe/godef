@@ -1,9 +1,6 @@
 package draw
 
-import (
-	"image"
-	"image/color"
-)
+import "image/color"
 
 /*
  * Support for the Image type so it can satisfy the standard Color and Image interfaces.
@@ -13,16 +10,16 @@ import (
 // If the location is outside the clipping rectangle, it returns color.Transparent.
 // This operation does a round trip to the image server and can be expensive.
 func (i *Image) At(x, y int) color.Color {
-	if !(image.Point{x, y}.In(i.Clipr)) {
+	if !(Point{x, y}.In(i.Clipr)) {
 		return color.Transparent
 	}
-	if i.Repl && !(image.Point{x, y}.In(i.R)) {
+	if i.Repl && !(Point{x, y}.In(i.R)) {
 		// Translate (x, y) to be within i.R.
 		x = (x-i.R.Min.X)%(i.R.Max.X-i.R.Min.X) + i.R.Min.X
 		y = (y-i.R.Min.Y)%(i.R.Max.Y-i.R.Min.Y) + i.R.Min.Y
 	}
 	var buf [4]byte
-	_, err := i.Unload(image.Rect(x, y, x+1, y+1), buf[:])
+	_, err := i.Unload(Rect(x, y, x+1, y+1), buf[:])
 	if err != nil {
 		println("image.At: error in Unload: ", err.Error())
 		return color.Transparent // As good a value as any.
@@ -92,7 +89,7 @@ func (i *Image) At(x, y int) color.Color {
 	}
 }
 
-func (i *Image) Bounds() image.Rectangle {
+func (i *Image) Bounds() Rectangle {
 	return i.Clipr
 }
 

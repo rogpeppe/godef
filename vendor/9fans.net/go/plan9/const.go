@@ -51,4 +51,8 @@ const (
 	NOFID   = 0xffffffff
 	NOUID   = 0xffffffff
 	IOHDRSZ = 24
+
+	MREPL   = 0x0000
+	MBEFORE = 0x0001
+	MAFTER  = 0x0002
 )

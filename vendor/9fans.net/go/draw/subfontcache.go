@@ -9,12 +9,12 @@ import "sync"
 var lastfont struct {
 	sync.Mutex
 	name string
-	sub  *Subfont
+	sub  *subfont
 }
 
-func lookupsubfont(d *Display, name string) *Subfont {
+func lookupsubfont(d *Display, name string) *subfont {
 	if d != nil && name == "*default*" {
-		return d.DefaultSubfont
+		return d.defaultSubfont
 	}
 	lastfont.Lock()
 	defer lastfont.Unlock()
@@ -25,14 +25,14 @@ func lookupsubfont(d *Display, name string) *Subfont {
 	return nil
 }
 
-func installsubfont(name string, subfont *Subfont) {
+func installsubfont(name string, subfont *subfont) {
 	lastfont.Lock()
 	defer lastfont.Unlock()
 	lastfont.name = name
 	lastfont.sub = subfont /* notice we don't free the old one; that's your business */
 }
 
-func uninstallsubfont(subfont *Subfont) {
+func uninstallsubfont(subfont *subfont) {
 	lastfont.Lock()
 	defer lastfont.Unlock()
 	if subfont == lastfont.sub {

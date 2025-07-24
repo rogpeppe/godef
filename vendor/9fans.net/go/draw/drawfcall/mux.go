@@ -1,3 +1,5 @@
+// +build !plan9
+
 package drawfcall
 
 import (
@@ -172,6 +174,57 @@ func (c *Conn) Cursor(cursor *Cursor) error {
 		tx.Arrow = true
 	} else {
 		tx.Cursor = *cursor
+	}
+	rx := &Msg{}
+	return c.RPC(tx, rx)
+}
+
+// copied from ../cursor.go to avoid import cycle
+
+var expand = [16]uint8{
+	0x00, 0x03, 0x0c, 0x0f,
+	0x30, 0x33, 0x3c, 0x3f,
+	0xc0, 0xc3, 0xcc, 0xcf,
+	0xf0, 0xf3, 0xfc, 0xff,
+}
+
+// scaleCursor returns a high-DPI version of c.
+func scaleCursor(c Cursor) Cursor2 {
+	var c2 Cursor2
+	c2.X = 2 * c.X
+	c2.Y = 2 * c.Y
+	for y := 0; y < 16; y++ {
+		c2.White[8*y+4] = expand[c.White[2*y]>>4]
+		c2.White[8*y] = c2.White[8*y+4]
+		c2.Black[8*y+4] = expand[c.Black[2*y]>>4]
+		c2.Black[8*y] = c2.Black[8*y+4]
+		c2.White[8*y+5] = expand[c.White[2*y]&15]
+		c2.White[8*y+1] = c2.White[8*y+5]
+		c2.Black[8*y+5] = expand[c.Black[2*y]&15]
+		c2.Black[8*y+1] = c2.Black[8*y+5]
+		c2.White[8*y+6] = expand[c.White[2*y+1]>>4]
+		c2.White[8*y+2] = c2.White[8*y+6]
+		c2.Black[8*y+6] = expand[c.Black[2*y+1]>>4]
+		c2.Black[8*y+2] = c2.Black[8*y+6]
+		c2.White[8*y+7] = expand[c.White[2*y+1]&15]
+		c2.White[8*y+3] = c2.White[8*y+7]
+		c2.Black[8*y+7] = expand[c.Black[2*y+1]&15]
+		c2.Black[8*y+3] = c2.Black[8*y+7]
+	}
+	return c2
+}
+
+func (c *Conn) Cursor2(cursor *Cursor, cursor2 *Cursor2) error {
+	tx := &Msg{Type: Tcursor2}
+	if cursor == nil {
+		tx.Arrow = true
+	} else {
+		tx.Cursor = *cursor
+		if cursor2 == nil {
+			tx.Cursor2 = scaleCursor(*cursor)
+		} else {
+			tx.Cursor2 = *cursor2
+		}
 	}
 	rx := &Msg{}
 	return c.RPC(tx, rx)

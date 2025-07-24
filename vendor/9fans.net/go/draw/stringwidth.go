@@ -2,7 +2,6 @@ package draw
 
 import (
 	"fmt"
-	"image"
 	"os"
 )
 
@@ -15,7 +14,7 @@ func stringnwidth(f *Font, s string, b []byte, r []rune) int {
 	for !in.done {
 		max := Max
 		n := 0
-		var sf *Subfont
+		var sf *subfont
 		var l, wid int
 		var subfontname string
 		for {
@@ -37,8 +36,8 @@ func stringnwidth(f *Font, s string, b []byte, r []rune) int {
 				var err error
 				sf, err = getsubfont(f.Display, subfontname)
 				if err != nil {
-					if f.Display != nil && f != f.Display.DefaultFont {
-						f = f.Display.DefaultFont
+					if f.Display != nil && f != f.Display.Font {
+						f = f.Display.Font
 						continue
 					}
 					break
@@ -82,18 +81,18 @@ func (f *Font) RunesWidth(r []rune) int {
 
 // StringSize returns the number of horizontal and vertical pixels that would
 // be occupied by the string if it were drawn using the font.
-func (f *Font) StringSize(s string) image.Point {
-	return image.Pt(f.StringWidth(s), f.Height)
+func (f *Font) StringSize(s string) Point {
+	return Pt(f.StringWidth(s), f.Height)
 }
 
 // ByteSize returns the number of horizontal and vertical pixels that would be
 // occupied by the byte slice if it were drawn using the font.
-func (f *Font) BytesSize(b []byte) image.Point {
-	return image.Pt(f.BytesWidth(b), f.Height)
+func (f *Font) BytesSize(b []byte) Point {
+	return Pt(f.BytesWidth(b), f.Height)
 }
 
 // RuneSize returns the number of horizontal and vertical pixels that would be
 // occupied by the rune slice if it were drawn using the font.
-func (f *Font) RunesSize(r []rune) image.Point {
-	return image.Pt(f.RunesWidth(r), f.Height)
+func (f *Font) RunesSize(r []rune) Point {
+	return Pt(f.RunesWidth(r), f.Height)
 }

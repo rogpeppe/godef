@@ -23,9 +23,14 @@ func parsefontscale(name string) (scale int, fname string) {
 	return 1, name
 }
 
-// OpenFont reads the named file and returns the font it defines. The name may
-// be an absolute path, or identify a file in a standard font directory:
+// OpenFont reads the named file and returns the font it defines.
+// The name may be an absolute path, or it may identify a file
+// in a standard font directory:
 // /lib/font/bit, /usr/local/plan9, /mnt/font, etc.
+//
+// In contrast to Plan 9, but matching Plan 9 from User Space,
+// font names are a small language describing the desired font.
+// See the package documentation for details.
 func (d *Display) OpenFont(name string) (*Font, error) {
 	// nil display is allowed, for querying font metrics
 	// in non-draw program.

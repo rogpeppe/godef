@@ -2,12 +2,13 @@ package draw
 
 import (
 	"fmt"
-	"image"
 	"io"
 	"strings"
 )
 
-// ReadImage reads the image data from the reader and returns the image it describes.
+// ReadImage creates an image from data contained in r.
+// (See the package documentation for the image file format.)
+// The returned image is allocated using AllocImage.
 func (d *Display) ReadImage(r io.Reader) (*Image, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -106,7 +107,7 @@ func (d *Display) readImage(rd io.Reader) (*Image, error) {
 			}
 		}
 		if d != nil {
-			if _, err = i.load(image.Rect(r.Min.X, miny, r.Max.X, miny+dy), tmp[:n]); err != nil {
+			if _, err = i.load(Rect(r.Min.X, miny, r.Max.X, miny+dy), tmp[:n]); err != nil {
 				goto Err
 			}
 		}

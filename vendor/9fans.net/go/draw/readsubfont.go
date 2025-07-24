@@ -5,7 +5,7 @@ import (
 	"io"
 )
 
-func (d *Display) readSubfont(name string, fd io.Reader, ai *Image) (*Subfont, error) {
+func (d *Display) readSubfont(name string, fd io.Reader, ai *Image) (*subfont, error) {
 	hdr := make([]byte, 3*12+4)
 	i := ai
 	if i == nil {
@@ -19,7 +19,7 @@ func (d *Display) readSubfont(name string, fd io.Reader, ai *Image) (*Subfont, e
 		n   int
 		p   []byte
 		fc  []Fontchar
-		f   *Subfont
+		f   *subfont
 		err error
 	)
 	// Release lock for the I/O - could take a long time.
@@ -54,7 +54,7 @@ Err:
 
 // ReadSubfont reads the subfont data from the reader and returns the subfont
 // it describes, giving it the specified name.
-func (d *Display) ReadSubfont(name string, r io.Reader) (*Subfont, error) {
+func (d *Display) _ReadSubfont(name string, r io.Reader) (*subfont, error) {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 	return d.readSubfont(name, r, nil)

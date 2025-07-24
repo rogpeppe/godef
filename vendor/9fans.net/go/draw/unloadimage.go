@@ -1,19 +1,19 @@
 package draw
 
-import (
-	"fmt"
-	"image"
-)
+import "fmt"
 
-// Unload copies the pixel data from the specified rectangle of the image into
-// the buffer, which must be big enough to hold the result.
-func (src *Image) Unload(r image.Rectangle, data []byte) (n int, err error) {
-	src.Display.mu.Lock()
-	defer src.Display.mu.Unlock()
-	return src.unload(r, data)
+// Unload reads a rectangle of pixels from image i into data,
+// returning the number of bytes copied to data.
+// It is an error if data does not contain pixels for the entire rectangle.
+//
+// See the Load method's documentation for details about the data format.
+func (i *Image) Unload(r Rectangle, data []byte) (n int, err error) {
+	i.Display.mu.Lock()
+	defer i.Display.mu.Unlock()
+	return i.unload(r, data)
 }
 
-func (src *Image) unload(r image.Rectangle, data []byte) (n int, err error) {
+func (src *Image) unload(r Rectangle, data []byte) (n int, err error) {
 	i := src
 	if !r.In(i.R) {
 		return 0, fmt.Errorf("image.Unload: bad rectangle")

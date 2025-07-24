@@ -1,3 +1,5 @@
+// +build !plan9
+
 package client
 
 import (
@@ -11,36 +13,42 @@ type Fsys struct {
 }
 
 func (c *Conn) Auth(uname, aname string) (*Fid, error) {
-	afid, err := c.newfid()
+	conn, err := c.conn()
 	if err != nil {
 		return nil, err
 	}
-	tx := &plan9.Fcall{Type: plan9.Tauth, Afid: afid.fid, Uname: uname, Aname: aname}
-	rx, err := c.rpc(tx)
+	afidnum, err := conn.newfidnum()
 	if err != nil {
-		c.putfid(afid)
 		return nil, err
 	}
-	afid.qid = rx.Qid
-	return afid, nil
+	tx := &plan9.Fcall{Type: plan9.Tauth, Afid: afidnum, Uname: uname, Aname: aname}
+	rx, err := conn.rpc(tx, nil)
+	if err != nil {
+		conn.putfidnum(afidnum)
+		return nil, err
+	}
+	return conn.newFid(afidnum, rx.Qid), nil
 }
 
 func (c *Conn) Attach(afid *Fid, user, aname string) (*Fsys, error) {
-	fid, err := c.newfid()
+	conn, err := c.conn()
 	if err != nil {
 		return nil, err
 	}
-	tx := &plan9.Fcall{Type: plan9.Tattach, Afid: plan9.NOFID, Fid: fid.fid, Uname: user, Aname: aname}
+	fidnum, err := conn.newfidnum()
+	if err != nil {
+		return nil, err
+	}
+	tx := &plan9.Fcall{Type: plan9.Tattach, Afid: plan9.NOFID, Fid: fidnum, Uname: user, Aname: aname}
 	if afid != nil {
 		tx.Afid = afid.fid
 	}
-	rx, err := c.rpc(tx)
+	rx, err := conn.rpc(tx, nil)
 	if err != nil {
-		c.putfid(fid)
+		conn.putfidnum(fidnum)
 		return nil, err
 	}
-	fid.qid = rx.Qid
-	return &Fsys{fid}, nil
+	return &Fsys{conn.newFid(fidnum, rx.Qid)}, nil
 }
 
 var accessOmode = [8]uint8{
@@ -91,8 +99,7 @@ func (fs *Fsys) Open(name string, mode uint8) (*Fid, error) {
 	if err != nil {
 		return nil, err
 	}
-	err = fid.Open(mode)
-	if err != nil {
+	if err := fid.Open(mode); err != nil {
 		fid.Close()
 		return nil, err
 	}
@@ -125,4 +132,9 @@ func (fs *Fsys) Wstat(name string, d *plan9.Dir) error {
 	err = fid.Wstat(d)
 	fid.Close()
 	return err
+}
+
+// Close closes the Fid underlying fs.
+func (fs *Fsys) Close() error {
+	return fs.root.Close()
 }

@@ -3,9 +3,9 @@ package draw
 import (
 	"encoding/binary"
 	"fmt"
-	"image"
 	"log"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 
@@ -17,46 +17,122 @@ import (
 // The unexported ones do not.
 // The methods for Font, Image and Screen also lock the associated display by the same rules.
 
-// A Display represents a connection to a display.
+// A Display represents a connection to a graphics display,
+// holding all graphics resources associated with the connection,
+// including in particular raster image data in use by the client program.
+//
+// A Display d is created by calling Init.
+// Each Display corresponds to a single host window system window.
+// Multiple host windows can be created by calling Init multiple times,
+// although each allocated Image and Font is only valid for use with
+// the Display from which it was allocated.
+//
+// Historically, Plan 9 graphics programs have used fixed-size
+// graphics features that assume a narrow range of display densities,
+// around 100 dpi: pixels (or dots) per inch.  The new field DPI
+// contains the display's actual density if known, or else DefaultDPI (133).
+// The Display.Scale method scales a fixed pixel count n by DPI/DefaultDPI,
+// rounding appropriately. Note that the display DPI can change during
+// during Display.Attach.
+//
+// The mouse cursor is always shown. The initial cursor is the system arrow.
+// The SwitchCursor method changes the cursor image, and
+// MoveCursor moves the cursor.
+//
+// The various graphics operations are buffered and not guaranteed to
+// be made visible until a call to the Flush method.
+// Various routines flush automatically, notably Mousectl.Read.
+// Programs that receive directly from Mousectl.C should typically
+// Flush the display explicitly before the receive.
+//
 type Display struct {
-	mu      sync.Mutex // See comment above.
-	conn    *drawfcall.Conn
-	errch   chan<- error
-	bufsize int
-	buf     []byte
-	imageid uint32
-	qmask   *Image
-	locking bool
-
 	Image       *Image
 	Screen      *Screen
 	ScreenImage *Image
 	Windows     *Image
-	DPI         int
+	DPI         int // display pixels-per-inch
+
+	White       *Image // pre-allocated color
+	Black       *Image // pre-allocated color
+	Opaque      *Image // pre-allocated color
+	Transparent *Image // pre-allocated color
+
+	Font *Font // default font for UI
+
+	defaultSubfont *subfont // fallback subfont
+
+	mu       sync.Mutex // See comment above.
+	conn     *drawfcall.Conn
+	errch    chan<- error
+	bufsize  int
+	buf      []byte
+	imageid  uint32
+	qmask    *Image
+	locking  bool
+	flushErr int
 
 	firstfont *Font
 	lastfont  *Font
-
-	White       *Image // Pre-allocated color.
-	Black       *Image // Pre-allocated color.
-	Opaque      *Image // Pre-allocated color.
-	Transparent *Image // Pre-allocated color.
-
-	DefaultFont    *Font
-	DefaultSubfont *Subfont
 }
 
 // An Image represents an image on the server, possibly visible on the display.
+// It is a rectangular picture along with the methods to draw upon it.
+// It is also the building block for higher-level objects such as windows and fonts.
+// In particular, a window is represented as an Image; no special operators
+// are needed to draw on a window.
+//
+// Most of the graphics methods come in two forms: a basic form, and an
+// extended form that takes an extra Op to specify a Porter-Duff compositing
+// operator to use. The basic forms assume the operator is SoverD, which
+// suffices for the vast majority of applications.
+// The extended forms are named by adding an Op suffix to the basic form's name.
 type Image struct {
+	// Display is the display the image belongs to.
+	// All graphics operations must use images from a single display.
 	Display *Display
-	id      uint32
-	Pix     Pix             // The pixel format for the image.
-	Depth   int             // The depth of the pixels in bits.
-	Repl    bool            // Whether the image is replicated (tiles the rectangle).
-	R       image.Rectangle // The extent of the image.
-	Clipr   image.Rectangle // The clip region.
-	next    *Image
-	Screen  *Screen // If non-nil, the associated screen; this is a window.
+
+	// R is the coordinates of the rectangle in the plane for
+	// which the Image has defined pixel values.
+	// It is read-only and should not be modified.
+	R Rectangle
+
+	// Clipr is the clipping rectangle: operations that read or write
+	// the image will not access pixels outside clipr.
+	// Frequently, clipr is the same as r, but it may differ.
+	// See in particular the comment for Repl.
+	// Clipr should not be modified directly; use the ReplClipr method instead.
+	Clipr Rectangle
+
+	// Pix is the pixel channel format descriptor.
+	// See the package documentation for details about pixel formats.
+	// It is read-only and should not be modified.
+	Pix Pix
+
+	// Depth is the number of bits per pixel in the picture.
+	// It is identical to Pix.Depth() and is provided as a convenience.
+	// It is read-only and should not be modified.
+	Depth int
+
+	// Repl is a boolean value specifying whether the image is tiled
+	// to cover the plane when used as a source for a drawing operation.
+	// If Repl is false, operations are restricted to the intersection of R and Clipr.
+	// If Repl is true, R defines the tile to be replicated and Clipr defines the
+	// portion of the plane covered by the tiling; in other words, R is replicated
+	// to cover Clipr. In this case, R and Clipr are independent.
+	//
+	// For example, a replicated image with R set to (0,0)-(1,1)
+	// and Clipr set to (0,0)-(100,100), with the single pixel of R set to blue,
+	// behaves identically to an image with R and Clipr both set
+	// to (0,0)-(100,100) and all pixels set to blue.
+	// However, the first image requires far less memory and enables
+	// more efficient operations.
+	// Repl should not be modified directly; use the ReplClipr method instead.
+	Repl bool // Whether the image is replicated (tiles the rectangle).
+
+	Screen *Screen // If non-nil, the associated screen; this is a window.
+
+	id   uint32
+	next *Image
 }
 
 // A Screen is a collection of windows that are visible on an image.
@@ -67,28 +143,37 @@ type Screen struct {
 }
 
 // Refresh algorithms to execute when a window is resized or uncovered.
-// Refmesg is almost always the correct one to use.
+// RefMesg is almost always the correct one to use.
 const (
-	Refbackup = 0
-	Refnone   = 1
-	Refmesg   = 2
+	RefBackup = 0
+	RefNone   = 1
+	RefMesg   = 2
 )
 
 const deffontname = "*default*"
 
-// Init starts and connects to a server and returns a Display structure through
-// which all graphics will be mediated. The arguments are an error channel on
-// which to deliver errors (currently unused), the name of the font to use (the
-// empty string may be used to represent the default font), the window label,
-// and the window size as a string in the form XxY, as in "1000x500"; the units
-// are pixels.
+// Init connects to a display server and creates a single host window.
+// The error channel is unused.
+//
+// The font specifies the font name.
+// If font is the empty string, Init uses the environment variable $font.
+// If $font is not set, Init uses a built-in minimal default font.
+// See the package documentation for a full discussion of font syntaxes.
+//
+// The label and size specify the initial window title and diemnsions.
+// The size takes the form "1000x500"; the units are pixels.
+//
+// Unlike the Plan 9 C library's initdraw, Init does not establish any global variables.
+// The C global variables display, font, and screen correspond to the
+// returned value d, d.Font, and d.ScreenImage.
+//
 // TODO: Use the error channel.
-func Init(errch chan<- error, fontname, label, winsize string) (*Display, error) {
+func Init(errch chan<- error, font, label, size string) (d *Display, err error) {
 	c, err := drawfcall.New()
 	if err != nil {
 		return nil, err
 	}
-	d := &Display{
+	d = &Display{
 		conn:    c,
 		errch:   errch,
 		bufsize: 10000,
@@ -99,7 +184,7 @@ func Init(errch chan<- error, fontname, label, winsize string) (*Display, error)
 	defer d.mu.Unlock()
 
 	d.buf = make([]byte, 0, d.bufsize+5) // 5 for final flush
-	if err := c.Init(label, winsize); err != nil {
+	if err := c.Init(label, size); err != nil {
 		c.Close()
 		return nil, err
 	}
@@ -111,11 +196,11 @@ func Init(errch chan<- error, fontname, label, winsize string) (*Display, error)
 	}
 
 	d.Image = i
-	d.White, err = d.allocImage(image.Rect(0, 0, 1, 1), GREY1, true, White)
+	d.White, err = d.allocImage(Rect(0, 0, 1, 1), GREY1, true, White)
 	if err != nil {
 		return nil, err
 	}
-	d.Black, err = d.allocImage(image.Rect(0, 0, 1, 1), GREY1, true, Black)
+	d.Black, err = d.allocImage(Rect(0, 0, 1, 1), GREY1, true, Black)
 	if err != nil {
 		return nil, err
 	}
@@ -129,31 +214,29 @@ func Init(errch chan<- error, fontname, label, winsize string) (*Display, error)
 	if err != nil {
 		return nil, err
 	}
-	d.DefaultSubfont = df
+	d.defaultSubfont = df
 
-	if fontname == "" {
-		fontname = os.Getenv("font")
+	if font == "" {
+		font = os.Getenv("font")
 	}
 
 	/*
 	 * Build fonts with caches==depth of screen, for speed.
 	 * If conversion were faster, we'd use 0 and save memory.
 	 */
-	var font *Font
-	if fontname == "" {
+	if font == "" {
 		buf := []byte(fmt.Sprintf("%d %d\n0 %d\t%s\n", df.Height, df.Ascent,
 			df.N-1, deffontname))
 		//fmt.Printf("%q\n", buf)
 		//BUG: Need something better for this	installsubfont("*default*", df);
-		font, err = d.buildFont(buf, deffontname)
+		d.Font, err = d.buildFont(buf, deffontname)
 	} else {
-		font, err = d.openFont(fontname) // BUG: grey fonts
+		d.Font, err = d.openFont(font) // BUG: grey fonts
 	}
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "imageinit: can't open default font %s: %v\n", fontname, err)
+		fmt.Fprintf(os.Stderr, "imageinit: can't open default font %s: %v\n", font, err)
 		return nil, err
 	}
-	d.DefaultFont = font
 
 	d.Screen, err = i.allocScreen(d.White, false)
 	if err != nil {
@@ -165,13 +248,13 @@ func Init(errch chan<- error, fontname, label, winsize string) (*Display, error)
 		return nil, err
 	}
 	if err := d.flush(true); err != nil {
-		log.Fatal(err)
+		log.Fatal("allocwindow flush: ", err)
 	}
 
 	screen := d.ScreenImage
-	screen.draw(screen.R, d.White, nil, image.ZP)
+	screen.draw(screen.R, d.White, nil, ZP)
 	if err := d.flush(true); err != nil {
-		log.Fatal(err)
+		log.Fatal("draw flush: ", err)
 	}
 
 	return d, nil
@@ -228,18 +311,31 @@ func (d *Display) getimage0(i *Image) (*Image, error) {
 	return i, nil
 }
 
-// Attach (re-)attaches to a display, typically after a resize, updating the
+// Attach reattaches to a display, after a resize, updating the
 // display's associated image, screen, and screen image data structures.
+// The images d.Image and d.ScreenImage and the screen d.Screen
+// are reallocated, so the caller must reinitialize any cached copies of
+// those fields.
+//
+// Any open Fonts associated with the Display may be updated in
+// response to a DPI change, meaning the caller should expect that
+// a Font's Height may be different after calling Attach as well.
+// The Font pointers themselves do not change.
+//
 func (d *Display) Attach(ref int) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	oi := d.Image
-	i, err := d.getimage0(oi)
-	if err != nil {
-		return err
+	if runtime.GOOS != "plan9" {
+		oi := d.Image
+		i, err := d.getimage0(oi)
+		if err != nil {
+			return err
+		}
+		d.Image = i
 	}
-	d.Image = i
+	i := d.Image
 	d.Screen.free()
+	var err error
 	d.Screen, err = i.allocScreen(d.White, false)
 	if err != nil {
 		return err
@@ -247,7 +343,7 @@ func (d *Display) Attach(ref int) error {
 	d.ScreenImage.free()
 	d.ScreenImage, err = allocwindow(d.ScreenImage, d.Screen, i.R, ref, White)
 	if err != nil {
-		log.Fatal("aw", err)
+		log.Fatal("allocwindow: ", err)
 	}
 
 	if d.HiDPI() {
@@ -267,11 +363,11 @@ func (d *Display) Attach(ref int) error {
 
 // Close closes the Display.
 func (d *Display) Close() error {
-	d.mu.Lock()
-	defer d.mu.Unlock()
 	if d == nil {
 		return nil
 	}
+	d.mu.Lock()
+	defer d.mu.Unlock()
 	return d.conn.Close()
 }
 
@@ -284,9 +380,16 @@ func (d *Display) flushBuffer() error {
 	_, err := d.conn.WriteDraw(d.buf)
 	d.buf = d.buf[:0]
 	if err != nil {
+		if d.flushErr++; d.flushErr > 100 {
+			panic("draw flush: error loop: " + err.Error())
+		}
+		if d.flushErr > 110 {
+			log.Fatalf("draw flush: error loop: " + err.Error())
+		}
 		fmt.Fprintf(os.Stderr, "draw flush: %v\n", err)
 		return err
 	}
+	d.flushErr = 0
 	return nil
 }
 
@@ -322,9 +425,17 @@ func (d *Display) bufimage(n int) []byte {
 	return d.buf[i:]
 }
 
+// DefaultDPI is the DPI assumed when the actual display DPI is unknown.
+// It is also the base DPI assumed for the Display.Scale method,
+// which scales fixed-size pixel counts for higher-resolution displays.
+// See the Display documentation for more information.
 const DefaultDPI = 133
 
-// TODO: Document.
+// Scale scales the fixed pixel count n by d.DPI / DefaultDPI,
+// rounding appropriately. It can help programs that historically
+// assumed fixed pixel counts (for example, a 4-pixel border)
+// scale gracefully to high-resolution displays.
+// See the Display documentation for more information.
 func (d *Display) Scale(n int) int {
 	if d == nil || d.DPI <= DefaultDPI {
 		return n
@@ -344,12 +455,12 @@ func atoi(b []byte) int {
 	return n
 }
 
-func atop(b []byte) image.Point {
-	return image.Pt(atoi(b), atoi(b[12:]))
+func atop(b []byte) Point {
+	return Pt(atoi(b), atoi(b[12:]))
 }
 
-func ator(b []byte) image.Rectangle {
-	return image.Rectangle{atop(b), atop(b[2*12:])}
+func ator(b []byte) Rectangle {
+	return Rectangle{atop(b), atop(b[2*12:])}
 }
 
 func bplong(b []byte, n uint32) {
@@ -361,7 +472,7 @@ func bpshort(b []byte, n uint16) {
 }
 
 func (d *Display) HiDPI() bool {
-	return d.DPI >= DefaultDPI*3/2 
+	return d.DPI >= DefaultDPI*3/2
 }
 
 func (d *Display) ScaleSize(n int) int {

@@ -35,6 +35,12 @@ const (
 	Rtop
 	Tresize
 	Rresize
+	Tcursor2
+	Rcursor2
+	Tctxt
+	Rctxt
+	Trdkbd4
+	Rrdkbd4
 	Tmax
 )
 
@@ -46,12 +52,14 @@ type Msg struct {
 	Mouse   Mouse
 	Resized bool
 	Cursor  Cursor
+	Cursor2 Cursor2
 	Arrow   bool
 	Rune    rune
 	Winsize string
 	Label   string
 	Snarf   []byte
 	Error   string
+	ID      string
 	Data    []byte
 	Count   int
 	Rect    image.Rectangle
@@ -60,13 +68,19 @@ type Msg struct {
 type Mouse struct {
 	image.Point
 	Buttons int
-	Msec    int
+	Msec    uint32
 }
 
 type Cursor struct {
 	image.Point
-	Clr [32]byte
-	Set [32]byte
+	White [32]byte
+	Black [32]byte
+}
+
+type Cursor2 struct {
+	image.Point
+	White [128]byte
+	Black [128]byte
 }
 
 func stringsize(s string) int {
@@ -83,8 +97,11 @@ func (m *Msg) Size() int {
 		Rbouncemouse,
 		Rmoveto,
 		Rcursor,
+		Rcursor2,
 		Trdkbd,
+		Trdkbd4,
 		Rlabel,
+		Rctxt,
 		Rinit,
 		Trdsnarf,
 		Rwrsnarf,
@@ -100,12 +117,18 @@ func (m *Msg) Size() int {
 		return 4 + 1 + 1 + 4 + 4
 	case Tcursor:
 		return 4 + 1 + 1 + 4 + 4 + 2*16 + 2*16 + 1
+	case Tcursor2:
+		return 4 + 1 + 1 + 4 + 4 + 2*16 + 2*16 + 4 + 4 + 4*32 + 4*32 + 1
 	case Rerror:
 		return 4 + 1 + 1 + stringsize(m.Error)
 	case Rrdkbd:
 		return 4 + 1 + 1 + 2
+	case Rrdkbd4:
+		return 4 + 1 + 1 + 4
 	case Tlabel:
 		return 4 + 1 + 1 + stringsize(m.Label)
+	case Tctxt:
+		return 4 + 1 + 1 + stringsize(m.ID)
 	case Tinit:
 		return 4 + 1 + 1 + stringsize(m.Winsize) + stringsize(m.Label)
 	case Rrdsnarf,
@@ -140,7 +163,7 @@ func (m *Msg) Marshal() []byte {
 		b = pbit32(b, m.Mouse.X)
 		b = pbit32(b, m.Mouse.Y)
 		b = pbit32(b, m.Mouse.Buttons)
-		b = pbit32(b, m.Mouse.Msec)
+		b = pbit32(b, int(m.Mouse.Msec))
 		b = append(b, boolbyte(m.Resized))
 		b[19], b[22] = b[22], b[19]
 	case Tbouncemouse:
@@ -153,13 +176,27 @@ func (m *Msg) Marshal() []byte {
 	case Tcursor:
 		b = pbit32(b, m.Cursor.X)
 		b = pbit32(b, m.Cursor.Y)
-		b = append(b, m.Cursor.Clr[:]...)
-		b = append(b, m.Cursor.Set[:]...)
+		b = append(b, m.Cursor.White[:]...)
+		b = append(b, m.Cursor.Black[:]...)
+		b = append(b, boolbyte(m.Arrow))
+	case Tcursor2:
+		b = pbit32(b, m.Cursor.X)
+		b = pbit32(b, m.Cursor.Y)
+		b = append(b, m.Cursor.White[:]...)
+		b = append(b, m.Cursor.Black[:]...)
+		b = pbit32(b, m.Cursor2.X)
+		b = pbit32(b, m.Cursor2.Y)
+		b = append(b, m.Cursor2.White[:]...)
+		b = append(b, m.Cursor2.Black[:]...)
 		b = append(b, boolbyte(m.Arrow))
 	case Rrdkbd:
 		b = pbit16(b, uint16(m.Rune))
+	case Rrdkbd4:
+		b = pbit32(b, int(m.Rune))
 	case Tlabel:
 		b = pstring(b, m.Label)
+	case Tctxt:
+		b = pstring(b, m.ID)
 	case Tinit:
 		b = pstring(b, m.Winsize)
 		b = pstring(b, m.Label)
@@ -223,13 +260,16 @@ func (m *Msg) Unmarshal(b []byte) error {
 	m.Type, b = gbit8(b)
 	switch m.Type {
 	default:
-		return fmt.Errorf("invalid type")
+		return fmt.Errorf("invalid type %d", int(m.Type))
 	case Trdmouse,
 		Rbouncemouse,
 		Rmoveto,
 		Rcursor,
+		Rcursor2,
 		Trdkbd,
+		Trdkbd4,
 		Rlabel,
+		Rctxt,
 		Rinit,
 		Trdsnarf,
 		Rwrsnarf,
@@ -244,7 +284,9 @@ func (m *Msg) Unmarshal(b []byte) error {
 		m.Mouse.Y, b = gbit32(b)
 		m.Mouse.Buttons, b = gbit32(b)
 		b[1], b[4] = b[4], b[1]
-		m.Mouse.Msec, b = gbit32(b)
+		var msec int
+		msec, b = gbit32(b)
+		m.Mouse.Msec = uint32(msec)
 		m.Resized = b[0] != 0
 		b = b[1:]
 	case Tbouncemouse:
@@ -257,9 +299,23 @@ func (m *Msg) Unmarshal(b []byte) error {
 	case Tcursor:
 		m.Cursor.X, b = gbit32(b)
 		m.Cursor.Y, b = gbit32(b)
-		copy(m.Cursor.Clr[:], b[:])
-		copy(m.Cursor.Set[:], b[32:])
+		copy(m.Cursor.White[:], b[:])
+		copy(m.Cursor.Black[:], b[32:])
 		b = b[64:]
+		var n byte
+		n, b = gbit8(b)
+		m.Arrow = n != 0
+	case Tcursor2:
+		m.Cursor.X, b = gbit32(b)
+		m.Cursor.Y, b = gbit32(b)
+		copy(m.Cursor.White[:], b[:])
+		copy(m.Cursor.Black[:], b[32:])
+		b = b[64:]
+		m.Cursor2.X, b = gbit32(b)
+		m.Cursor2.Y, b = gbit32(b)
+		copy(m.Cursor2.White[:], b[:])
+		copy(m.Cursor2.Black[:], b[128:])
+		b = b[256:]
 		var n byte
 		n, b = gbit8(b)
 		m.Arrow = n != 0
@@ -267,8 +323,14 @@ func (m *Msg) Unmarshal(b []byte) error {
 		var r uint16
 		r, b = gbit16(b)
 		m.Rune = rune(r)
+	case Rrdkbd4:
+		var r int
+		r, b = gbit32(b)
+		m.Rune = rune(r)
 	case Tlabel:
 		m.Label, b = gstring(b)
+	case Tctxt:
+		m.ID, b = gstring(b)
 	case Tinit:
 		m.Winsize, b = gstring(b)
 		m.Label, b = gstring(b)
@@ -323,14 +385,26 @@ func (m *Msg) String() string {
 		s += fmt.Sprintf("Tcursor arrow=%v", m.Arrow)
 	case Rcursor:
 		s += fmt.Sprintf("Rcursor")
+	case Tcursor2:
+		s += fmt.Sprintf("Tcursor2 arrow=%v", m.Arrow)
+	case Rcursor2:
+		s += fmt.Sprintf("Rcursor2")
 	case Trdkbd:
 		s += fmt.Sprintf("Trdkbd")
 	case Rrdkbd:
 		s += fmt.Sprintf("Rrdkbd rune=%c", m.Rune)
+	case Trdkbd4:
+		s += fmt.Sprintf("Trdkbd4")
+	case Rrdkbd4:
+		s += fmt.Sprintf("Rrdkbd4 rune=%c", m.Rune)
 	case Tlabel:
 		s += fmt.Sprintf("Tlabel label='%s'", m.Label)
 	case Rlabel:
 		s += fmt.Sprintf("Rlabel")
+	case Tctxt:
+		s += fmt.Sprintf("Tctxt id='%s'", m.ID)
+	case Rctxt:
+		s += fmt.Sprintf("Rctxt")
 	case Tinit:
 		s += fmt.Sprintf("Tinit label='%s' winsize='%s'", m.Label, m.Winsize)
 	case Rinit:
