@@ -3,7 +3,6 @@
 // license that can be found in the LICENSE file.
 
 /*
-
 Godef prints the source location of definitions in Go programs.
 
 Usage:
@@ -38,6 +37,5 @@ Example:
 	$ godef -f src/pkg/xml/read.go 'NewParser().Skip'
 	src/pkg/xml/read.go:384:18
 	$
-
 */
 package main

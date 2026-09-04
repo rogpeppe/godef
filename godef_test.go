@@ -1,11 +1,13 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"go/build"
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -49,7 +51,7 @@ func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, mo
 	}
 
 	count := 0
-	if err := exported.Expect(map[string]interface{}{
+	if err := exported.Expect(map[string]any{
 		"godef": func(src, target token.Position) {
 			count++
 			obj, err := invokeGodef(exported.Config, src, runCount)
@@ -64,6 +66,44 @@ func runGoDefTest(t testing.TB, exporter packagestest.Exporter, runCount int, mo
 			}
 			if posStr(check) != posStr(target) {
 				t.Errorf("Got %v expected %v", posStr(check), posStr(target))
+			}
+		},
+		"godefPrint": func(src token.Position, mode string, re *regexp.Regexp) {
+			count++
+			obj, err := invokeGodef(exported.Config, src, runCount)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			buf := &bytes.Buffer{}
+			switch mode {
+			case "json":
+				*jsonFlag = true
+				*tflag = false
+				*aflag = false
+				*Aflag = false
+			case "all":
+				*jsonFlag = false
+				*tflag = true
+				*aflag = true
+				*Aflag = true
+			case "public":
+				*jsonFlag = false
+				*tflag = true
+				*aflag = true
+				*Aflag = false
+			case "type":
+				*jsonFlag = false
+				*tflag = true
+				*aflag = false
+				*Aflag = false
+			default:
+				t.Fatalf("Invalid print mode %v", mode)
+			}
+
+			print(buf, obj)
+			if !re.Match(buf.Bytes()) {
+				t.Errorf("in mode %q got %v want %v", mode, buf, re)
 			}
 		},
 	}); err != nil {
@@ -101,7 +141,7 @@ func invokeGodef(cfg *packages.Config, src token.Position, runCount int) (*Objec
 	}
 	// repeat the actual godef part n times, for benchmark support
 	var obj *Object
-	for i := 0; i < runCount; i++ {
+	for range runCount {
 		obj, err = adaptGodef(cfg, src.Filename, input, src.Offset)
 		if err != nil {
 			return nil, fmt.Errorf("Failed %v: %v", src, err)

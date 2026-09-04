@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"flag"
@@ -28,12 +29,13 @@ var cpuprofile = flag.String("cpuprofile", "", "write CPU profile to this file")
 var memprofile = flag.String("memprofile", "", "write memory profile to this file")
 var traceFlag = flag.String("trace", "", "write trace log to this file")
 
+var tflag = flag.Bool("t", false, "print type information")
+var aflag = flag.Bool("a", false, "print public type and member information")
+var Aflag = flag.Bool("A", false, "print all type and members information")
+
 // Deprecated flags:
 var (
 	_ = flag.Bool("debug", false, "deprecated flag (ignored)")
-	_ = flag.Bool("t", false, "deprecated flag (ignored)")
-	_ = flag.Bool("a", false, "deprecated flag (ignored)")
-	_ = flag.Bool("A", false, "deprecated flag (ignored)")
 )
 
 func main() {
@@ -56,6 +58,7 @@ func run(ctx context.Context) error {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+	*tflag = *tflag || *aflag || *Aflag
 	if flag.NArg() > 1 {
 		flag.Usage()
 		os.Exit(2)
@@ -165,9 +168,15 @@ type Object struct {
 	Pkg      string
 	Position Position
 	Members  []*Object
-	Type     interface{}
-	Value    interface{}
+	Type     any
+	Value    any
 }
+
+type orderedObjects []*Object
+
+func (o orderedObjects) Less(i, j int) bool { return o[i].Name < o[j].Name }
+func (o orderedObjects) Len() int           { return len(o) }
+func (o orderedObjects) Swap(i, j int)      { o[i], o[j] = o[j], o[i] }
 
 func print(out io.Writer, obj *Object) error {
 	if obj.Kind == PathKind {
@@ -184,7 +193,45 @@ func print(out io.Writer, obj *Object) error {
 	} else {
 		fmt.Fprintf(out, "%v\n", obj.Position)
 	}
+	if obj.Kind == BadKind || !*tflag {
+		return nil
+	}
+	fmt.Fprintf(out, "%s\n", typeStr(obj))
+	if *aflag || *Aflag {
+		for _, obj := range obj.Members {
+			// Ignore unexported members unless Aflag is set.
+			if !*Aflag && (obj.Pkg != "" || !ast.IsExported(obj.Name)) {
+				continue
+			}
+			fmt.Fprintf(out, "\t%s\n", strings.Replace(typeStr(obj), "\n", "\n\t\t", -1))
+			fmt.Fprintf(out, "\t\t%v\n", obj.Position)
+		}
+	}
 	return nil
+}
+
+func typeStr(obj *Object) string {
+	buf := &bytes.Buffer{}
+	valueFmt := " = %v"
+	switch obj.Kind {
+	case VarKind, FuncKind:
+		// don't print these
+	case ImportKind:
+		valueFmt = " %v)"
+		fmt.Fprint(buf, obj.Kind)
+		fmt.Fprint(buf, " (")
+	default:
+		fmt.Fprint(buf, obj.Kind)
+		fmt.Fprint(buf, " ")
+	}
+	fmt.Fprint(buf, obj.Name)
+	if obj.Type != nil {
+		fmt.Fprintf(buf, " %v", pretty{obj.Type})
+	}
+	if obj.Value != nil {
+		fmt.Fprintf(buf, valueFmt, pretty{obj.Value})
+	}
+	return buf.String()
 }
 
 func (pos Position) Format(f fmt.State, c rune) {

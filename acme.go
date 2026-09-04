@@ -45,13 +45,13 @@ func acmeCurrentFile() (*acmeFile, error) {
 		return nil, fmt.Errorf("cannot read tag: %v", err)
 	}
 	tag := string(tagb)
-	i := strings.Index(tag, " ")
-	if i == -1 {
+	before, _, ok := strings.Cut(tag, " ")
+	if !ok {
 		return nil, fmt.Errorf("strange tag with no spaces")
 	}
 
 	w := &acmeFile{
-		name:       tag[0:i],
+		name:       before,
 		body:       body,
 		offset:     runeOffset2ByteOffset(body, q0),
 		runeOffset: q0,
